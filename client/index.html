@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0d0c" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230b0d0c'/%3E%3Cpath d='M12 50 32 10l20 40-20-9z' fill='%23b6482f'/%3E%3C/svg%3E" />
+    <meta name="description" content="ASHFALL: Серый квартал — браузерный изометрический зомби-выживастик с постоянным миром." />
+    <title>ASHFALL — Серый квартал</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-root"></div>
+      <div class="screen-fx">
+        <div class="fx-vignette"></div>
+        <div class="fx-grain"></div>
+        <div class="fx-scan"></div>
+      </div>
+
+      <div id="hud" class="hidden">
+        <div class="hud-left">
+          <div class="nameplate">
+            <span class="brand-mini">ASHFALL</span>
+            <span id="hud-name">—</span>
+            <span id="hud-online" class="online">0 В СЕТИ</span>
+          </div>
+          <div class="vitals">
+            <div class="vital hp"><span class="vital-label">ЗДОРОВЬЕ</span><div class="bar"><i id="bar-hp"></i></div><b id="val-hp">100</b></div>
+            <div class="vital st"><span class="vital-label">ВЫНОСЛИВОСТЬ</span><div class="bar"><i id="bar-st"></i></div><b id="val-st">100</b></div>
+            <div class="vital hunger"><span class="vital-label">ГОЛОД</span><div class="bar"><i id="bar-hunger"></i></div><b id="val-hunger">100</b></div>
+            <div class="vital thirst"><span class="vital-label">ЖАЖДА</span><div class="bar"><i id="bar-thirst"></i></div><b id="val-thirst">100</b></div>
+          </div>
+          <div id="hud-weapon" class="weapon-slot"><span class="wlabel">В РУКАХ</span><span id="weapon-name">Кулаки</span></div>
+        </div>
+
+        <div class="hud-right">
+          <div class="minimap-wrap">
+            <canvas id="minimap" width="200" height="200"></canvas>
+            <div class="minimap-ring"></div>
+            <div id="hud-coords">48 / 48</div>
+          </div>
+          <div id="net-status" class="net-status">СОЕДИНЕНИЕ...</div>
+        </div>
+
+        <div id="event-log" class="event-log"></div>
+        <div id="interaction-prompt" class="interaction-prompt hidden"></div>
+        <div id="crosshair" class="crosshair"></div>
+
+        <div class="hud-bottom">
+          <div id="quickbar" class="quickbar"></div>
+          <div class="hud-hints">
+            <span><b>WASD</b> движение</span><span><b>SHIFT</b> бег</span><span><b>ЛКМ</b> атака</span>
+            <span><b>E</b> использовать</span><span><b>I</b> инвентарь</span><span><b>T</b> чат</span>
+          </div>
+        </div>
+
+        <div id="inventory-panel" class="panel hidden">
+          <div class="panel-head">
+            <div>
+              <h2>СНАРЯЖЕНИЕ</h2>
+              <div id="inv-weight" class="subtle">0 / 26 кг</div>
+            </div>
+            <button id="inv-close" class="icon-btn">ESC</button>
+          </div>
+          <div class="inv-columns">
+            <div class="inv-col">
+              <h3>РЮКЗАК <span id="inv-count"></span></h3>
+              <div id="inv-list" class="item-list"></div>
+            </div>
+            <div class="inv-col container-col hidden" id="container-col">
+              <h3 id="container-title">КОНТЕЙНЕР</h3>
+              <div id="container-list" class="item-list"></div>
+            </div>
+          </div>
+          <div id="inv-detail" class="inv-detail">
+            <p>ЛКМ — выбрать предмет. Двойной щелчок — использовать или надеть.</p>
+          </div>
+        </div>
+
+        <div id="death-overlay" class="death-overlay hidden">
+          <div class="death-card">
+            <div class="death-title">ВЫ МЕРТВЫ</div>
+            <div id="death-cause" class="death-cause">—</div>
+            <div class="death-sub">Инвентарь остался на месте смерти.</div>
+            <div id="respawn-timer" class="respawn-timer">9</div>
+            <div class="subtle">Возрождение на перекрёстке</div>
+          </div>
+        </div>
+
+        <div id="chat-panel" class="chat-panel">
+          <div id="chat-log" class="chat-log"></div>
+          <input id="chat-input" class="chat-input hidden" maxlength="140" placeholder="Сказать в район... (Enter — отправить, Esc — отмена)" />
+        </div>
+
+        <div id="toast" class="toast"></div>
+        <button id="sound-toggle" class="sound-toggle" title="Звук">ЗВУК: ВКЛ</button>
+      </div>
+
+      <div id="loading-screen" class="screen hidden">
+        <div class="loader">
+          <div class="loader-title">ASHFALL</div>
+          <div class="loader-bar"><i></i></div>
+          <div id="loading-text" class="loader-text">Пробуждаем Серый квартал...</div>
+        </div>
+      </div>
+
+      <div id="auth-screen" class="screen">
+        <div class="auth-art">
+          <div class="auth-sky"></div>
+          <div class="auth-skyline"></div>
+          <div class="auth-fog"></div>
+          <div class="auth-silhouette"></div>
+        </div>
+        <div class="auth-card">
+          <div class="brand">
+            <span class="brand-main">ASHFALL</span>
+            <span class="brand-sub">СЕРЫЙ КВАРТАЛ</span>
+          </div>
+          <p class="tagline">Город не умер. Он ждёт.<br />Постоянный мир. Свободный PvP. Одна жизнь.</p>
+          <form id="auth-form" autocomplete="off">
+            <label class="field">
+              <span>ПОЗЫВНОЙ</span>
+              <input id="auth-username" name="username" maxlength="20" autocomplete="username" placeholder="Survivor" />
+            </label>
+            <label class="field">
+              <span>ПАРОЛЬ</span>
+              <input id="auth-password" name="password" type="password" maxlength="72" autocomplete="current-password" placeholder="••••••••" />
+            </label>
+            <div id="auth-error" class="auth-error"></div>
+            <button id="auth-submit" class="btn primary" type="submit">ВОЙТИ В РАЙОН</button>
+            <div class="auth-row">
+              <button id="auth-register" class="btn ghost" type="button">СОЗДАТЬ АККАУНТ</button>
+              <button id="auth-guest" class="btn ghost" type="button">ГОСТЕМ</button>
+            </div>
+          </form>
+          <div class="auth-notes">
+            <span>PvP включён</span><span>Полная потеря лута</span><span>Версия 0.1</span>
+          </div>
+          <p class="fineprint">Прототип. Не храните здесь важные пароли. Сервер валидирует движение, бой и инвентарь.</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

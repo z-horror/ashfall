@@ -1,0 +1,114 @@
+import { createServer } from 'node:http';
+import { PROTOCOL_VERSION } from '@ashfall/shared';
+import { config } from './config.js';
+import { handleGuest, handleLogin, handleMe, handleRegister } from './auth.js';
+import { closeDatabase, pool, waitForDatabase } from './persistence/db.js';
+import { runMigrations } from './persistence/migrate.js';
+import { World } from './game/world.js';
+import { Simulation } from './game/simulation.js';
+import { Gateway } from './net/gateway.js';
+
+function json(res: import('node:http').ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+  });
+  res.end(JSON.stringify(body));
+}
+
+async function main(): Promise<void> {
+  await waitForDatabase();
+  if (config.migrateOnStart) await runMigrations();
+
+  const world = new World(config.worldSeed);
+  const sim = new Simulation(world);
+  await sim.init();
+
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const origin = req.headers.origin;
+    if (origin && config.nodeEnv !== 'production') {
+      res.setHeader('access-control-allow-origin', origin);
+      res.setHeader('access-control-allow-headers', 'content-type, authorization');
+      res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    try {
+      if (url.pathname === '/api/health' && req.method === 'GET') {
+        let db = true;
+        try {
+          await pool.query('SELECT 1');
+        } catch {
+          db = false;
+        }
+        return json(res, db ? 200 : 503, {
+          ok: db,
+          db,
+          protocol: PROTOCOL_VERSION,
+          seed: world.seed,
+          uptimeSec: Math.round(process.uptime()),
+          ...sim.stats(),
+        });
+      }
+      if (url.pathname === '/api/world' && req.method === 'GET') {
+        return json(res, 200, {
+          seed: world.seed,
+          size: 128,
+          chunks: 16,
+          online: sim.stats().online,
+          title: 'ASHFALL: Greywater District',
+        });
+      }
+      if (url.pathname === '/api/auth/register' && req.method === 'POST') {
+        return await handleRegister(req, res, world.spawn);
+      }
+      if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+        return await handleLogin(req, res);
+      }
+      if (url.pathname === '/api/auth/guest' && req.method === 'POST') {
+        return await handleGuest(req, res, world.spawn);
+      }
+      if (url.pathname === '/api/me' && req.method === 'GET') {
+        return await handleMe(req, res);
+      }
+      return json(res, 404, { error: 'Not found' });
+    } catch (err) {
+      console.error('[http] error', err);
+      return json(res, 500, { error: 'Internal server error' });
+    }
+  });
+
+  const gateway = new Gateway(server, sim);
+
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`[ashfall] server listening on :${config.port} (protocol v${PROTOCOL_VERSION})`);
+    console.log(`[ashfall] world seed: ${world.seed}`);
+  });
+  sim.start();
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[ashfall] ${signal} received, shutting down...`);
+    gateway.close();
+    await sim.shutdown();
+    server.close();
+    await closeDatabase();
+    console.log('[ashfall] bye');
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  console.error('[ashfall] fatal startup error', err);
+  process.exit(1);
+});

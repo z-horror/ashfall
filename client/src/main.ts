@@ -1,0 +1,198 @@
+import Phaser from 'phaser';
+import './styles.css';
+import { GameScene } from './game/GameScene.js';
+import { HUD } from './ui/hud.js';
+import { NetClient } from './net/connection.js';
+import { AudioEngine } from './audio.js';
+import * as api from './net/api.js';
+
+const authScreen = document.getElementById('auth-screen') as HTMLElement;
+const loadingScreen = document.getElementById('loading-screen') as HTMLElement;
+const loadingText = document.getElementById('loading-text') as HTMLElement;
+const authError = document.getElementById('auth-error') as HTMLElement;
+const usernameInput = document.getElementById('auth-username') as HTMLInputElement;
+const passwordInput = document.getElementById('auth-password') as HTMLInputElement;
+const submitBtn = document.getElementById('auth-submit') as HTMLButtonElement;
+const registerBtn = document.getElementById('auth-register') as HTMLButtonElement;
+const guestBtn = document.getElementById('auth-guest') as HTMLButtonElement;
+const form = document.getElementById('auth-form') as HTMLFormElement;
+
+const audio = new AudioEngine();
+let net: NetClient;
+let hud: HUD;
+let scene: GameScene;
+let game: Phaser.Game | null = null;
+let started = false;
+let busy = false;
+
+function showError(message: string): void {
+  authError.textContent = message;
+}
+
+function setBusy(value: boolean): void {
+  busy = value;
+  for (const btn of [submitBtn, registerBtn, guestBtn]) btn.disabled = value;
+}
+
+function showAuth(message = ''): void {
+  authScreen.classList.remove('hidden');
+  loadingScreen.classList.add('hidden');
+  showError(message);
+}
+
+function hideAuth(): void {
+  authScreen.classList.add('hidden');
+}
+
+function buildServices(): void {
+  net = new NetClient({
+    onMessage: (msg) => scene.handleServerMessage(msg),
+    onStatus: (status, detail) => {
+      hud.setConnection(status, detail);
+    },
+    onLatency: () => {},
+    onFatal: (message) => {
+      api.clearSession();
+      showAuth(message);
+    },
+  });
+
+  hud = new HUD({
+    useItem: (id) => net.action({ t: 'use', id }),
+    equipItem: (id) => net.action({ t: 'equip', id }),
+    dropItem: (id, qty) => net.action({ t: 'drop', id, qty }),
+    transfer: (id, qty, dir) => net.action({ t: 'transfer', id, qty, dir }),
+    closeContainer: () => net.action({ t: 'close_container' }),
+    pickupItem: (id) => net.action({ t: 'pickup', id }),
+    sendChat: (text) => net.action({ t: 'chat', text }),
+    toggleSound: () => {
+      audio.setEnabled(!audio.enabled);
+      hud.setSoundLabel(audio.enabled);
+    },
+    respawn: () => net.action({ t: 'respawn' }),
+  });
+  hud.setSoundLabel(true);
+
+  scene = new GameScene({ net, hud, audio });
+}
+
+function startGame(token: string): void {
+  hideAuth();
+  loadingScreen.classList.remove('hidden');
+  loadingText.textContent = 'Пробуждаем Серый квартал...';
+  if (started) {
+    net.connect(token);
+    return;
+  }
+  started = true;
+  buildServices();
+
+  game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game-root',
+    backgroundColor: '#0a0d0b',
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    },
+    render: {
+      antialias: true,
+      pixelArt: false,
+      roundPixels: false,
+      powerPreference: 'high-performance',
+    },
+    scene: [scene],
+    banner: false,
+    audio: { noAudio: true },
+  });
+  (window as unknown as { __ashfall?: unknown }).__ashfall = { game, scene, net, hud, audio };
+
+  void scene.ready.then(() => {
+    loadingText.textContent = 'Подключаемся к постоянному миру...';
+    net.connect(token);
+  });
+}
+
+document.addEventListener('ashfall:loaded', () => {
+  loadingScreen.classList.add('hidden');
+});
+
+async function validateSession(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${(import.meta.env.VITE_API_BASE as string | undefined) ?? ''}/api/me`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function enterWith(promise: Promise<api.AuthResult>): Promise<void> {
+  if (busy) return;
+  setBusy(true);
+  showError('');
+  audio.ensure();
+  try {
+    const result = await promise;
+    api.saveSession(result.token, result.user.name);
+    if (started) {
+      location.reload();
+      return;
+    }
+    startGame(result.token);
+  } catch (err) {
+    showError((err as Error).message || 'Не удалось войти');
+    setBusy(false);
+  }
+}
+
+form.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (!username || !password) {
+    showError('Введите позывной и пароль.');
+    return;
+  }
+  void enterWith(api.login(username, password));
+});
+
+registerBtn.addEventListener('click', () => {
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (!username || !password) {
+    showError('Придумайте позывной и пароль (от 6 символов).');
+    return;
+  }
+  void enterWith(api.register(username, password));
+});
+
+guestBtn.addEventListener('click', () => {
+  void enterWith(api.guest());
+});
+
+window.addEventListener('beforeunload', () => {
+  net?.close();
+});
+
+async function boot(): Promise<void> {
+  const saved = api.loadSession();
+  if (!saved) {
+    showAuth();
+    return;
+  }
+  authScreen.classList.add('hidden');
+  loadingScreen.classList.remove('hidden');
+  loadingText.textContent = 'Восстанавливаем сессию...';
+  const valid = await validateSession(saved.token);
+  if (!valid) {
+    api.clearSession();
+    showAuth('Сессия истекла. Войдите снова.');
+    return;
+  }
+  startGame(saved.token);
+}
+
+void boot();

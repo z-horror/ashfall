@@ -1,0 +1,34 @@
+{
+  "name": "ashfall",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ASHFALL: Greywater District - persistent browser survival shooter",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "bash scripts/dev.sh",
+    "dev:server": "npm -w @ashfall/server run dev",
+    "dev:client": "npm -w @ashfall/client run dev",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f db",
+    "migrate": "npm -w @ashfall/server run migrate",
+    "build": "npm -w @ashfall/client run build && npm -w @ashfall/server run build",
+    "start": "npm -w @ashfall/server run start",
+    "test": "npm -w @ashfall/server run test",
+    "test:visual": "node tools/visual-test.mjs",
+    "typecheck": "npm -w @ashfall/shared run typecheck && npm -w @ashfall/server run typecheck && npm -w @ashfall/client run typecheck",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.64.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
