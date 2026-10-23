@@ -21,6 +21,7 @@
     "start": "npm -w @ashfall/server run start",
     "test": "npm -w @ashfall/server run test",
     "test:visual": "node tools/visual-test.mjs",
+    "test:multiplayer": "node tools/e2e-multiplayer.mjs",
     "typecheck": "npm -w @ashfall/shared run typecheck && npm -w @ashfall/server run typecheck && npm -w @ashfall/client run typecheck",
     "stack:up": "docker compose up -d --build",
     "stack:down": "docker compose down"
