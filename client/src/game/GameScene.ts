@@ -100,7 +100,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#0a0d0b');
-    this.cameras.main.setZoom(1.14);
+    this.cameras.main.setZoom(1.34);
 
     console.time('[ashfall] environment art');
     buildEnvironmentArt(this);
@@ -293,8 +293,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.selfView.setLocal(true);
     this.cameras.main.startFollow(this.selfView.sprite, true, 0.16, 0.16);
-    this.cameras.main.setFollowOffset(0, 34);
-    this.cameras.main.setZoom(1.14);
+    this.cameras.main.setFollowOffset(0, 24);
+    this.cameras.main.setZoom(1.34);
     this.dust?.startFollow(this.selfView.sprite, 0, 0);
   }
 

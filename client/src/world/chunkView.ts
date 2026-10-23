@@ -206,13 +206,14 @@ export class ChunkView {
           visual.roofs.push(img);
         }
       }
-      // rooftop clutter
+      // rooftop clutter - only instantiate in the chunk that owns (rx, ry)
       const seed = b.x * 31 + b.y * 17 + b.w * 7 + b.h;
       const count = 1 + (seed % 3);
       for (let i = 0; i < count; i++) {
         const rx = b.x + 2 + ((seed + i * 13) % Math.max(1, b.w - 4));
         const ry = b.y + 2 + ((seed + i * 7) % Math.max(1, b.h - 3));
         if (rx < b.x || ry < b.y || rx >= b.x + b.w - 1 || ry >= b.y + b.h - 1) continue;
+        if (Math.floor(rx / CHUNK) !== cx || Math.floor(ry / CHUNK) !== cy) continue;
         const type = ['prop_vent', 'prop_ac', 'prop_tank'][(seed + i) % 3];
         const key = type === 'prop_vent' ? 'prop_vent' : type === 'prop_ac' ? 'prop_ac' : 'prop_tank';
         const anchor = propAnchor(key);
@@ -225,15 +226,19 @@ export class ChunkView {
       }
       if (b.doorTiles.length > 0 && b.style !== 3) {
         const door = b.doorTiles[0];
-        const key = getBuildingSign(this.scene, b.name);
-        const p = iso(door.x + 0.5, door.y + 0.5);
-        const img = artImage(this.scene, p.x, p.y - 64, key)
-          .setOrigin(0.5, 0.5)
-          .setScale(0.82)
-          .setDepth(visual.maxDepth + 0.86)
-          .setAlpha(0.92);
-        this.sprites.push(img);
-        visual.walls.push(img);
+        const doorCx = Math.floor(door.x / CHUNK);
+        const doorCy = Math.floor(door.y / CHUNK);
+        if (doorCx === cx && doorCy === cy) {
+          const key = getBuildingSign(this.scene, b.name);
+          const p = iso(door.x + 0.5, door.y + 0.5);
+          const img = artImage(this.scene, p.x, p.y - 64, key)
+            .setOrigin(0.5, 0.5)
+            .setScale(0.82)
+            .setDepth(visual.maxDepth + 0.86)
+            .setAlpha(0.92);
+          this.sprites.push(img);
+          visual.walls.push(img);
+        }
       }
     }
   }
