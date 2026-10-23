@@ -66,12 +66,12 @@ export function rgba(hex: string, alpha: number): string {
   return `rgba(${(num >> 16) & 255},${(num >> 8) & 255},${num & 255},${alpha})`;
 }
 
-export function diamondPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, w = 64, h = 32, inset = -1): void {
+export function diamondPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, w = 64, h = 32, expand = 0): void {
   ctx.beginPath();
-  ctx.moveTo(cx, cy - h / 2 - inset);
-  ctx.lineTo(cx + w / 2 + inset * 2, cy);
-  ctx.lineTo(cx, cy + h / 2 + inset);
-  ctx.lineTo(cx - w / 2 - inset * 2, cy);
+  ctx.moveTo(cx, cy - h / 2 - expand);
+  ctx.lineTo(cx + w / 2 + expand * 2, cy);
+  ctx.lineTo(cx, cy + h / 2 + expand);
+  ctx.lineTo(cx - w / 2 - expand * 2, cy);
   ctx.closePath();
 }
 

@@ -40,31 +40,32 @@ function packEnvironmentAtlas(scene: Phaser.Scene): void {
   const entries = [...pending.entries()].sort((a, b) => b[1].height - a[1].height);
   let size = 2048;
   let placements: Array<{ key: string; canvas: HTMLCanvasElement; x: number; y: number }> = [];
+  const PADDING = 4;
   for (const attempt of [2048, 4096]) {
     size = attempt;
     placements = [];
-    let x = 2;
-    let y = 2;
+    let x = PADDING;
+    let y = PADDING;
     let rowH = 0;
     let ok = true;
     for (const [key, canvas] of entries) {
       const w = canvas.width;
       const h = canvas.height;
-      if (w + 4 > size) {
+      if (w + PADDING * 2 > size) {
         ok = false;
         break;
       }
-      if (x + w + 2 > size) {
-        x = 2;
-        y += rowH + 2;
+      if (x + w + PADDING > size) {
+        x = PADDING;
+        y += rowH + PADDING;
         rowH = 0;
       }
-      if (y + h + 2 > size) {
+      if (y + h + PADDING > size) {
         ok = false;
         break;
       }
       placements.push({ key, canvas, x, y });
-      x += w + 2;
+      x += w + PADDING;
       rowH = Math.max(rowH, h);
     }
     if (ok) break;
@@ -123,26 +124,19 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(64, 32);
   const rnd = mulberry(hashString(`${kind}:${variant}`));
   ctx.save();
-  diamondPath(ctx, 32, 16, 64, 32, -2);
+  // Clip with slight outward expansion (1px) so tile edges never produce black/transparent margins
+  diamondPath(ctx, 32, 16, 64, 32, 1);
   ctx.clip();
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, 64, 32);
 
   const fillDiamond = (color: string) => {
     ctx.fillStyle = color;
-    diamondPath(ctx, 32, 16, 66, 34, -2);
+    diamondPath(ctx, 32, 16, 66, 34, 1);
     ctx.fill();
   };
 
   if (kind === 'asphalt') {
     const bases = ['#33373a', '#2e3235', '#383c3e', '#303438', '#35393b', '#2b2f32'];
     fillDiamond(bases[variant % bases.length]);
-    const g = ctx.createLinearGradient(0, 0, 0, 32);
-    g.addColorStop(0, 'rgba(255,255,255,0.035)');
-    g.addColorStop(0.5, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.22)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 64, 32);
     speckle(ctx, 0, 0, 64, 32, 120, ['#24282a', '#41464a', '#4a4f50', '#1e2224'], rnd, 1.6);
     // cracks
     const cracks = 2 + Math.floor(rnd() * 3);
@@ -199,8 +193,8 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
     const bases = ['#6a6a60', '#65655b', '#707066', '#616158'];
     fillDiamond(bases[variant % bases.length]);
     speckle(ctx, 0, 0, 64, 32, 90, ['#57574f', '#7a7a6e', '#5e5e55'], rnd, 1.2);
-    ctx.strokeStyle = 'rgba(30,30,27,0.4)';
-    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = 'rgba(30,30,27,0.2)';
+    ctx.lineWidth = 0.6;
     // slab seams aligned with tile edges
     ctx.beginPath();
     ctx.moveTo(32, 1);
@@ -214,7 +208,7 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
     ctx.lineTo(2, 17.5);
     ctx.stroke();
     for (let i = 0; i < 2; i++) {
-      ctx.strokeStyle = 'rgba(32,32,28,0.35)';
+      ctx.strokeStyle = 'rgba(32,32,28,0.25)';
       ctx.lineWidth = 0.6;
       ctx.beginPath();
       const x = 8 + rnd() * 48;
@@ -229,14 +223,6 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
       ctx.ellipse(14 + rnd() * 34, 12 + rnd() * 10, 4, 1.6, 0.2, 0, Math.PI * 2);
       ctx.fill();
     }
-    // curb shadow on lower edges
-    ctx.strokeStyle = 'rgba(18,18,16,0.35)';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(0, 16);
-    ctx.lineTo(32, 32);
-    ctx.lineTo(64, 16);
-    ctx.stroke();
   } else if (kind === 'grass') {
     const bases = ['#3c4632', '#37412e', '#424b36', '#39442f', '#3f4834'];
     fillDiamond(bases[variant % bases.length]);
@@ -370,14 +356,7 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
     speckle(ctx, 0, 0, 64, 32, 60, ['#2f2f2a', '#77766a', '#57564d'], rnd, 1.2);
   }
 
-  // ambient occlusion on tile edges
-  const ao = ctx.createLinearGradient(0, 0, 0, 32);
-  ao.addColorStop(0, 'rgba(0,0,0,0.2)');
-  ao.addColorStop(0.36, 'rgba(0,0,0,0)');
-  ao.addColorStop(0.74, 'rgba(0,0,0,0)');
-  ao.addColorStop(1, 'rgba(0,0,0,0.26)');
-  ctx.fillStyle = ao;
-  ctx.fillRect(0, 0, 64, 32);
+  // ambient occlusion on tile edges: removed per VIS-01 to prevent dark rhombus grid seams across tiles
   ctx.restore();
   return canvas;
 }
@@ -640,7 +619,7 @@ function makeWall(mat: WallMat, variant: number): HTMLCanvasElement {
 function makeRoof(style: number, variant: number): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(64, 32);
   const rnd = mulberry(hashString(`roof:${style}:${variant}`));
-  diamondPath(ctx, 32, 16, 66, 34, -2);
+  diamondPath(ctx, 32, 16, 66, 34, 1);
   ctx.clip();
   const palettes = [
     ['#3a3733', '#423e38', '#34312d'],
