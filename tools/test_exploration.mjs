@@ -41,13 +41,14 @@ async function explore() {
       });
     }
     list.sort((a, b) => a.dist - b.dist);
-    return { player: { x: p.x, y: p.y }, nearest: list.slice(0, 5) };
+    return { player: { x: p.x, y: p.y }, nearest: list };
   });
 
   console.log('Nearest doors and buildings:', JSON.stringify(doorsAndBuildings, null, 2));
 
   if (doorsAndBuildings && doorsAndBuildings.nearest.length > 0) {
-    const target = doorsAndBuildings.nearest[0];
+    // Specifically target the building from the user's screenshot: b:65:87:23 Усадьба (door at 69, 90)
+    let target = doorsAndBuildings.nearest.find(n => n.door.id === 'd:69:90') || doorsAndBuildings.nearest[0];
     const door = target.door;
     console.log(`Teleporting near door of ${target.building?.name} at (${door.x}, ${door.y})...`);
 

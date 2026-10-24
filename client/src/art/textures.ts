@@ -586,7 +586,7 @@ function drawWallFace(
   ctx.restore();
 }
 
-export type WallOrientation = 'south' | 'east' | 'corner' | 'back';
+export type WallOrientation = 'south' | 'east' | 'corner' | 'back' | 'corner_sw' | 'corner_ne';
 
 function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: number): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(64, 88);
@@ -633,8 +633,8 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.moveTo(32, 88);
     ctx.lineTo(64, 72);
     ctx.stroke();
-  } else if (orientation === 'corner') {
-    // South-East outside corner: meets both faces
+  } else if (orientation === 'corner' || orientation === 'corner_sw' || orientation === 'corner_ne') {
+    // Outside corner: meets both faces at full 56px height
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
 
@@ -730,7 +730,7 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.lineTo(64, 72);
     ctx.stroke();
   } else if (orientation === 'corner') {
-    // Cutaway corner: both faces meeting at height 18px
+    // Cutaway SE corner: both front faces meeting at height 18px
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
 
@@ -752,6 +752,84 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.moveTo(0, 72);
     ctx.lineTo(32, 88);
     ctx.lineTo(64, 72);
+    ctx.stroke();
+  } else if (orientation === 'corner_sw') {
+    // Cutaway SW corner:
+    // Left face (South wall) cuts down to 18px!
+    // Right face (West wall) stays full 56px!
+    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
+    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
+
+    // Coping for 18px South half-wall
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
+    ctx.fillStyle = shade(pal.trim, -0.05);
+    ctx.fillRect(0, 60, 64, 4);
+    ctx.restore();
+
+    // Coping for 56px West full wall
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.fillStyle = shade(pal.trim, -0.2);
+    ctx.fillRect(60, 0, 4, 64);
+    ctx.restore();
+
+    // Outlines and vertical connection
+    ctx.strokeStyle = 'rgba(10,11,10,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    // West full wall
+    ctx.moveTo(32, 32);
+    ctx.lineTo(64, 16);
+    ctx.moveTo(32, 88);
+    ctx.lineTo(64, 72);
+    // South cut wall
+    ctx.moveTo(0, 54);
+    ctx.lineTo(32, 70);
+    ctx.moveTo(0, 72);
+    ctx.lineTo(32, 88);
+    // Solid vertical masonry seam connecting 56px West wall top (32, 32) to 18px South wall top (32, 70)
+    ctx.moveTo(32, 32);
+    ctx.lineTo(32, 70);
+    ctx.stroke();
+  } else if (orientation === 'corner_ne') {
+    // Cutaway NE corner:
+    // Left face (North wall) stays full 56px!
+    // Right face (East wall) cuts down to 18px!
+    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
+    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
+
+    // Coping for 56px North full wall
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.fillStyle = shade(pal.trim, -0.12);
+    ctx.fillRect(0, 60, 64, 4);
+    ctx.restore();
+
+    // Coping for 18px East cut wall
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
+    ctx.fillStyle = shade(pal.trim, -0.1);
+    ctx.fillRect(60, 0, 4, 64);
+    ctx.restore();
+
+    // Outlines and vertical connection
+    ctx.strokeStyle = 'rgba(10,11,10,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    // North full wall
+    ctx.moveTo(0, 16);
+    ctx.lineTo(32, 32);
+    ctx.moveTo(0, 72);
+    ctx.lineTo(32, 88);
+    // East cut wall
+    ctx.moveTo(32, 70);
+    ctx.lineTo(64, 54);
+    ctx.moveTo(32, 88);
+    ctx.lineTo(64, 72);
+    // Solid vertical masonry seam connecting 56px North wall top (32, 32) to 18px East wall top (32, 70)
+    ctx.moveTo(32, 32);
+    ctx.lineTo(32, 70);
     ctx.stroke();
   } else {
     // Cutaway back
@@ -2613,7 +2691,7 @@ export function buildEnvironmentArt(scene: Phaser.Scene): void {
   for (const mat of walls) {
     for (let v = 0; v < 6; v++) {
       register(scene, `wall_${mat}_${v}`, makeWall(mat, v));
-      for (const ori of ['south', 'east', 'corner', 'back'] as const) {
+      for (const ori of ['south', 'east', 'corner', 'back', 'corner_sw', 'corner_ne'] as const) {
         register(scene, `wall_${mat}_${ori}_${v}`, makeWallOriented(mat, ori, v));
         register(scene, `wall_${mat}_${ori}_cut_${v}`, makeWallCutaway(mat, ori, v));
       }

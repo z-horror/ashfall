@@ -389,7 +389,10 @@ export class World {
     for (let y = by; y < by + h; y++) {
       for (let x = bx; x < bx + w; x++) {
         this.buildingOcc[this.idx(x, y)] = 1;
-        this.tiles[this.idx(x, y)] = floor;
+        const isPerimeter = x === bx || y === by || x === bx + w - 1 || y === by + h - 1;
+        if (!isPerimeter) {
+          this.tiles[this.idx(x, y)] = floor;
+        }
       }
     }
 
@@ -433,6 +436,7 @@ export class World {
 
     if (chosen) {
       this.walls[this.idx(chosen.x, chosen.y)] = WALL.NONE;
+      this.tiles[this.idx(chosen.x, chosen.y)] = floor;
       doorTiles.push({ x: chosen.x, y: chosen.y });
       const doorId = `d:${chosen.x}:${chosen.y}`;
       this.doors.set(doorId, {

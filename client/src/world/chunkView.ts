@@ -165,8 +165,12 @@ export class ChunkView {
 
           if (isNorth && isWest) {
             orientation = 'back';
-          } else if ((isSouth && isEast) || (isSouth && isWest) || (isNorth && isEast)) {
+          } else if (isSouth && isEast) {
             orientation = 'corner';
+          } else if (isSouth && isWest) {
+            orientation = 'corner_sw';
+          } else if (isNorth && isEast) {
+            orientation = 'corner_ne';
           } else if (isSouth || isNorth) {
             orientation = 'south';
           } else {
