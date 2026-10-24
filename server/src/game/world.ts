@@ -416,8 +416,8 @@ export class World {
     for (let y = by; y < by + h; y++) {
       for (let x = bx; x < bx + w; x++) {
         this.buildingOcc[this.idx(x, y)] = 1;
-        const isPerimeter = x === bx || y === by || x === bx + w - 1 || y === by + h - 1;
-        if (!isPerimeter) {
+        const isExteriorFoundation = x === bx || y === by;
+        if (!isExteriorFoundation) {
           this.tiles[this.idx(x, y)] = floor;
         }
       }
