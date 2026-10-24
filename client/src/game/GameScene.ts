@@ -25,7 +25,7 @@ import { ClientWorld } from '../world/clientWorld.js';
 import { ChunkView, type BuildingVisual } from '../world/chunkView.js';
 import { CharacterView, ItemSprite, weaponName } from '../world/entityView.js';
 import { aimFromScreenDelta, iso } from './iso.js';
-import { ENV_ATLAS, artImage, buildEnvironmentArt } from '../art/textures.js';
+import { ENV_ATLAS, artImage, artSetTexture, buildEnvironmentArt } from '../art/textures.js';
 import { buildCharacterAssets, corpseFor } from '../art/characters.js';
 import { hashString } from '../art/util.js';
 
@@ -1039,8 +1039,8 @@ export class GameScene extends Phaser.Scene {
           continue;
         }
         const targetKey = inside ? w.getData('cutKey') : w.getData('fullKey');
-        if (targetKey && this.textures.exists(targetKey)) {
-          w.setTexture(targetKey);
+        if (targetKey) {
+          artSetTexture(w, targetKey);
         }
         w.setAlpha(1.0);
       }
@@ -1057,9 +1057,7 @@ export class GameScene extends Phaser.Scene {
         const facing = d.getData('facing') ?? 'south';
         const open = doorId ? (this.world.doorOpen.get(doorId) ?? false) : false;
         const targetKey = `door_${facing}_${inside ? 'cut_' : ''}${open ? 'open' : 'closed'}`;
-        if (this.textures.exists(targetKey)) {
-          d.setTexture(targetKey);
-        }
+        artSetTexture(d, targetKey);
         d.setAlpha(1.0);
       }
     }
