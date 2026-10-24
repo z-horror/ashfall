@@ -1162,6 +1162,13 @@ export class Simulation {
         p.y = this.world.spawn.y;
         this.notice(p, 'Телепортирован в безопасную зону.');
         break;
+      case 'teleport':
+        if (_args && typeof _args.x === 'number' && typeof _args.y === 'number') {
+          p.x = _args.x;
+          p.y = _args.y;
+          this.notice(p, `Телепортирован в (${p.x.toFixed(1)}, ${p.y.toFixed(1)}).`);
+        }
+        break;
       default:
         this.notice(p, `Неизвестное действие разработчика: ${action}`);
         break;

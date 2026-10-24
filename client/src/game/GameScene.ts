@@ -97,7 +97,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // All art is generated procedurally at runtime; no external assets to load.
+    // Pre-rendered Fallout 2 CRPG isometric sprites
+    this.load.image('prop_car_h_0', 'assets/cars/car_highwayman.png');
+    this.load.image('prop_car_h_1', 'assets/cars/car_highwayman.png');
+    this.load.image('prop_car_h_2', 'assets/cars/car_highwayman.png');
+    this.load.image('prop_car_h_3', 'assets/cars/car_highwayman.png');
+
+    this.load.image('prop_car_v_0', 'assets/cars/car_highwayman_v.png');
+    this.load.image('prop_car_v_1', 'assets/cars/car_highwayman_v.png');
+    this.load.image('prop_car_v_2', 'assets/cars/car_highwayman_v.png');
+    this.load.image('prop_car_v_3', 'assets/cars/car_highwayman_v.png');
+
+    this.load.image('prop_dumpster', 'assets/props/prop_dumpster.png');
+    this.load.image('prop_crate', 'assets/props/prop_crate.png');
+    this.load.image('prop_med', 'assets/props/prop_med.png');
+
+    this.load.image('sign_pharmacy', 'assets/signs/sign_pharmacy.png');
+    this.load.image('sign_market', 'assets/signs/sign_market.png');
+    this.load.image('sign_cafe', 'assets/signs/sign_cafe.png');
+    this.load.image('sign_gun', 'assets/signs/sign_gun.png');
   }
 
   create(): void {
@@ -899,23 +917,16 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.pointerDown && alive && !blocked) this.doAttack();
 
-    if (this.currentBuilding) {
-      const b = this.world.buildingAt(this.predicted.x, this.predicted.y);
-      const currentId = b?.id ?? null;
-      if (currentId !== this.currentBuilding) {
+    const bInside = this.getInsideBuilding(this.predicted.x, this.predicted.y);
+    const insideId = bInside?.id ?? null;
+    if (insideId !== this.currentBuilding) {
+      if (this.currentBuilding) {
         const old = this.buildingVisuals.get(this.currentBuilding);
         if (old) this.setBuildingFade(old, false);
-        this.currentBuilding = currentId;
-        if (currentId) {
-          const vis = this.buildingVisuals.get(currentId);
-          if (vis) this.setBuildingFade(vis, true);
-        }
       }
-    } else {
-      const b = this.world.buildingAt(this.predicted.x, this.predicted.y);
-      if (b) {
-        this.currentBuilding = b.id;
-        const vis = this.buildingVisuals.get(b.id);
+      this.currentBuilding = insideId;
+      if (insideId) {
+        const vis = this.buildingVisuals.get(insideId);
         if (vis) this.setBuildingFade(vis, true);
       }
     }
@@ -1013,6 +1024,22 @@ export class GameScene extends Phaser.Scene {
     this.hud.setPrompt(null);
   }
 
+  private getInsideBuilding(px: number, py: number): import('@ashfall/shared').BuildingDef | null {
+    const b = this.world.buildingAt(px, py);
+    if (!b) return null;
+    // Strictly inside the interior room (inside perimeter walls):
+    if (px > b.x + 0.2 && px < b.x + b.w - 1.2 && py > b.y + 0.2 && py < b.y + b.h - 1.2) {
+      return b;
+    }
+    // If standing on the doorway tile: only inside if door is open AND player has crossed towards room interior!
+    const d = this.world.nearestDoor(px, py, 1.0);
+    if (d && this.world.doorOpen.get(d.id)) {
+      const isInsideThreshold = d.facing === 'east' ? px < d.x + 0.45 : py < d.y + 0.45;
+      if (isInsideThreshold) return b;
+    }
+    return null;
+  }
+
   private setBuildingFade(visual: BuildingVisual, inside: boolean, animate = true): void {
     if (this.buildingFade.get(visual.id) === inside) return;
     this.buildingFade.set(visual.id, inside);
@@ -1056,7 +1083,7 @@ export class GameScene extends Phaser.Scene {
         const doorId = d.getData('doorId');
         const facing = d.getData('facing') ?? 'south';
         const open = doorId ? (this.world.doorOpen.get(doorId) ?? false) : false;
-        const targetKey = `door_${facing}_${inside ? 'cut_' : ''}${open ? 'open' : 'closed'}`;
+        const targetKey = `door_${facing}_${open ? 'open' : 'closed'}`;
         artSetTexture(d, targetKey);
         d.setAlpha(1.0);
       }

@@ -32,7 +32,8 @@ export interface ArtFrame {
 const pending = new Map<string, HTMLCanvasElement>();
 const frames = new Map<string, ArtFrame>();
 
-function register(_scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): void {
+function register(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): void {
+  if (scene.textures.exists(key)) return;
   pending.set(key, canvas);
 }
 
@@ -474,9 +475,9 @@ function drawWallFace(
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.fillRect(0, 55, 64, 1);
 
-  // windows / doors
+  // windows / doors (full-height walls only; cutaway half-walls stay solid and clean!)
   const windowRoll = (seed + variant * 7) % 10;
-  if (mat !== 'interior' && windowRoll < 7) {
+  if (!cutHeight && mat !== 'interior' && windowRoll < 7) {
     const wx = side === 'left' ? 14 : 20;
     const wy = 8;
     const ww = side === 'left' ? 34 : 30;
@@ -555,7 +556,7 @@ function drawWallFace(
       ctx.fillStyle = '#3d3e38';
       ctx.fillRect(wx + ww / 2 - 4, wy + wh + 2, 8, 3);
     }
-  } else if (mat !== 'interior' && windowRoll === 9) {
+  } else if (!cutHeight && mat !== 'interior' && windowRoll === 9) {
     // storefront shutter
     ctx.fillStyle = '#3f423f';
     ctx.fillRect(10, 10, 44, 38);
@@ -596,11 +597,11 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     // Straight South Wall: runs along +X. Only left face is visible from camera.
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
 
-    // Parapet coping along top edge of wall face (thin, realistic, 5px deep)
+    // Parapet coping along top edge of wall face (thin, realistic, 4px deep)
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = shade(pal.trim, -0.12);
-    ctx.fillRect(0, 27, 64, 5);
+    ctx.fillRect(0, 60, 64, 4);
     ctx.restore();
 
     // Clean facade outlines: top and bottom seams only, no vertical crease in the middle!
@@ -616,11 +617,11 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     // Straight East Wall: runs along +Y. Only right face is visible from camera.
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
 
-    // Parapet coping along top edge of wall face (thin, realistic, 5px deep)
+    // Parapet coping along top edge of wall face (thin, realistic, 4px deep)
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = shade(pal.trim, -0.2);
-    ctx.fillRect(59, 0, 5, 32);
+    ctx.fillRect(60, 0, 4, 64);
     ctx.restore();
 
     // Clean facade outlines: top and bottom seams only, no vertical crease in the middle!
@@ -641,8 +642,8 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = shade(pal.trim, -0.15);
-    ctx.fillRect(0, 27, 64, 5);
-    ctx.fillRect(59, 0, 5, 32);
+    ctx.fillRect(0, 60, 64, 4);
+    ctx.fillRect(60, 0, 4, 64);
     ctx.restore();
 
     // Corner vertical seam
@@ -666,8 +667,8 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = shade(pal.trim, -0.16);
-    ctx.fillRect(0, 0, 64, 5);
-    ctx.fillRect(0, 0, 5, 32);
+    ctx.fillRect(0, 0, 64, 4);
+    ctx.fillRect(0, 0, 4, 64);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(10,11,10,0.28)';
@@ -694,11 +695,11 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     // Cutaway south wall: runs along +X, height 18px
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
 
-    // Architectural top cut coping / sill
+    // Architectural top cut coping / sill (flush on top edge of cut wall)
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
     ctx.fillStyle = shade(pal.trim, -0.05);
-    ctx.fillRect(0, 27, 64, 5);
+    ctx.fillRect(0, 60, 64, 4);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(10,11,10,0.45)';
@@ -713,11 +714,11 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     // Cutaway east wall: runs along +Y, height 18px
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
 
-    // Architectural top cut coping / sill
+    // Architectural top cut coping / sill (flush on top edge of cut wall)
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
     ctx.fillStyle = shade(pal.trim, -0.1);
-    ctx.fillRect(59, 0, 5, 32);
+    ctx.fillRect(60, 0, 4, 64);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(10,11,10,0.45)';
@@ -736,8 +737,8 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
     ctx.fillStyle = shade(pal.trim, -0.08);
-    ctx.fillRect(0, 27, 64, 5);
-    ctx.fillRect(59, 0, 5, 32);
+    ctx.fillRect(0, 60, 64, 4);
+    ctx.fillRect(60, 0, 4, 64);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(10,11,10,0.45)';
@@ -760,8 +761,8 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
     ctx.fillStyle = shade(pal.trim, -0.08);
-    ctx.fillRect(0, 0, 64, 5);
-    ctx.fillRect(0, 0, 5, 32);
+    ctx.fillRect(0, 0, 64, 4);
+    ctx.fillRect(0, 0, 4, 64);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(10,11,10,0.45)';
@@ -2204,6 +2205,17 @@ interface SignTheme {
 const signCache = new Map<string, string>();
 
 export function getBuildingSign(scene: Phaser.Scene, name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes('pharmacy') || lower.includes('аптек') || lower.includes('med')) {
+    if (scene.textures.exists('sign_pharmacy')) return 'sign_pharmacy';
+  } else if (lower.includes('market') || lower.includes('магаз') || lower.includes('продукт') || lower.includes('гастроном')) {
+    if (scene.textures.exists('sign_market')) return 'sign_market';
+  } else if (lower.includes('diner') || lower.includes('кафе')) {
+    if (scene.textures.exists('sign_cafe')) return 'sign_cafe';
+  } else if (lower.includes('gun') || lower.includes('охот') || lower.includes('оружи')) {
+    if (scene.textures.exists('sign_gun')) return 'sign_gun';
+  }
+
   const cached = signCache.get(name);
   if (cached && scene.textures.exists(cached)) return cached;
   const key = `sign_${hashString(name).toString(36)}`;
@@ -2214,7 +2226,6 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
   const { canvas, ctx } = makeCanvas(140, 72);
   const rnd = mulberry(hashString(name));
 
-  const lower = name.toLowerCase();
   let theme: SignTheme;
   if (lower.includes('pharmacy') || lower.includes('аптек') || lower.includes('med')) {
     theme = {
@@ -2453,7 +2464,7 @@ function makeCrosswalk(alongX: boolean): HTMLCanvasElement {
   return canvas;
 }
 
-function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = false): HTMLCanvasElement {
+function makeDoor(facing: 'south' | 'east' = 'south', open = false, _cutaway = false): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(64, 88);
   const rnd = mulberry(open ? 402 : 401);
 
@@ -2464,12 +2475,6 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = fa
   } else {
     // Right face frame (facing camera along South-West axis)
     ctx.setTransform(0.5, -0.25, 0, 1, 32, 32);
-  }
-
-  if (cutaway) {
-    ctx.beginPath();
-    ctx.rect(0, 56 - CUTAWAY_WALL_HEIGHT, 64, CUTAWAY_WALL_HEIGHT);
-    ctx.clip();
   }
 
   // Wall surround
@@ -2510,13 +2515,12 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = fa
     // Weathering/scratches
     speckle(ctx, 16, 4, 32, 52, 12, ['rgba(15,10,6,0.35)', 'rgba(110,75,40,0.25)'], rnd, 1);
   } else {
-    // Open doorway portal: dark interior threshold
-    ctx.fillStyle = '#111412';
-    ctx.fillRect(16, 4, 32, 52);
+    // Open doorway: clear opening so interior/exterior and players are visible!
+    ctx.clearRect(16, 4, 32, 50);
 
-    // Interior floor glimpse
-    ctx.fillStyle = '#1d2220';
-    ctx.fillRect(16, 48, 32, 8);
+    // Thin threshold sill on floor
+    ctx.fillStyle = '#1e1c18';
+    ctx.fillRect(16, 54, 32, 2);
 
     // Swung open door leaf resting inside along the jamb
     ctx.fillStyle = '#3e2e1e';
@@ -2539,16 +2543,15 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = fa
   ctx.restore();
 
   // Thin architectural coping strip along top edge of wall
-  const topY = cutaway ? 56 - CUTAWAY_WALL_HEIGHT : 0;
   ctx.save();
   if (facing === 'south') {
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, topY);
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = '#2f2c27';
-    ctx.fillRect(0, 27, 64, 5);
+    ctx.fillRect(0, 60, 64, 4);
   } else {
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, topY);
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = '#282521';
-    ctx.fillRect(59, 0, 5, 32);
+    ctx.fillRect(60, 0, 4, 64);
   }
   ctx.restore();
 
@@ -2556,30 +2559,16 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = fa
   ctx.strokeStyle = 'rgba(10,12,11,0.45)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  if (cutaway) {
-    if (facing === 'south') {
-      ctx.moveTo(0, 54);
-      ctx.lineTo(32, 70);
-      ctx.lineTo(32, 88);
-      ctx.lineTo(0, 72);
-    } else {
-      ctx.moveTo(32, 70);
-      ctx.lineTo(64, 54);
-      ctx.lineTo(64, 72);
-      ctx.lineTo(32, 88);
-    }
+  if (facing === 'south') {
+    ctx.moveTo(0, 16);
+    ctx.lineTo(32, 32);
+    ctx.lineTo(32, 88);
+    ctx.lineTo(0, 72);
   } else {
-    if (facing === 'south') {
-      ctx.moveTo(0, 16);
-      ctx.lineTo(32, 32);
-      ctx.lineTo(32, 88);
-      ctx.lineTo(0, 72);
-    } else {
-      ctx.moveTo(32, 32);
-      ctx.lineTo(64, 16);
-      ctx.lineTo(64, 72);
-      ctx.lineTo(32, 88);
-    }
+    ctx.moveTo(32, 32);
+    ctx.lineTo(64, 16);
+    ctx.lineTo(64, 72);
+    ctx.lineTo(32, 88);
   }
   ctx.stroke();
 
@@ -2849,6 +2838,10 @@ const ANCHORS: Record<string, PropAnchor> = {
   prop_vent: { ox: 0.5, oy: 0.8 },
   prop_ac: { ox: 0.5, oy: 0.774 },
   prop_tank: { ox: 0.5, oy: 0.854 },
+  sign_pharmacy: { ox: 0.5, oy: 1.0 },
+  sign_market: { ox: 0.5, oy: 1.0 },
+  sign_cafe: { ox: 0.5, oy: 1.0 },
+  sign_gun: { ox: 0.5, oy: 1.0 },
 };
 
 export function propAnchor(key: string): PropAnchor {

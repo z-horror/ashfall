@@ -162,13 +162,16 @@ export class ChunkView {
           const isEast = gx === building.x + building.w - 1;
           const isNorth = gy === building.y;
           const isWest = gx === building.x;
-          if (isSouth && isEast) orientation = 'corner';
-          else if (isSouth) orientation = 'south';
-          else if (isEast) orientation = 'east';
-          else if (isNorth && isWest) orientation = 'corner';
-          else if (isNorth) orientation = 'south';
-          else if (isWest) orientation = 'east';
-          else orientation = 'south';
+
+          if (isNorth && isWest) {
+            orientation = 'back';
+          } else if ((isSouth && isEast) || (isSouth && isWest) || (isNorth && isEast)) {
+            orientation = 'corner';
+          } else if (isSouth || isNorth) {
+            orientation = 'south';
+          } else {
+            orientation = 'east';
+          }
         }
         const fullKey = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR, orientation, false);
         const cutKey = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR, orientation, true);
@@ -182,7 +185,7 @@ export class ChunkView {
         if (building) {
           const vis = this.visualFor(building);
           vis.walls.push(img);
-          const isFront = gy === building.y + building.h - 1 || gx === building.x + building.w - 1;
+          const isFront = gy === building.y + building.h - 1 || (gx === building.x + building.w - 1 && gy > building.y);
           if (isFront) vis.frontWalls.push(img);
           else vis.backWalls.push(img);
         }
@@ -220,9 +223,7 @@ export class ChunkView {
     const building = door ? this.world.buildingAt(door.x + 0.5, door.y + 0.5) : null;
     const isEast = door && building ? door.x === building.x + building.w - 1 : false;
     const facing = door?.facing ?? (isEast ? 'east' : 'south');
-    const isInside = building && (this.scene as any).buildingFade?.get(building.id) === true;
-    const cut = isInside ? 'cut_' : '';
-    artSetTexture(img, `door_${facing}_${cut}${open ? 'open' : 'closed'}`);
+    artSetTexture(img, `door_${facing}_${open ? 'open' : 'closed'}`);
   }
 
   private buildRoofs(): void {
@@ -320,7 +321,10 @@ export class ChunkView {
       img.setScale(scale);
     }
     if (prop.type === 'car') {
-      img.setTint(0xf0ece2);
+      // Only tint procedural canvas car fallback; do not tint pre-rendered art
+      if (!this.scene.textures.exists(key)) {
+        img.setTint(0xf0ece2);
+      }
     }
     this.sprites.push(img);
     this.propSprites.set(prop.id, img);

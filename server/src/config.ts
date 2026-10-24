@@ -42,7 +42,7 @@ export const config = {
   maxMessagesPerSec: num('MAX_MESSAGES_PER_SEC', 90),
   migrateOnStart: (process.env.MIGRATE_ON_START ?? 'true') !== 'false',
   testCombatBuffs: process.env.TEST_COMBAT_BUFFS === 'true',
-  allowDevActions: process.env.ALLOW_DEV_ACTIONS === 'true',
+  allowDevActions: process.env.ALLOW_DEV_ACTIONS === 'true' || process.env.NODE_ENV !== 'production',
   adminUsers: (process.env.ADMIN_USERS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   saveIntervalMs: 8000,
   disconnectGraceMs: 25000,
