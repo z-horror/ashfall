@@ -28,6 +28,8 @@ import type { ClientWorld } from './clientWorld.js';
 export interface BuildingVisual {
   id: string;
   roofs: Phaser.GameObjects.Image[];
+  frontWalls: Phaser.GameObjects.Image[];
+  backWalls: Phaser.GameObjects.Image[];
   walls: Phaser.GameObjects.Image[];
   doors: Phaser.GameObjects.Image[];
   maxDepth: number;
@@ -67,6 +69,8 @@ export class ChunkView {
       v = {
         id: b.id,
         roofs: [],
+        frontWalls: [],
+        backWalls: [],
         walls: [],
         doors: [],
         maxDepth: b.x + b.w - 1 + (b.y + b.h - 1),
@@ -152,7 +156,13 @@ export class ChunkView {
           .setOrigin(0.5, 1)
           .setDepth(gx + gy + 0.75);
         this.sprites.push(img);
-        if (building) this.visualFor(building).walls.push(img);
+        if (building) {
+          const vis = this.visualFor(building);
+          vis.walls.push(img);
+          const isFront = gy === building.y + building.h - 1 || gx === building.x + building.w - 1;
+          if (isFront) vis.frontWalls.push(img);
+          else vis.backWalls.push(img);
+        }
       }
     }
   }
@@ -238,6 +248,7 @@ export class ChunkView {
             .setAlpha(0.96);
           this.sprites.push(img);
           visual.walls.push(img);
+          visual.frontWalls.push(img);
         }
       }
     }

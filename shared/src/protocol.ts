@@ -24,6 +24,8 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('use'), seq, id }),
   z.object({ t: z.literal('equip'), seq, id }),
+  z.object({ t: z.literal('craft'), seq, recipeId: id }),
+  z.object({ t: z.literal('dev_action'), seq, action: z.string().min(1).max(32), args: z.record(z.string(), z.any()).optional() }),
   z.object({ t: z.literal('respawn'), seq }),
   z.object({ t: z.literal('chat'), text: z.string().min(1).max(MAX_CHAT_LEN) }),
   z.object({ t: z.literal('ping'), ts: z.number().finite() }),

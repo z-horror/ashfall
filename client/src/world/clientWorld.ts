@@ -148,7 +148,7 @@ export class ClientWorld {
       }
       for (const d of chunk.data.doors) {
         const open = this.doorOpen.get(d.id) ?? d.open;
-        if (!open) this.collision[d.y * WORLD_TILES + d.x] = 1;
+        this.collision[d.y * WORLD_TILES + d.x] = open ? 0 : 1;
       }
     }
     // Borders and unknown space are blocked for local prediction.

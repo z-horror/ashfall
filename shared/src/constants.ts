@@ -168,6 +168,37 @@ export const CONTAINER_LABELS: Record<string, string> = {
   toolbox: 'Инструментальный ящик',
 };
 
+export interface CraftRecipe {
+  id: string;
+  name: string;
+  desc: string;
+  resultKey: string;
+  resultQty: number;
+  ingredients: Array<{ key: string; qty: number; name: string }>;
+}
+
+export const CRAFT_RECIPES: CraftRecipe[] = [
+  {
+    id: 'bandage',
+    name: 'Бинт',
+    desc: 'Останавливает кровотечение и восстанавливает 24 HP.',
+    resultKey: 'bandage',
+    resultQty: 1,
+    ingredients: [{ key: 'cloth', qty: 2, name: 'Ткань' }],
+  },
+  {
+    id: 'spiked_bat',
+    name: 'Бита с шипами',
+    desc: 'Усиленная арматурой бита для повышенного урона в ближнем бою.',
+    resultKey: 'spiked_bat',
+    resultQty: 1,
+    ingredients: [
+      { key: 'bat', qty: 1, name: 'Бита' },
+      { key: 'scrap', qty: 3, name: 'Металлолом' },
+    ],
+  },
+];
+
 export const ZOMBIE_TYPES = [
   { key: 'walker', name: 'Ходок', hp: 58, speed: 1.25, chase: 1.85, damage: 9, cooldown: 1.35, color: 0, scale: 1 },
   { key: 'runner', name: 'Бегун', hp: 44, speed: 1.6, chase: 3.15, damage: 7, cooldown: 1.0, color: 1, scale: 0.94 },

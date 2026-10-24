@@ -91,10 +91,10 @@ interface Rect {
 }
 
 const names = {
-  apartment: ['Greywater Apartments', 'Maple Court', 'Block 7 Housing', 'Riverside Flats', 'Sunset Rooms', 'Ash Street Tenements'],
-  shop: ['Corner Market', 'Quick Stop', 'Greywater Pharmacy', 'Laundromat', 'Pawn & Gun', 'Bait & Tackle', 'Diner', 'Hardware Store'],
-  industrial: ['Riverside Warehouse', 'Auto Parts', 'Kessler Garage', 'Cold Storage', 'Machine Shop', 'Freight Depot'],
-  house: ['Weaver Residence', 'Blackwood House', 'Boardwalk Home', 'Foster Place', 'Old Mill House'],
+  apartment: ['Жилой дом «Северный»', 'Дом на Набережной', 'Квартал 7', 'Общежитие №4', 'Дом специалистов', 'Сталинка на Садовой'],
+  shop: ['Гастроном', 'Продукты 24', 'Аптека', 'Хозтовары', 'Охота и Оружие', 'Кафе «Заря»', 'Рыболов', 'Универмаг'],
+  industrial: ['Складской комплекс', 'Автобаза №3', 'Гаражный кооператив', 'Хладокомбинат', 'Мехмастерские', 'Грузовой терминал'],
+  house: ['Частный сектор', 'Дом лесника', 'Усадьба', 'Дача Ковалёва', 'Старый дом'],
 };
 
 export class World {
@@ -124,8 +124,18 @@ export class World {
     this.baseCollision.set(this.collision);
   }
 
-  private idx(x: number, y: number): number {
+  idx(x: number, y: number): number {
     return tileIndex(x, y);
+  }
+
+  buildingAt(x: number, y: number): BuildingDef | null {
+    const fx = Math.floor(x);
+    const fy = Math.floor(y);
+    if (!this.inside(fx, fy) || !this.buildingOcc[this.idx(fx, fy)]) return null;
+    for (const b of this.buildings) {
+      if (fx >= b.x && fx < b.x + b.w && fy >= b.y && fy < b.y + b.h) return b;
+    }
+    return null;
   }
 
   private inside(x: number, y: number): boolean {
@@ -386,6 +396,10 @@ export class World {
     for (let x = bx + 1; x < bx + w - 1; x++) doorCandidatesSouth.push([x, by + h - 1]);
     const doorCandidatesEast: Array<[number, number]> = [];
     for (let y = by + 1; y < by + h - 1; y++) doorCandidatesEast.push([bx + w - 1, y]);
+    const doorCandidatesWest: Array<[number, number]> = [];
+    for (let y = by + 1; y < by + h - 1; y++) doorCandidatesWest.push([bx, y]);
+    const doorCandidatesNorth: Array<[number, number]> = [];
+    for (let x = bx + 1; x < bx + w - 1; x++) doorCandidatesNorth.push([x, by]);
 
     const doorTiles: Array<{ x: number; y: number }> = [];
     const chooseDoor = (cands: Array<[number, number]>, front: (x: number, y: number) => [number, number]) => {
@@ -400,10 +414,12 @@ export class World {
       }
       return null;
     };
-    const useSouth = rng.chance(0.72);
+    const useSouth = rng.chance(0.65);
     let door = useSouth ? chooseDoor(doorCandidatesSouth, (x, y) => [x, y + 1]) : chooseDoor(doorCandidatesEast, (x, y) => [x + 1, y]);
     if (!door) door = chooseDoor(doorCandidatesSouth, (x, y) => [x, y + 1]);
     if (!door) door = chooseDoor(doorCandidatesEast, (x, y) => [x + 1, y]);
+    if (!door) door = chooseDoor(doorCandidatesWest, (x, y) => [x - 1, y]);
+    if (!door) door = chooseDoor(doorCandidatesNorth, (x, y) => [x, y - 1]);
 
     for (let y = by; y < by + h; y++) {
       for (let x = bx; x < bx + w; x++) {
@@ -418,9 +434,13 @@ export class World {
       const doorId = `d:${door.x}:${door.y}`;
       this.doors.set(doorId, { id: doorId, x: door.x, y: door.y, open: false, locked: false, hp: 100 });
       this.doorAt.set(this.idx(door.x, door.y), doorId);
-      this.clearTiles.add(this.idx(door.x, door.y));
-      this.clearTiles.add(this.idx(door.fx, door.fy));
-      if (this.inside(door.fx, door.fy + 1)) this.clearTiles.add(this.idx(door.fx, door.fy + 1));
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const cx = door.x + dx;
+          const cy = door.y + dy;
+          if (this.inside(cx, cy)) this.clearTiles.add(this.idx(cx, cy));
+        }
+      }
     }
 
     // Interior partition with a doorway.
@@ -503,6 +523,7 @@ export class World {
       const i = this.idx(px, py);
       if (!this.inside(px, py) || this.propOcc[i] || this.buildingOcc[i] === 0) continue;
       if (this.walls[i] !== WALL.NONE) continue;
+      if (this.clearTiles.has(i)) continue;
       this.addProp(type, px, py, 1, 1, {
         variant: opts.variant,
         blocking: opts.blocking,

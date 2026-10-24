@@ -1,8 +1,10 @@
 import {
+  CRAFT_RECIPES,
   ITEMS,
   PLAYER_MAX_HP,
   PLAYER_MAX_STAMINA,
   type ContainerView,
+  type CraftRecipe,
   type InventoryView,
   type ItemView,
   type SelfSnapshot,
@@ -20,6 +22,11 @@ export interface HudActions {
   sendChat: (text: string) => void;
   toggleSound: () => void;
   respawn: () => void;
+  craft: (recipeId: string) => void;
+  devAction: (action: string, args?: Record<string, any>) => void;
+  logout: () => void;
+  setAudioVolume: (category: 'master' | 'sfx' | 'ambient', val: number) => void;
+  setAudioMuted: (muted: boolean) => void;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -36,6 +43,11 @@ export class HUD {
   private inventoryOpen = false;
   private chatOpen = false;
   private deathOpen = false;
+  private devOpen = false;
+  private settingsOpen = false;
+  private godmode = false;
+  private latency = 0;
+  private netStatus: NetStatus = 'connecting';
   private toastTimer = 0;
   private logEntries: Array<{ node: HTMLElement; at: number }> = [];
   private chatEntries: Array<{ node: HTMLElement; at: number }> = [];
@@ -61,6 +73,8 @@ export class HUD {
   private containerCol = el('container-col');
   private containerTitle = el('container-title');
   private containerList = el('container-list');
+  private btnTakeAll = el('container-take-all');
+  private craftList = el('craft-list');
   private invWeight = el('inv-weight');
   private invCount = el('inv-count');
   private detail = el('inv-detail');
@@ -74,10 +88,51 @@ export class HUD {
   private soundBtn = el('sound-toggle');
   private hud = el('hud');
 
+  // Top action buttons
+  private btnDev = el('btn-dev');
+  private btnSettings = el('btn-settings');
+
+  // Settings modal
+  private settingsModal = el('settings-modal');
+  private settingsClose = el('settings-close');
+  private volMaster = el<HTMLInputElement>('vol-master');
+  private volSfx = el<HTMLInputElement>('vol-sfx');
+  private volAmbient = el<HTMLInputElement>('vol-ambient');
+  private valVolMaster = el('val-vol-master');
+  private valVolSfx = el('val-vol-sfx');
+  private valVolAmbient = el('val-vol-ambient');
+  private checkMute = el<HTMLInputElement>('check-mute');
+  private btnLogout = el('btn-logout');
+
+  // Dev modal
+  private devModal = el('dev-modal');
+  private devClose = el('dev-close');
+  private devCoords = el('dev-coords');
+  private devBuilding = el('dev-building');
+  private devPing = el('dev-ping');
+  private devFps = el('dev-fps');
+  private devZombies = el('dev-zombies');
+  private devPlayers = el('dev-players');
+  private devGodVal = el('dev-god-val');
+  private devBtnKit = el('dev-btn-kit');
+  private devBtnHeal = el('dev-btn-heal');
+  private devBtnGod = el('dev-btn-god');
+  private devBtnSpawn = el('dev-btn-spawn');
+  private devBtnNewChar = el('dev-btn-new-char');
+
   constructor(actions: HudActions) {
     this.actions = actions;
     el('inv-close').addEventListener('click', () => this.closeInventory(true));
     this.soundBtn.addEventListener('click', () => this.actions.toggleSound());
+
+    this.btnTakeAll.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (!this.container || this.container.items.length === 0) return;
+      for (const it of [...this.container.items]) {
+        this.actions.transfer(it.id, it.qty, 'take');
+      }
+    });
+
     this.chatInput.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
@@ -90,9 +145,67 @@ export class HUD {
       }
       ev.stopPropagation();
     });
+
     document.addEventListener('mousemove', (ev) => {
       this.crosshair.style.transform = `translate(${ev.clientX}px, ${ev.clientY}px)`;
     });
+
+    // Dev button & settings button
+    this.btnDev.addEventListener('click', () => this.toggleDevPanel());
+    this.btnSettings.addEventListener('click', () => this.toggleSettings());
+
+    // Settings modal handlers
+    this.settingsClose.addEventListener('click', () => this.closeSettings());
+    this.volMaster.addEventListener('input', () => {
+      const v = Number(this.volMaster.value) / 100;
+      this.valVolMaster.textContent = `${this.volMaster.value}%`;
+      this.actions.setAudioVolume('master', v);
+    });
+    this.volSfx.addEventListener('input', () => {
+      const v = Number(this.volSfx.value) / 100;
+      this.valVolSfx.textContent = `${this.volSfx.value}%`;
+      this.actions.setAudioVolume('sfx', v);
+    });
+    this.volAmbient.addEventListener('input', () => {
+      const v = Number(this.volAmbient.value) / 100;
+      this.valVolAmbient.textContent = `${this.volAmbient.value}%`;
+      this.actions.setAudioVolume('ambient', v);
+    });
+    this.checkMute.addEventListener('change', () => {
+      this.actions.setAudioMuted(this.checkMute.checked);
+      this.setSoundLabel(!this.checkMute.checked);
+    });
+    this.btnLogout.addEventListener('click', () => {
+      this.actions.logout();
+    });
+
+    // Dev modal handlers
+    this.devClose.addEventListener('click', () => this.closeDevPanel());
+    this.devBtnKit.addEventListener('click', () => {
+      this.actions.devAction('kit');
+      this.toast('Боевой комплект выдан!');
+    });
+    this.devBtnHeal.addEventListener('click', () => {
+      this.actions.devAction('heal');
+      this.toast('Здоровье восстановлено!');
+    });
+    this.devBtnGod.addEventListener('click', () => {
+      this.godmode = !this.godmode;
+      this.devGodVal.textContent = this.godmode ? 'ВКЛ' : 'ВЫКЛ';
+      this.devGodVal.style.color = this.godmode ? 'var(--moss)' : 'var(--amber)';
+      this.actions.devAction('godmode', { enabled: this.godmode });
+      this.toast(`Режим бога: ${this.godmode ? 'ВКЛ' : 'ВЫКЛ'}`);
+    });
+    this.devBtnSpawn.addEventListener('click', () => {
+      this.actions.devAction('teleport_spawn');
+      this.toast('Телепортация на спавн...');
+    });
+    this.devBtnNewChar.addEventListener('click', () => {
+      if (confirm('Создать нового тестового персонажа? Текущий прогресс будет сохранён в базе, но сессия переключится.')) {
+        this.actions.logout();
+      }
+    });
+
     setInterval(() => this.pruneTransient(), 2000);
   }
 
@@ -104,8 +217,16 @@ export class HUD {
     return this.chatOpen;
   }
 
+  get isDevPanelOpen(): boolean {
+    return this.devOpen;
+  }
+
+  get isSettingsOpen(): boolean {
+    return this.settingsOpen;
+  }
+
   get blocksInput(): boolean {
-    return this.inventoryOpen || this.chatOpen;
+    return this.inventoryOpen || this.chatOpen || this.devOpen || this.settingsOpen;
   }
 
   setVisible(visible: boolean): void {
@@ -113,6 +234,7 @@ export class HUD {
   }
 
   setConnection(status: NetStatus, detail?: string): void {
+    this.netStatus = status;
     const labels: Record<NetStatus, string> = {
       connecting: 'ПОДКЛЮЧЕНИЕ...',
       online: 'СЕТЬ: ОНЛАЙН',
@@ -120,8 +242,26 @@ export class HUD {
       offline: 'НЕ В СЕТИ',
       failed: 'ОШИБКА СЕТИ',
     };
-    this.net.textContent = detail ? `${labels[status]} · ${detail}` : labels[status];
+    const pingPart = status === 'online' && this.latency > 0 ? ` • ${this.latency} мс` : '';
+    this.net.textContent = detail ? `${labels[status]} · ${detail}` : `${labels[status]}${pingPart}`;
     this.net.classList.toggle('bad', status === 'reconnecting' || status === 'failed' || status === 'offline');
+  }
+
+  setLatency(ms: number): void {
+    this.latency = ms;
+    this.devPing.textContent = `${ms} мс`;
+    if (this.netStatus === 'online') {
+      this.net.textContent = `СЕТЬ: ОНЛАЙН • ${ms} мс`;
+      this.net.classList.toggle('bad', ms > 300);
+    }
+  }
+
+  updateTelemetry(x: number, y: number, building: string | null, fps: number, zombies: number, players: number): void {
+    this.devCoords.textContent = `${x.toFixed(1)} / ${y.toFixed(1)}`;
+    this.devBuilding.textContent = building ? building.toUpperCase() : 'Улица';
+    this.devFps.textContent = String(fps);
+    this.devZombies.textContent = String(zombies);
+    this.devPlayers.textContent = String(players);
   }
 
   setName(name: string): void {
@@ -175,6 +315,7 @@ export class HUD {
     if (this.selectedId && !inv.items.some((i) => i.id === this.selectedId)) this.selectedId = null;
     this.renderQuickbar();
     this.renderInventory();
+    this.renderCrafting();
   }
 
   setContainer(container: ContainerView | null): void {
@@ -192,6 +333,7 @@ export class HUD {
     this.inventoryOpen = true;
     this.panel.classList.remove('hidden');
     this.renderInventory();
+    this.renderCrafting();
   }
 
   closeInventory(sendContainerClose = false): void {
@@ -205,6 +347,36 @@ export class HUD {
   toggleInventory(): void {
     if (this.inventoryOpen) this.closeInventory(true);
     else this.openInventory();
+  }
+
+  openDevPanel(): void {
+    this.devOpen = true;
+    this.devModal.classList.remove('hidden');
+  }
+
+  closeDevPanel(): void {
+    this.devOpen = false;
+    this.devModal.classList.add('hidden');
+  }
+
+  toggleDevPanel(): void {
+    if (this.devOpen) this.closeDevPanel();
+    else this.openDevPanel();
+  }
+
+  openSettings(): void {
+    this.settingsOpen = true;
+    this.settingsModal.classList.remove('hidden');
+  }
+
+  closeSettings(): void {
+    this.settingsOpen = false;
+    this.settingsModal.classList.add('hidden');
+  }
+
+  toggleSettings(): void {
+    if (this.settingsOpen) this.closeSettings();
+    else this.openSettings();
   }
 
   openChat(): void {
@@ -294,7 +466,8 @@ export class HUD {
   }
 
   setSoundLabel(on: boolean): void {
-    this.soundBtn.textContent = on ? 'ЗВУК: ВКЛ' : 'ЗВУК: ВЫКЛ';
+    this.soundBtn.textContent = on ? '🔊 ЗВУК: ВКЛ' : '🔇 ЗВУК: ВЫКЛ';
+    this.checkMute.checked = !on;
   }
 
   private renderQuickbar(): void {
@@ -380,6 +553,59 @@ export class HUD {
     this.renderDetail();
   }
 
+  private renderCrafting(): void {
+    if (!this.inv) return;
+    this.craftList.replaceChildren();
+
+    // Map current player item counts
+    const counts = new Map<string, number>();
+    for (const it of this.inv.items) {
+      counts.set(it.key, (counts.get(it.key) ?? 0) + it.qty);
+    }
+
+    for (const recipe of CRAFT_RECIPES) {
+      const card = document.createElement('div');
+      card.className = 'craft-card';
+
+      const top = document.createElement('div');
+      top.className = 'craft-card-top';
+      const title = document.createElement('div');
+      title.className = 'craft-card-title';
+      title.textContent = recipe.name;
+      top.appendChild(title);
+      card.appendChild(top);
+
+      const reqsWrap = document.createElement('div');
+      reqsWrap.className = 'craft-reqs';
+
+      let canCraft = true;
+      for (const req of recipe.ingredients) {
+        const have = counts.get(req.key) ?? 0;
+        const ok = have >= req.qty;
+        if (!ok) canCraft = false;
+
+        const tag = document.createElement('span');
+        tag.className = `req-tag ${ok ? 'ready' : 'missing'}`;
+        const def = ITEMS[req.key];
+        tag.textContent = `${def?.name ?? req.key}: ${have}/${req.qty}`;
+        reqsWrap.appendChild(tag);
+      }
+      card.appendChild(reqsWrap);
+
+      const btn = document.createElement('button');
+      btn.className = 'craft-btn';
+      btn.textContent = 'СОЗДАТЬ';
+      btn.disabled = !canCraft;
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.actions.craft(recipe.id);
+      });
+      card.appendChild(btn);
+
+      this.craftList.appendChild(card);
+    }
+  }
+
   private itemRow(item: ItemView, source: 'player' | 'container'): HTMLElement {
     const def = ITEMS[item.key];
     const row = document.createElement('div');
@@ -406,6 +632,43 @@ export class HUD {
     qty.className = 'iqty';
     qty.textContent = item.qty > 1 ? `×${item.qty}` : '';
     row.append(img, info, qty);
+
+    const quickBtn = document.createElement('button');
+    quickBtn.className = 'row-quick-btn';
+    if (source === 'container') {
+      quickBtn.textContent = 'ВЗЯТЬ ➡';
+      quickBtn.title = 'Переложить в рюкзак';
+      quickBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.actions.transfer(item.id, item.qty, 'take');
+      });
+      row.appendChild(quickBtn);
+    } else if (this.container) {
+      quickBtn.className += ' put';
+      quickBtn.textContent = 'В ЯЩИК ➡';
+      quickBtn.title = 'Переложить в контейнер';
+      quickBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.actions.transfer(item.id, item.qty, 'put');
+      });
+      row.appendChild(quickBtn);
+    } else {
+      if (def?.kind === 'weapon') {
+        quickBtn.textContent = item.equipped ? 'СНЯТЬ' : 'В РУКИ';
+        quickBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.actions.equipItem(item.id);
+        });
+        row.appendChild(quickBtn);
+      } else if (['food', 'drink', 'med'].includes(def?.kind ?? '')) {
+        quickBtn.textContent = 'ИСП.';
+        quickBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.actions.useItem(item.id);
+        });
+        row.appendChild(quickBtn);
+      }
+    }
     row.addEventListener('click', (ev) => {
       ev.stopPropagation();
       this.selectedId = item.id;

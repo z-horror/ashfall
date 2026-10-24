@@ -1,5 +1,6 @@
 import {
   AOI_RADIUS,
+  CRAFT_RECIPES,
   INVENTORY_SLOTS,
   INVENTORY_WEIGHT,
   ITEMS,
@@ -70,6 +71,7 @@ interface SimPlayer {
   chunkY: number;
   lastSubCheck: number;
   lastChatAt: number;
+  godmode?: boolean;
 }
 
 interface SimZombie {
@@ -277,11 +279,18 @@ export class Simulation {
     }
     const existing = this.players.get(character.id);
     if (existing) {
+      if (existing.conn && existing.conn !== conn) {
+        try {
+          existing.conn.close(4009, 'logged in elsewhere');
+        } catch {}
+      }
       existing.conn = conn;
       existing.offlineAt = null;
       existing.input = { mx: 0, my: 0, sprint: false, seq: 0 };
       if (existing.status === 'dead' && existing.deadUntil && existing.deadUntil <= Date.now()) {
         await this.applyRespawn(existing);
+      } else if (existing.status === 'alive' && existing.inventory.length === 0 && config.testCombatBuffs) {
+        await this.grantTestKit(existing);
       }
       this.sendWelcome(existing);
       await this.sendInventory(existing);
@@ -310,7 +319,19 @@ export class Simulation {
       y = character.y;
     }
 
-    const inventory = status === 'alive' ? await repo.loadCharacterItems(character.id) : [];
+    let inventory = status === 'alive' ? await repo.loadCharacterItems(character.id) : [];
+    if (status === 'alive' && inventory.length === 0 && config.testCombatBuffs) {
+      await repo.withTransaction(async (client) => {
+        await repo.addCharacterItem(client, character.id, 'spiked_bat', 1, 1);
+        await repo.addCharacterItem(client, character.id, 'bandage', 4, 1);
+        await repo.addCharacterItem(client, character.id, 'water_bottle', 2, 1);
+        await repo.addCharacterItem(client, character.id, 'canned_food', 3, 1);
+        await repo.addCharacterItem(client, character.id, 'pistol', 1, 1);
+        await repo.addCharacterItem(client, character.id, 'ammo_9mm', 36, 1);
+        await client.query("UPDATE character_items SET equipped = true WHERE character_id = $1 AND item_key = 'spiked_bat'", [character.id]);
+      });
+      inventory = await repo.loadCharacterItems(character.id);
+    }
     const p: SimPlayer = {
       id: character.id,
       userId,
@@ -491,6 +512,12 @@ export class Simulation {
         break;
       case 'equip':
         if (this.dedupe(p, 'equip', msg.seq)) void this.handleEquip(p, msg.id);
+        break;
+      case 'craft':
+        if (this.dedupe(p, 'craft', msg.seq)) void this.handleCraft(p, msg.recipeId);
+        break;
+      case 'dev_action':
+        if (this.dedupe(p, 'dev_action', msg.seq)) void this.handleDevAction(p, msg.action, msg.args);
         break;
       case 'respawn':
         if (this.dedupe(p, 'respawn', msg.seq)) void this.handleRespawn(p);
@@ -741,7 +768,7 @@ export class Simulation {
   }
 
   private damagePlayer(p: SimPlayer, amount: number, source: string): void {
-    if (p.status !== 'alive') return;
+    if (p.status !== 'alive' || p.godmode) return;
     p.hp -= amount;
     p.lastDamageAt = Date.now();
     this.emit({ t: 'hit', targetId: p.id, x: p.x, y: p.y, damage: Math.round(amount), source });
@@ -972,6 +999,9 @@ export class Simulation {
     p.equippedId = null;
     p.openContainerId = null;
     p.lastDamageAt = Date.now();
+    if (config.testCombatBuffs) {
+      await this.grantTestKit(p);
+    }
     this.emit({ t: 'respawn', id: p.id, x: p.x, y: p.y });
     try {
       await repo.saveCharacter({
@@ -990,7 +1020,100 @@ export class Simulation {
       console.error('[sim] respawn save failed', err);
     }
     await this.sendInventory(p);
-    this.notice(p, 'Вы очнулись на пересечении Грей-стрит. Инвентарь потерян.');
+    this.notice(p, config.testCombatBuffs ? 'Вы возродились на безопасном перекрёстке с боевым снаряжением.' : 'Вы очнулись на пересечении Грей-стрит. Инвентарь потерян.');
+  }
+
+  private async grantTestKit(p: SimPlayer): Promise<void> {
+    try {
+      await repo.withTransaction(async (client) => {
+        await repo.addCharacterItem(client, p.id, 'spiked_bat', 1, 1);
+        await repo.addCharacterItem(client, p.id, 'bandage', 4, 1);
+        await repo.addCharacterItem(client, p.id, 'water_bottle', 2, 1);
+        await repo.addCharacterItem(client, p.id, 'canned_food', 3, 1);
+        await repo.addCharacterItem(client, p.id, 'pistol', 1, 1);
+        await repo.addCharacterItem(client, p.id, 'ammo_9mm', 36, 1);
+        await client.query("UPDATE character_items SET equipped = true WHERE character_id = $1 AND item_key = 'spiked_bat'", [p.id]);
+      });
+      await this.refreshInventory(p, false);
+    } catch (err) {
+      console.error('[sim] grantTestKit failed', err);
+    }
+  }
+
+  private async handleCraft(p: SimPlayer, recipeId: string): Promise<void> {
+    if (p.status !== 'alive') return;
+    const recipe = CRAFT_RECIPES.find((r) => r.id === recipeId);
+    if (!recipe) {
+      this.notice(p, 'Неизвестный рецепт крафта.');
+      return;
+    }
+    for (const ing of recipe.ingredients) {
+      const count = p.inventory
+        .filter((i) => i.key === ing.key)
+        .reduce((sum, i) => sum + i.qty, 0);
+      if (count < ing.qty) {
+        this.notice(p, `Недостаточно ингредиентов для "${recipe.name}": требуется ${ing.name} x${ing.qty}.`);
+        return;
+      }
+    }
+    try {
+      await repo.withTransaction(async (client) => {
+        for (const ing of recipe.ingredients) {
+          let needed = ing.qty;
+          const matching = p.inventory.filter((i) => i.key === ing.key);
+          for (const item of matching) {
+            if (needed <= 0) break;
+            const take = Math.min(item.qty, needed);
+            const taken = await repo.takeCharacterItem(client, p.id, item.id, take);
+            if (!taken) throw new Error('Failed to take ingredient');
+            needed -= take;
+          }
+        }
+        await repo.addCharacterItem(client, p.id, recipe.resultKey, recipe.resultQty, 1);
+      });
+      await this.refreshInventory(p, true);
+      this.notice(p, `Изготовлено: ${recipe.name} (x${recipe.resultQty}).`);
+      this.emit({ t: 'use', playerId: p.id, itemKey: recipe.resultKey, x: p.x, y: p.y });
+    } catch (err) {
+      console.error('[sim] craft failed', err);
+      this.notice(p, 'Ошибка при создании предмета.');
+    }
+  }
+
+  private async handleDevAction(p: SimPlayer, action: string, _args?: Record<string, unknown>): Promise<void> {
+    if (!config.testCombatBuffs) {
+      this.notice(p, 'Режим разработчика выключен на сервере.');
+      return;
+    }
+    switch (action) {
+      case 'heal':
+        p.hp = this.playerMaxHp;
+        p.stamina = PLAYER_MAX_STAMINA;
+        p.hunger = 100;
+        p.thirst = 100;
+        this.notice(p, `Здоровье и показатели восстановлены (${this.playerMaxHp} HP).`);
+        break;
+      case 'kit':
+        p.hp = this.playerMaxHp;
+        p.stamina = PLAYER_MAX_STAMINA;
+        p.hunger = 100;
+        p.thirst = 100;
+        await this.grantTestKit(p);
+        this.notice(p, 'Выдан боевой комплект: бита с шипами, пистолет, патроны 9мм, бинты.');
+        break;
+      case 'godmode':
+        p.godmode = !p.godmode;
+        this.notice(p, `Режим бога (неуязвимость): ${p.godmode ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}.`);
+        break;
+      case 'teleport_spawn':
+        p.x = this.world.spawn.x;
+        p.y = this.world.spawn.y;
+        this.notice(p, 'Телепортирован в безопасную зону.');
+        break;
+      default:
+        this.notice(p, `Неизвестное действие разработчика: ${action}`);
+        break;
+    }
   }
 
   private async handleRespawn(p: SimPlayer): Promise<void> {
@@ -1001,7 +1124,7 @@ export class Simulation {
 
   private async handleInteract(p: SimPlayer): Promise<void> {
     if (p.status !== 'alive') return;
-    const door = this.world.nearestDoor(p.x, p.y, 1.55);
+    const door = this.world.nearestDoor(p.x, p.y, 2.3);
     if (door) {
       const open = !door.open;
       const updated = this.world.setDoorOpen(door.id, open);
@@ -1025,6 +1148,12 @@ export class Simulation {
     if (!spot) return;
     if (distance(p.x, p.y, spot.x + 0.5, spot.y + 0.5) > 2.1) {
       this.notice(p, 'Слишком далеко.');
+      return;
+    }
+    const playerBuilding = this.world.buildingAt(p.x, p.y);
+    const spotBuilding = this.world.buildingAt(spot.x + 0.5, spot.y + 0.5);
+    if ((playerBuilding?.id ?? null) !== (spotBuilding?.id ?? null)) {
+      this.notice(p, 'Препятствие на пути (стена здания).');
       return;
     }
     try {
@@ -1051,6 +1180,12 @@ export class Simulation {
     if (!item) return;
     if (distance(p.x, p.y, item.x, item.y) > PICKUP_RANGE + 0.4) {
       this.notice(p, 'Предмет слишком далеко.');
+      return;
+    }
+    const playerBuilding = this.world.buildingAt(p.x, p.y);
+    const itemBuilding = this.world.buildingAt(item.x, item.y);
+    if ((playerBuilding?.id ?? null) !== (itemBuilding?.id ?? null)) {
+      this.notice(p, 'Нельзя достать сквозь стену.');
       return;
     }
     if (!canCarry(p.inventory, item.key, item.qty)) {

@@ -1,9 +1,58 @@
+export interface AudioSettings {
+  master: number;
+  sfx: number;
+  ambient: number;
+  muted: boolean;
+}
+
+const STORAGE_KEY = 'ashfall_audio_settings';
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private sfxGain: GainNode | null = null;
+  private ambientGain: GainNode | null = null;
+  private uiGain: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private ambientStarted = false;
-  enabled = true;
+
+  settings: AudioSettings = {
+    master: 0.7,
+    sfx: 0.8,
+    ambient: 0.5,
+    muted: false,
+  };
+
+  constructor() {
+    this.loadSettings();
+  }
+
+  get enabled(): boolean {
+    return !this.settings.muted;
+  }
+
+  loadSettings(): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<AudioSettings>;
+        if (typeof parsed.master === 'number') this.settings.master = Math.max(0, Math.min(1, parsed.master));
+        if (typeof parsed.sfx === 'number') this.settings.sfx = Math.max(0, Math.min(1, parsed.sfx));
+        if (typeof parsed.ambient === 'number') this.settings.ambient = Math.max(0, Math.min(1, parsed.ambient));
+        if (typeof parsed.muted === 'boolean') this.settings.muted = parsed.muted;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  saveSettings(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+    } catch {
+      /* ignore */
+    }
+  }
 
   ensure(): void {
     if (this.ctx) {
@@ -14,9 +63,19 @@ export class AudioEngine {
     if (!Ctor) return;
     try {
       this.ctx = new Ctor();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = this.enabled ? 0.55 : 0;
-      this.master.connect(this.ctx.destination);
+
+      this.masterGain = this.ctx.createGain();
+      this.sfxGain = this.ctx.createGain();
+      this.ambientGain = this.ctx.createGain();
+      this.uiGain = this.ctx.createGain();
+
+      this.updateGains();
+
+      this.sfxGain.connect(this.masterGain);
+      this.ambientGain.connect(this.masterGain);
+      this.uiGain.connect(this.masterGain);
+      this.masterGain.connect(this.ctx.destination);
+
       this.noise = this.makeNoiseBuffer(3);
       this.startAmbient();
     } catch {
@@ -24,12 +83,43 @@ export class AudioEngine {
     }
   }
 
+  private updateGains(): void {
+    if (!this.ctx || !this.masterGain || !this.sfxGain || !this.ambientGain || !this.uiGain) return;
+    const t = this.ctx.currentTime;
+    const m = this.settings.muted ? 0 : this.settings.master;
+    this.masterGain.gain.setTargetAtTime(m * 0.7, t, 0.05);
+    this.sfxGain.gain.setTargetAtTime(this.settings.sfx, t, 0.05);
+    this.ambientGain.gain.setTargetAtTime(this.settings.ambient * 0.45, t, 0.05);
+    this.uiGain.gain.setTargetAtTime(this.settings.sfx * 0.85, t, 0.05);
+  }
+
+  setMasterVolume(val: number): void {
+    this.settings.master = Math.max(0, Math.min(1, val));
+    this.updateGains();
+    this.saveSettings();
+  }
+
+  setSfxVolume(val: number): void {
+    this.settings.sfx = Math.max(0, Math.min(1, val));
+    this.updateGains();
+    this.saveSettings();
+  }
+
+  setAmbientVolume(val: number): void {
+    this.settings.ambient = Math.max(0, Math.min(1, val));
+    this.updateGains();
+    this.saveSettings();
+  }
+
+  setMuted(muted: boolean): void {
+    this.settings.muted = muted;
+    this.updateGains();
+    this.saveSettings();
+    if (!muted) this.ensure();
+  }
+
   setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-    if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(enabled ? 0.55 : 0, this.ctx.currentTime, 0.08);
-    }
-    if (enabled) this.ensure();
+    this.setMuted(!enabled);
   }
 
   private makeNoiseBuffer(seconds: number): AudioBuffer {
@@ -45,7 +135,7 @@ export class AudioEngine {
   }
 
   private startAmbient(): void {
-    if (!this.ctx || !this.master || !this.noise || this.ambientStarted) return;
+    if (!this.ctx || !this.ambientGain || !this.noise || this.ambientStarted) return;
     this.ambientStarted = true;
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
@@ -53,29 +143,30 @@ export class AudioEngine {
     src.loop = true;
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 420;
+    filter.frequency.value = 380;
     filter.Q.value = 0.4;
     const gain = ctx.createGain();
-    gain.gain.value = 0.16;
+    gain.gain.value = 0.22;
     const lfo = ctx.createOscillator();
     lfo.frequency.value = 0.07;
     const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 130;
+    lfoGain.gain.value = 110;
     lfo.connect(lfoGain);
     lfoGain.connect(filter.frequency);
     src.connect(filter);
     filter.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.ambientGain);
     src.start();
     lfo.start();
-    // distant industrial hum
+
+    // distant low industrial hum
     const hum = ctx.createOscillator();
     hum.type = 'sine';
-    hum.frequency.value = 47;
+    hum.frequency.value = 46;
     const humGain = ctx.createGain();
-    humGain.gain.value = 0.022;
+    humGain.gain.value = 0.035;
     hum.connect(humGain);
-    humGain.connect(this.master);
+    humGain.connect(this.ambientGain);
     hum.start();
   }
 
@@ -84,6 +175,7 @@ export class AudioEngine {
   }
 
   private tone(
+    bus: GainNode | null,
     freq: number,
     dur: number,
     gainValue: number,
@@ -91,7 +183,7 @@ export class AudioEngine {
     slideTo?: number,
     delay = 0,
   ): void {
-    if (!this.ctx || !this.master || !this.enabled) return;
+    if (!this.ctx || !bus || this.settings.muted) return;
     const ctx = this.ctx;
     const t = this.now() + delay;
     const osc = ctx.createOscillator();
@@ -100,16 +192,24 @@ export class AudioEngine {
     osc.frequency.setValueAtTime(freq, t);
     if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, gainValue), t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, gainValue), t + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     osc.connect(gain);
-    gain.connect(this.master);
+    gain.connect(bus);
     osc.start(t);
     osc.stop(t + dur + 0.05);
   }
 
-  private burst(freq: number, q: number, gainValue: number, dur: number, type: BiquadFilterType = 'bandpass', delay = 0): void {
-    if (!this.ctx || !this.master || !this.noise || !this.enabled) return;
+  private burst(
+    bus: GainNode | null,
+    freq: number,
+    q: number,
+    gainValue: number,
+    dur: number,
+    type: BiquadFilterType = 'bandpass',
+    delay = 0,
+  ): void {
+    if (!this.ctx || !bus || !this.noise || this.settings.muted) return;
     const ctx = this.ctx;
     const t = this.now() + delay;
     const src = ctx.createBufferSource();
@@ -120,38 +220,58 @@ export class AudioEngine {
     filter.Q.value = q;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(gainValue, t + 0.008);
+    gain.gain.linearRampToValueAtTime(gainValue, t + 0.006);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(filter);
     filter.connect(gain);
-    gain.connect(this.master);
+    gain.connect(bus);
     src.start(t);
     src.stop(t + dur + 0.03);
   }
 
-  footstep(vol = 1): void {
-    this.burst(220, 0.9, 0.045 * vol, 0.11, 'lowpass');
-    this.tone(70 + Math.random() * 20, 0.06, 0.02 * vol, 'sine');
+  footstep(surface: 'asphalt' | 'wood' | 'grass' | 'dirt' | 'concrete' | 'interior' = 'asphalt', vol = 1): void {
+    switch (surface) {
+      case 'grass':
+        this.burst(this.sfxGain, 1100, 1.2, 0.035 * vol, 0.1, 'bandpass');
+        this.tone(this.sfxGain, 60 + Math.random() * 15, 0.05, 0.012 * vol, 'sine');
+        break;
+      case 'wood':
+      case 'interior':
+        this.tone(this.sfxGain, 130 + Math.random() * 20, 0.07, 0.035 * vol, 'triangle', 75);
+        this.burst(this.sfxGain, 400, 1.8, 0.03 * vol, 0.08, 'lowpass');
+        break;
+      case 'dirt':
+        this.burst(this.sfxGain, 320, 0.9, 0.045 * vol, 0.13, 'lowpass');
+        this.tone(this.sfxGain, 65 + Math.random() * 15, 0.06, 0.018 * vol, 'sine');
+        break;
+      case 'asphalt':
+      case 'concrete':
+      default:
+        this.burst(this.sfxGain, 240, 1.1, 0.05 * vol, 0.1, 'lowpass');
+        this.burst(this.sfxGain, 1600, 1.8, 0.02 * vol, 0.05, 'highpass');
+        this.tone(this.sfxGain, 80 + Math.random() * 25, 0.05, 0.022 * vol, 'sine');
+        break;
+    }
   }
 
   swing(vol = 1): void {
-    this.burst(1100, 1.4, 0.055 * vol, 0.16);
-    this.tone(150, 0.09, 0.015 * vol, 'triangle', 90);
+    this.burst(this.sfxGain, 1100, 1.4, 0.055 * vol, 0.16);
+    this.tone(this.sfxGain, 150, 0.09, 0.015 * vol, 'triangle', 90);
   }
 
   hit(vol = 1): void {
-    this.tone(110, 0.16, 0.09 * vol, 'sine', 55);
-    this.burst(300, 0.7, 0.08 * vol, 0.14, 'lowpass');
+    this.tone(this.sfxGain, 110, 0.16, 0.09 * vol, 'sine', 55);
+    this.burst(this.sfxGain, 300, 0.7, 0.08 * vol, 0.14, 'lowpass');
   }
 
   shot(vol = 1): void {
-    this.burst(900, 0.4, 0.28 * vol, 0.22, 'lowpass');
-    this.burst(2400, 0.8, 0.12 * vol, 0.08, 'highpass');
-    this.tone(70, 0.24, 0.16 * vol, 'triangle', 38);
+    this.burst(this.sfxGain, 900, 0.4, 0.28 * vol, 0.22, 'lowpass');
+    this.burst(this.sfxGain, 2400, 0.8, 0.12 * vol, 0.08, 'highpass');
+    this.tone(this.sfxGain, 70, 0.24, 0.16 * vol, 'triangle', 38);
   }
 
   growl(vol = 1): void {
-    if (!this.ctx || !this.master || !this.enabled) return;
+    if (!this.ctx || !this.sfxGain || this.settings.muted) return;
     const ctx = this.ctx;
     const t = this.now();
     const osc = ctx.createOscillator();
@@ -167,39 +287,70 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.sfxGain);
     osc.start(t);
     osc.stop(t + 1.2);
   }
 
-  door(vol = 1): void {
-    this.burst(700, 2.2, 0.05 * vol, 0.25, 'bandpass');
-    this.tone(180, 0.12, 0.02 * vol, 'triangle', 130);
+  door(open = true, vol = 1): void {
+    if (open) {
+      // Wood/metal creak
+      this.burst(this.sfxGain, 700, 2.4, 0.05 * vol, 0.28, 'bandpass');
+      this.tone(this.sfxGain, 160, 0.18, 0.025 * vol, 'triangle', 220);
+    } else {
+      // Solid latch shut
+      this.burst(this.sfxGain, 350, 1.2, 0.07 * vol, 0.12, 'lowpass');
+      this.tone(this.sfxGain, 90, 0.08, 0.03 * vol, 'triangle', 50);
+    }
   }
 
   pickup(): void {
-    this.tone(520, 0.08, 0.03, 'sine', 720);
+    this.tone(this.uiGain, 520, 0.08, 0.03, 'sine', 720);
   }
 
   equip(): void {
-    this.burst(1600, 2, 0.03, 0.08);
-    this.tone(300, 0.06, 0.02, 'triangle', 420);
+    this.burst(this.uiGain, 1600, 2, 0.03, 0.08);
+    this.tone(this.uiGain, 300, 0.06, 0.02, 'triangle', 420);
   }
 
   consume(): void {
-    this.burst(450, 1, 0.04, 0.18, 'lowpass');
+    this.burst(this.uiGain, 450, 1, 0.04, 0.18, 'lowpass');
   }
 
   hurt(vol = 1): void {
-    this.tone(180, 0.22, 0.06 * vol, 'sawtooth', 90);
-    this.burst(500, 0.8, 0.05 * vol, 0.18);
+    this.tone(this.sfxGain, 180, 0.22, 0.06 * vol, 'sawtooth', 90);
+    this.burst(this.sfxGain, 500, 0.8, 0.05 * vol, 0.18);
   }
 
   death(): void {
-    this.tone(140, 0.9, 0.06, 'sawtooth', 40);
+    this.tone(this.sfxGain, 140, 0.9, 0.06, 'sawtooth', 40);
   }
 
   empty(): void {
-    this.tone(900, 0.04, 0.025, 'square', 400);
+    this.tone(this.uiGain, 900, 0.04, 0.025, 'square', 400);
+  }
+
+  inventory(open = true): void {
+    if (open) {
+      this.burst(this.uiGain, 1400, 1.4, 0.04, 0.12, 'bandpass');
+    } else {
+      this.burst(this.uiGain, 950, 1.8, 0.035, 0.09, 'lowpass');
+    }
+  }
+
+  container(open = true): void {
+    if (open) {
+      this.burst(this.sfxGain, 550, 2.0, 0.05, 0.22, 'bandpass');
+      this.tone(this.sfxGain, 120, 0.14, 0.02, 'triangle', 180);
+    } else {
+      this.burst(this.sfxGain, 320, 1.2, 0.06, 0.12, 'lowpass');
+    }
+  }
+
+  craft(): void {
+    // Cloth rip + mechanical click
+    this.burst(this.uiGain, 1800, 2.2, 0.05, 0.14, 'bandpass');
+    this.tone(this.uiGain, 420, 0.08, 0.035, 'sine', 640, 0.06);
+    this.tone(this.uiGain, 640, 0.1, 0.035, 'sine', 880, 0.12);
   }
 }

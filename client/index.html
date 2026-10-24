@@ -39,7 +39,14 @@
             <div class="minimap-ring"></div>
             <div id="hud-coords">48 / 48</div>
           </div>
-          <div id="net-status" class="net-status">СОЕДИНЕНИЕ...</div>
+          <div class="hud-right-bar">
+            <div id="net-status" class="net-status">СОЕДИНЕНИЕ...</div>
+            <div class="hud-top-actions">
+              <button id="sound-toggle" class="hud-toolbar-btn" title="Включить / выключить звук">🔊 ЗВУК: ВКЛ</button>
+              <button id="btn-settings" class="hud-toolbar-btn" title="Настройки игры (Esc)">⚙ НАСТРОЙКИ</button>
+              <button id="btn-dev" class="hud-toolbar-btn dev-toggle" title="Панель разработчика (F1 / ~)">🛠 DEV</button>
+            </div>
+          </div>
         </div>
 
         <div id="event-log" class="event-log"></div>
@@ -51,13 +58,14 @@
           <div class="hud-hints">
             <span><b>WASD</b> движение</span><span><b>SHIFT</b> бег</span><span><b>ЛКМ</b> атака</span>
             <span><b>E</b> использовать</span><span><b>I</b> инвентарь</span><span><b>T</b> чат</span>
+            <span><b>F1</b> DEV</span><span><b>ESC</b> меню</span>
           </div>
         </div>
 
         <div id="inventory-panel" class="panel hidden">
           <div class="panel-head">
             <div>
-              <h2>СНАРЯЖЕНИЕ</h2>
+              <h2>СНАРЯЖЕНИЕ И КРАФТ</h2>
               <div id="inv-weight" class="subtle">0 / 26 кг</div>
             </div>
             <button id="inv-close" class="icon-btn">ESC</button>
@@ -68,12 +76,96 @@
               <div id="inv-list" class="item-list"></div>
             </div>
             <div class="inv-col container-col hidden" id="container-col">
-              <h3 id="container-title">КОНТЕЙНЕР</h3>
+              <div class="col-head-row">
+                <h3 id="container-title">КОНТЕЙНЕР</h3>
+                <button id="container-take-all" class="btn-take-all" type="button">ЗАБРАТЬ ВСЁ</button>
+              </div>
               <div id="container-list" class="item-list"></div>
+            </div>
+            <div class="inv-col craft-col" id="craft-col">
+              <h3>СОЗДАНИЕ ПРЕДМЕТОВ</h3>
+              <div id="craft-list" class="craft-list"></div>
             </div>
           </div>
           <div id="inv-detail" class="inv-detail">
             <p>ЛКМ — выбрать предмет. Двойной щелчок — использовать или надеть.</p>
+          </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal-overlay hidden">
+          <div class="modal-card">
+            <div class="modal-head">
+              <h2>НАСТРОЙКИ</h2>
+              <button id="settings-close" class="icon-btn">ESC</button>
+            </div>
+            <div class="settings-body">
+              <div class="setting-section">
+                <h3>ЗВУК И АУДИО</h3>
+                <label class="setting-row">
+                  <span>Общая громкость</span>
+                  <input type="range" id="vol-master" min="0" max="100" value="70" />
+                  <span id="val-vol-master">70%</span>
+                </label>
+                <label class="setting-row">
+                  <span>Эффекты (SFX)</span>
+                  <input type="range" id="vol-sfx" min="0" max="100" value="80" />
+                  <span id="val-vol-sfx">80%</span>
+                </label>
+                <label class="setting-row">
+                  <span>Окружение (Ambient)</span>
+                  <input type="range" id="vol-ambient" min="0" max="100" value="50" />
+                  <span id="val-vol-ambient">50%</span>
+                </label>
+                <label class="setting-row checkbox-row">
+                  <input type="checkbox" id="check-mute" />
+                  <span>Отключить весь звук</span>
+                </label>
+              </div>
+              <div class="setting-section">
+                <h3>УПРАВЛЕНИЕ</h3>
+                <div class="controls-guide">
+                  <div><b>WASD / Стрелки</b> — Перемещение персонажа</div>
+                  <div><b>Shift</b> — Бег (расходует выносливость)</div>
+                  <div><b>ЛКМ</b> — Атака / стрельба в направлении мыши</div>
+                  <div><b>E</b> — Взаимодействие (двери, обыск, подбор)</div>
+                  <div><b>I</b> — Инвентарь и крафт</div>
+                  <div><b>F1 / ~</b> — Dev-панель разработчика</div>
+                  <div><b>T / Enter</b> — Чат района</div>
+                </div>
+              </div>
+              <div class="setting-section session-section">
+                <h3>СЕССИЯ И ПЕРСОНАЖ</h3>
+                <button id="btn-logout" class="btn danger full-width" type="button">Сменить персонажа / Выйти в меню</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dev Panel Modal -->
+        <div id="dev-modal" class="modal-overlay hidden">
+          <div class="modal-card dev-modal-card">
+            <div class="modal-head">
+              <h2>ИНСТРУМЕНТЫ РАЗРАБОТЧИКА (DEV)</h2>
+              <button id="dev-close" class="icon-btn">ESC</button>
+            </div>
+            <div class="dev-body">
+              <div class="dev-telemetry">
+                <div class="telem-item"><span>Координаты:</span> <b id="dev-coords">0 / 0</b></div>
+                <div class="telem-item"><span>Здание:</span> <b id="dev-building">Улица</b></div>
+                <div class="telem-item"><span>Задержка (RTT):</span> <b id="dev-ping">0 мс</b></div>
+                <div class="telem-item"><span>FPS:</span> <b id="dev-fps">60</b></div>
+                <div class="telem-item"><span>Зомби:</span> <b id="dev-zombies">0</b></div>
+                <div class="telem-item"><span>Игроки:</span> <b id="dev-players">0</b></div>
+              </div>
+              <div class="dev-buttons">
+                <button id="dev-btn-kit" class="btn primary full-width" type="button">Боевой комплект (/kit: бита, 9mm, патроны, бинты)</button>
+                <button id="dev-btn-heal" class="btn ghost full-width" type="button">Восстановить здоровье и показатели (/heal)</button>
+                <button id="dev-btn-god" class="btn ghost full-width" type="button">Режим бога (Godmode): <span id="dev-god-val">ВЫКЛ</span></button>
+                <button id="dev-btn-spawn" class="btn ghost full-width" type="button">Телепорт в безопасную зону спавна</button>
+                <button id="dev-btn-new-char" class="btn danger full-width" type="button">Сбросить сохранение и создать нового персонажа</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -93,7 +185,6 @@
         </div>
 
         <div id="toast" class="toast"></div>
-        <button id="sound-toggle" class="sound-toggle" title="Звук">ЗВУК: ВКЛ</button>
       </div>
 
       <div id="loading-screen" class="screen hidden">
@@ -117,6 +208,17 @@
             <span class="brand-sub">СЕРЫЙ КВАРТАЛ</span>
           </div>
           <p class="tagline">Город не умер. Он ждёт.<br />Постоянный мир. Свободный PvP. Одна жизнь.</p>
+
+          <div id="auth-saved-box" class="auth-saved-box hidden">
+            <div class="saved-label">НАЙДЕН СОХРАНЁННЫЙ ПЕРСОНАЖ</div>
+            <div id="auth-saved-name" class="saved-name">Survivor</div>
+            <button id="auth-continue" class="btn primary full-width" type="button">ПРОДОЛЖИТЬ ИГРУ</button>
+            <div class="auth-row">
+              <button id="auth-new-guest" class="btn ghost" type="button">НОВЫЙ ГОСТЬ</button>
+              <button id="auth-switch-user" class="btn ghost" type="button">СМЕНИТЬ АККАУНТ</button>
+            </div>
+          </div>
+
           <form id="auth-form" autocomplete="off">
             <label class="field">
               <span>ПОЗЫВНОЙ</span>

@@ -60,9 +60,14 @@ await page1.waitForTimeout(1000);
 await page2.waitForTimeout(1000);
 
 console.log('[e2e] Logging in as guests sequentially...');
-await page1.click('#auth-guest');
+const loginGuest = async (page) => {
+  const saved = await page.evaluate(() => !document.getElementById('auth-saved-box')?.classList.contains('hidden'));
+  if (saved) await page.click('#auth-new-guest');
+  else await page.click('#auth-guest');
+};
+await loginGuest(page1);
 await page1.waitForTimeout(1000);
-await page2.click('#auth-guest');
+await loginGuest(page2);
 
 console.log('[e2e] Waiting for loading screens to hide and player names to appear...');
 await Promise.all([

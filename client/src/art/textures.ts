@@ -988,90 +988,289 @@ function makeCar(horizontal: boolean, variant: number): HTMLCanvasElement {
   const rnd = mulberry(2500 + variant * 21 + (horizontal ? 0 : 101));
   const cx = W / 2;
   const baseY = horizontal ? 92 : 126;
-  const colors = ['#475542', '#2e3a47', '#6c5936', '#593430'];
-  const color = colors[variant % colors.length];
-  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+
+  // Variants:
+  // 0: Civilian Sedan (drab olive / gray-green)
+  // 1: Police Cruiser (navy/black body, white door panel, emergency roof lightbar)
+  // 2: City Taxi (yellow body, checkerboard decal, TAXI roof sign)
+  // 3: Rusty Pickup (oxidized burnt orange, open cargo bed with scrap)
+  const isPolice = variant === 1;
+  const isTaxi = variant === 2;
+  const isPickup = variant === 3;
+
+  const baseBodyColor = isPolice ? '#1e252d' : isTaxi ? '#d8a528' : isPickup ? '#6d3c26' : '#465243';
+  const highlightColor = shade(baseBodyColor, 0.22);
+  const shadowColor = shade(baseBodyColor, -0.32);
+
+  // 3D Isometric projection mapping:
+  // u in [-1, 1] is length (forward = +1, rear = -1)
+  // v in [-1, 1] is lateral (+1 facing player camera, -1 facing away)
+  // z >= 0 is vertical elevation in screen pixels
+  const L = 33;
+  const Wh = 14;
+
+  const pt = (u: number, v: number, z: number) => {
+    if (horizontal) {
+      // Facing South-East (along +X)
+      return {
+        x: cx + u * L - v * Wh,
+        y: baseY + u * (L * 0.5) + v * (Wh * 0.5) - z,
+      };
+    } else {
+      // Facing South-West (along +Y)
+      return {
+        x: cx - u * L + v * Wh,
+        y: baseY + u * (L * 0.5) + v * (Wh * 0.5) - z,
+      };
+    }
+  };
+
+  const poly = (points: { x: number; y: number }[], fill: string | CanvasGradient, stroke?: string, lw = 1) => {
+    if (points.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = lw;
+      ctx.stroke();
+    }
+  };
+
+  // 1. Ground Drop Shadow
+  ctx.fillStyle = 'rgba(10, 12, 11, 0.46)';
   ctx.beginPath();
-  ctx.ellipse(cx, baseY + 4, horizontal ? 48 : 30, horizontal ? 14 : 26, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, baseY + (horizontal ? 3 : 5), horizontal ? 45 : 28, horizontal ? 14 : 24, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.save();
-  if (horizontal) ctx.setTransform(30, 15, -30, 15, cx, baseY);
-  else ctx.setTransform(-30, 15, 30, 15, cx, baseY);
-
-  // wheels under the body
-  ctx.fillStyle = '#161615';
-  const wheelPos = horizontal ? [[-0.58, -0.42], [0.58, -0.42], [-0.58, 0.42], [0.58, 0.42]] : [[-0.4, -0.6], [0.4, -0.6], [-0.4, 0.6], [0.4, 0.6]];
-  for (const [wx, wy] of wheelPos) {
+  // 2. Far Wheels (v = -0.95, behind vehicle)
+  const drawWheel = (u: number, v: number) => {
+    const pBase = pt(u, v, 0);
+    const pTop = pt(u, v, 8);
+    const radX = horizontal ? 4.5 : 3.5;
+    const radY = horizontal ? 3.5 : 4.5;
+    ctx.fillStyle = '#17191a';
     ctx.beginPath();
-    ctx.ellipse(wx, wy, 0.17, 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(pBase.x, (pBase.y + pTop.y) / 2, radX, radY, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#676f75';
+    ctx.beginPath();
+    ctx.ellipse(pBase.x, (pBase.y + pTop.y) / 2, radX * 0.55, radY * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  drawWheel(-0.62, -0.92);
+  drawWheel(0.62, -0.92);
+
+  // 3. Chassis Lower Body
+  // Bottom plate (z = 3)
+  poly([pt(-1, -1, 3), pt(1, -1, 3), pt(1, 1, 3), pt(-1, 1, 3)], '#121415');
+
+  // Near Side Face (v = 1, facing camera)
+  const sideColor = shadowColor;
+  poly([pt(-1, 1, 3), pt(1, 1, 3), pt(1, 1, 15), pt(-1, 1, 15)], sideColor, 'rgba(15,18,17,0.7)', 0.8);
+
+  // Police cruiser white door panel
+  if (isPolice) {
+    poly([pt(-0.45, 1, 4), pt(0.35, 1, 4), pt(0.35, 1, 14.5), pt(-0.45, 1, 14.5)], '#f0f2f3');
+    // Mini police star silhouette
+    const starP = pt(-0.05, 1, 9.5);
+    ctx.fillStyle = '#cca43b';
+    ctx.beginPath();
+    ctx.arc(starP.x, starP.y, 2, 0, Math.PI * 2);
     ctx.fill();
   }
-  // body shadow/dark underside
-  roundRect(ctx, -0.95, -0.48, 1.9, 0.96, 0.2);
-  ctx.fillStyle = shade(color, -0.35);
-  ctx.fill();
-  // body top
-  roundRect(ctx, -0.92, -0.44, 1.84, 0.88, 0.18);
-  ctx.fillStyle = color;
-  ctx.fill();
-  // side highlight
-  ctx.strokeStyle = shade(color, 0.22);
-  ctx.lineWidth = 0.025;
-  ctx.beginPath();
-  ctx.moveTo(-0.82, -0.34);
-  ctx.lineTo(0.7, -0.34);
-  ctx.stroke();
-  // cabin
-  roundRect(ctx, -0.35, -0.39, 0.85, 0.78, 0.12);
-  ctx.fillStyle = shade(color, -0.12);
-  ctx.fill();
-  // windshield (toward +x front)
-  roundRect(ctx, 0.12, -0.32, 0.32, 0.64, 0.05);
-  ctx.fillStyle = '#27302f';
-  ctx.fill();
-  ctx.fillStyle = 'rgba(160,175,165,0.12)';
-  ctx.beginPath();
-  ctx.moveTo(0.16, 0.28);
-  ctx.lineTo(0.4, -0.28);
-  ctx.lineTo(0.43, -0.2);
-  ctx.lineTo(0.24, 0.28);
-  ctx.closePath();
-  ctx.fill();
-  // rear window
-  roundRect(ctx, -0.34, -0.28, 0.12, 0.56, 0.03);
-  ctx.fillStyle = '#202827';
-  ctx.fill();
-  // roof edge
-  ctx.strokeStyle = 'rgba(20,22,21,0.55)';
-  ctx.lineWidth = 0.015;
-  roundRect(ctx, -0.35, -0.39, 0.85, 0.78, 0.12);
-  ctx.stroke();
-  // rust holes & dirt
-  for (let i = 0; i < 12; i++) {
-    ctx.fillStyle = `rgba(92,50,28,${0.2 + rnd() * 0.35})`;
-    ctx.beginPath();
-    ctx.ellipse(-0.85 + rnd() * 1.7, -0.4 + rnd() * 0.8, 0.02 + rnd() * 0.08, 0.01 + rnd() * 0.04, rnd() * 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillStyle = '#b6a77c';
-  ctx.fillRect(0.9, -0.3, 0.05, 0.16);
-  ctx.fillRect(0.9, 0.14, 0.05, 0.16);
-  ctx.fillStyle = '#6e1f18';
-  ctx.fillRect(-0.94, -0.3, 0.04, 0.16);
-  ctx.fillRect(-0.94, 0.14, 0.04, 0.16);
-  // broken glass on hood
-  ctx.fillStyle = 'rgba(190,205,195,0.2)';
-  ctx.beginPath();
-  ctx.moveTo(0.45, -0.22);
-  ctx.lineTo(0.7, -0.1);
-  ctx.lineTo(0.52, 0.02);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
 
-  // ground glass / debris around
-  speckle(ctx, cx - 40, baseY - 12, 80, 30, 24, ['rgba(190,205,195,0.22)', 'rgba(40,40,35,0.4)', 'rgba(120,100,55,0.25)'], rnd, 1.4);
+  // Taxi checkerboard stripe along side
+  if (isTaxi) {
+    for (let cu = -0.7; cu <= 0.6; cu += 0.22) {
+      poly([pt(cu, 1, 8.5), pt(cu + 0.1, 1, 8.5), pt(cu + 0.1, 1, 10), pt(cu, 1, 10)], '#18191a');
+      poly([pt(cu + 0.1, 1, 8.5), pt(cu + 0.2, 1, 8.5), pt(cu + 0.2, 1, 10), pt(cu + 0.1, 1, 10)], '#f8faf9');
+    }
+  }
+
+  // Pickup rust patches
+  if (isPickup) {
+    for (let i = 0; i < 4; i++) {
+      const ru = -0.7 + i * 0.4 + (rnd() - 0.5) * 0.1;
+      poly([pt(ru, 1, 4 + rnd() * 4), pt(ru + 0.2, 1, 4 + rnd() * 4), pt(ru + 0.15, 1, 11), pt(ru - 0.05, 1, 11)], '#482012');
+    }
+  }
+
+  // Door seam grooves & handle
+  poly([pt(-0.08, 1, 4), pt(-0.05, 1, 4), pt(-0.05, 1, 14.5), pt(-0.08, 1, 14.5)], 'rgba(20,24,22,0.6)');
+  poly([pt(0.36, 1, 4), pt(0.39, 1, 4), pt(0.39, 1, 14.5), pt(0.36, 1, 14.5)], 'rgba(20,24,22,0.6)');
+  // Handles
+  const h1 = pt(-0.25, 1, 12);
+  const h2 = pt(0.18, 1, 12);
+  ctx.fillStyle = '#8f969a';
+  ctx.fillRect(h1.x - 1.5, h1.y - 0.8, 3, 1.4);
+  ctx.fillRect(h2.x - 1.5, h2.y - 0.8, 3, 1.4);
+
+  // Front Face (u = 1, facing SE/SW)
+  const frontColor = shade(baseBodyColor, -0.15);
+  poly([pt(1, -1, 3), pt(1, 1, 3), pt(1, 1, 15), pt(1, -1, 15)], frontColor, 'rgba(15,18,17,0.7)', 0.8);
+
+  // Front Grille
+  poly([pt(1, -0.55, 5), pt(1, 0.55, 5), pt(1, 0.55, 11), pt(1, -0.55, 11)], '#161819');
+  for (let gy = 6.5; gy <= 10; gy += 1.6) {
+    const gL = pt(1, -0.5, gy);
+    const gR = pt(1, 0.5, gy);
+    ctx.strokeStyle = '#636c72';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(gL.x, gL.y);
+    ctx.lineTo(gR.x, gR.y);
+    ctx.stroke();
+  }
+
+  // Headlights
+  const hlL = pt(1, -0.78, 9);
+  const hlR = pt(1, 0.78, 9);
+  const drawHeadlight = (p: { x: number; y: number }, broken: boolean) => {
+    ctx.fillStyle = broken ? '#251b14' : '#fff5b8';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 2.8, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (!broken) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 1.4, 1.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+  drawHeadlight(hlL, isPickup);
+  drawHeadlight(hlR, false);
+
+  // Front Bumper
+  poly([pt(1.04, -0.95, 3), pt(1.04, 0.95, 3), pt(1.04, 0.95, 6), pt(1.04, -0.95, 6)], '#2d3337', '#151718', 0.8);
+  if (isPolice) {
+    // Bullbar push bumper
+    poly([pt(1.08, -0.4, 3), pt(1.08, 0.4, 3), pt(1.08, 0.4, 12), pt(1.08, -0.4, 12)], '#1a1c1e', '#3b4247', 0.8);
+  }
+
+  // Rear Taillights (if partially visible on corner)
+  const rl = pt(-1, 0.8, 10);
+  ctx.fillStyle = '#b81e14';
+  ctx.beginPath();
+  ctx.ellipse(rl.x, rl.y, 1.8, 1.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 4. Near Wheels (v = 0.95, in foreground)
+  drawWheel(-0.62, 0.95);
+  drawWheel(0.62, 0.95);
+
+  // 5. Hood & Trunk (Top body planes at z = 15)
+  // Hood (u: 0.25 to 1.0)
+  poly([pt(0.25, -0.98, 15), pt(1, -0.98, 15), pt(1, 0.98, 15), pt(0.25, 0.98, 15)], highlightColor, 'rgba(15,18,17,0.5)', 0.6);
+
+  // Hood reflection / highlight strip
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  const hRef1 = pt(0.35, 0.1, 15.2);
+  const hRef2 = pt(0.85, 0.1, 15.2);
+  ctx.beginPath();
+  ctx.moveTo(hRef1.x, hRef1.y);
+  ctx.lineTo(hRef2.x, hRef2.y);
+  ctx.stroke();
+
+  if (isPickup) {
+    // Open cargo bed in the back (u: -1.0 to -0.15)
+    // Sunken floor at z = 7
+    poly([pt(-0.95, -0.85, 7), pt(-0.15, -0.85, 7), pt(-0.15, 0.85, 7), pt(-0.95, 0.85, 7)], '#201612');
+    // Cargo side rim top at z = 15
+    poly([pt(-1, 0.85, 15), pt(-0.15, 0.85, 15), pt(-0.15, 0.98, 15), pt(-1, 0.98, 15)], highlightColor);
+    // Scrap barrel / tire inside bed
+    const scrapP = pt(-0.55, 0.05, 8);
+    ctx.fillStyle = '#4a5358';
+    ctx.beginPath();
+    ctx.ellipse(scrapP.x, scrapP.y, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Sedan trunk (u: -1.0 to -0.6)
+    poly([pt(-1, -0.95, 15), pt(-0.6, -0.95, 15), pt(-0.6, 0.95, 15), pt(-1, 0.95, 15)], highlightColor, 'rgba(15,18,17,0.5)', 0.6);
+  }
+
+  // 6. Cabin / Greenhouse (Extruded z = 15 to 27)
+  const cabRearU = isPickup ? -0.15 : -0.6;
+  const cabFrontU = 0.25;
+  const roofRearU = isPickup ? -0.12 : -0.48;
+  const roofFrontU = 0.06;
+
+  // Angled Windshield (from cabFrontU, z=15 to roofFrontU, z=26)
+  poly(
+    [pt(roofFrontU, -0.8, 26), pt(roofFrontU, 0.8, 26), pt(cabFrontU, 0.88, 15), pt(cabFrontU, -0.88, 15)],
+    '#202c30',
+    '#111618',
+    0.8,
+  );
+  // Specular sheen streak on windshield
+  ctx.fillStyle = 'rgba(215, 238, 248, 0.28)';
+  poly([pt(roofFrontU + 0.02, -0.1, 26), pt(roofFrontU + 0.06, 0.2, 26), pt(cabFrontU - 0.04, 0.45, 15.2), pt(cabFrontU - 0.08, 0.15, 15.2)], 'rgba(215, 238, 248, 0.28)');
+
+  // Cabin Near Side Windows & Pillars
+  poly(
+    [pt(roofRearU, 0.8, 26), pt(roofFrontU, 0.8, 26), pt(cabFrontU, 0.88, 15), pt(cabRearU, 0.88, 15)],
+    '#1b2528',
+    'rgba(15,18,17,0.7)',
+    0.8,
+  );
+  // Window B-pillar frame
+  if (!isPickup) {
+    const pillarTop = pt((roofRearU + roofFrontU) * 0.48, 0.8, 26);
+    const pillarBot = pt((cabRearU + cabFrontU) * 0.48, 0.88, 15);
+    ctx.strokeStyle = sideColor;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(pillarTop.x, pillarTop.y);
+    ctx.lineTo(pillarBot.x, pillarBot.y);
+    ctx.stroke();
+  }
+
+  // Cabin Rear Window (if visible)
+  poly(
+    [pt(cabRearU, -0.88, 15), pt(cabRearU, 0.88, 15), pt(roofRearU, 0.8, 26), pt(roofRearU, -0.8, 26)],
+    '#161f22',
+  );
+
+  // Cabin Roof (Top plane at z = 26)
+  const roofColor = isPolice ? '#f0f2f3' : shade(baseBodyColor, 0.12);
+  poly(
+    [pt(roofRearU, -0.8, 26), pt(roofFrontU, -0.8, 26), pt(roofFrontU, 0.8, 26), pt(roofRearU, 0.8, 26)],
+    roofColor,
+    'rgba(15,18,17,0.6)',
+    0.8,
+  );
+
+  // 7. Roof Props for Variants
+  if (isPolice) {
+    // Red & Blue Emergency Lightbar at z = 27..31
+    const lbU = (roofRearU + roofFrontU) * 0.5;
+    // Base mount
+    poly([pt(lbU - 0.04, -0.65, 27), pt(lbU + 0.04, -0.65, 27), pt(lbU + 0.04, 0.65, 27), pt(lbU - 0.04, 0.65, 27)], '#30363a');
+    // Left side (Red)
+    poly([pt(lbU - 0.04, -0.6, 28), pt(lbU + 0.04, -0.6, 28), pt(lbU + 0.04, -0.05, 28), pt(lbU - 0.04, -0.05, 28)], '#d92518');
+    poly([pt(lbU - 0.04, -0.6, 28), pt(lbU + 0.04, -0.6, 28), pt(lbU + 0.04, -0.6, 31), pt(lbU - 0.04, -0.6, 31)], '#ff3d2e');
+    // Center siren speaker
+    poly([pt(lbU - 0.05, -0.05, 28), pt(lbU + 0.05, -0.05, 28), pt(lbU + 0.05, 0.05, 28), pt(lbU - 0.05, 0.05, 28)], '#b0b8bc');
+    // Right side (Blue)
+    poly([pt(lbU - 0.04, 0.05, 28), pt(lbU + 0.04, 0.05, 28), pt(lbU + 0.04, 0.6, 28), pt(lbU - 0.04, 0.6, 28)], '#0077c8');
+    poly([pt(lbU - 0.04, 0.05, 28), pt(lbU + 0.04, 0.05, 28), pt(lbU + 0.04, 0.05, 31), pt(lbU - 0.04, 0.05, 31)], '#2db2ff');
+  } else if (isTaxi) {
+    // Yellow illuminated TAXI rooftop sign at z = 27..32
+    const txU = (roofRearU + roofFrontU) * 0.5;
+    poly([pt(txU - 0.06, -0.32, 27.5), pt(txU + 0.06, -0.32, 27.5), pt(txU + 0.06, 0.32, 27.5), pt(txU - 0.06, 0.32, 27.5)], '#f5d045');
+    poly([pt(txU - 0.06, -0.32, 31.5), pt(txU + 0.06, -0.32, 31.5), pt(txU + 0.06, 0.32, 31.5), pt(txU - 0.06, 0.32, 31.5)], '#ffeb78');
+    // Side face with TAXI letters
+    poly([pt(txU - 0.06, 0.32, 27.5), pt(txU + 0.06, 0.32, 27.5), pt(txU + 0.06, 0.32, 31.5), pt(txU - 0.06, 0.32, 31.5)], '#d9b022', '#222', 0.6);
+  }
+
+  // 8. Ground Glass & Debris Specks around vehicle
+  speckle(ctx, cx - 38, baseY - 10, 76, 28, 20, ['rgba(190,205,195,0.24)', 'rgba(35,38,34,0.45)', 'rgba(120,95,50,0.25)'], rnd, 1.4);
+
   return canvas;
 }
 
@@ -1843,7 +2042,7 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
       fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
       hasCross: true,
     };
-  } else if (lower.includes('market') || lower.includes('магаз') || lower.includes('quick stop')) {
+  } else if (lower.includes('market') || lower.includes('магаз') || lower.includes('продукт') || lower.includes('гастроном') || lower.includes('универмаг') || lower.includes('quick stop')) {
     theme = {
       bgTop: '#4a221e',
       bgMid: '#361715',
@@ -1854,7 +2053,7 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
       fontFamily: 'Georgia, "Times New Roman", serif',
       hasTrim: true,
     };
-  } else if (lower.includes('diner') || lower.includes('кафе') || lower.includes('laundromat') || lower.includes('tackle')) {
+  } else if (lower.includes('diner') || lower.includes('кафе') || lower.includes('заря') || lower.includes('рыболов') || lower.includes('laundromat') || lower.includes('tackle')) {
     theme = {
       bgTop: '#362518',
       bgMid: '#281a10',
@@ -1865,7 +2064,7 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
       fontFamily: '"Impact", "Arial Black", sans-serif',
       hasTrim: true,
     };
-  } else if (lower.includes('gun') || lower.includes('pawn') || lower.includes('hardware')) {
+  } else if (lower.includes('gun') || lower.includes('pawn') || lower.includes('hardware') || lower.includes('оружи') || lower.includes('охот') || lower.includes('хозтовар')) {
     theme = {
       bgTop: '#2d333a',
       bgMid: '#22262a',
@@ -1882,7 +2081,13 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
     lower.includes('auto') ||
     lower.includes('depot') ||
     lower.includes('shop') ||
-    lower.includes('storage')
+    lower.includes('storage') ||
+    lower.includes('склад') ||
+    lower.includes('автобаз') ||
+    lower.includes('кооператив') ||
+    lower.includes('комбинат') ||
+    lower.includes('мастерск') ||
+    lower.includes('терминал')
   ) {
     theme = {
       bgTop: '#2c2a26',

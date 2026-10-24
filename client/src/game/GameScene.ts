@@ -5,6 +5,7 @@ import {
   PLAYER_SPEED,
   PLAYER_SPRINT,
   PICKUP_RANGE,
+  TILE,
   chunkOf,
   moveCircle,
   type ContainerView,
@@ -169,12 +170,33 @@ export class GameScene extends Phaser.Scene {
     const target = ev.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
     if (ev.code === 'Escape') {
-      if (this.hud.isChatOpen) this.hud.closeChat();
-      else if (this.hud.isInventoryOpen) this.hud.closeInventory(true);
+      if (this.hud.isDevPanelOpen) {
+        this.hud.closeDevPanel();
+        return;
+      }
+      if (this.hud.isSettingsOpen) {
+        this.hud.closeSettings();
+        return;
+      }
+      if (this.hud.isChatOpen) {
+        this.hud.closeChat();
+        return;
+      }
+      if (this.hud.isInventoryOpen) {
+        this.hud.closeInventory(true);
+        this.audio.inventory(false);
+        return;
+      }
+      this.hud.toggleSettings();
+      return;
+    }
+    if ((ev.code === 'F1' || ev.code === 'Backquote') && !ev.repeat) {
+      this.hud.toggleDevPanel();
       return;
     }
     if (ev.code === 'KeyI' && !ev.repeat) {
       this.hud.toggleInventory();
+      this.audio.inventory(this.hud.isInventoryOpen);
       this.keys.clear();
       return;
     }
@@ -203,20 +225,26 @@ export class GameScene extends Phaser.Scene {
 
   private onKeyUp = (ev: KeyboardEvent): void => {
     this.keys.delete(ev.code);
+    if (!this.movingInput() && this.selfSnapshot?.status === 'alive' && !this.hud.blocksInput) {
+      this.net.sendInput(0, 0, this.aim, false);
+    }
   };
 
   private interact(): void {
     if (!this.selfSnapshot || this.selfSnapshot.status !== 'alive' || this.hud.blocksInput) return;
     const { x, y } = this.predicted;
-    const door = this.world.nearestDoor(x, y, 1.7);
+    const door = this.world.nearestDoor(x, y, 2.2);
     if (door) {
       this.net.action({ t: 'interact' });
       return;
     }
     const container = this.world.nearestContainer(x, y, 1.95);
     if (container) {
-      this.net.action({ t: 'open_container', id: container.id });
-      return;
+      const cBuilding = this.world.buildingAt(container.x + 0.5, container.y + 0.5)?.id ?? null;
+      if (cBuilding === this.currentBuilding) {
+        this.net.action({ t: 'open_container', id: container.id });
+        return;
+      }
     }
     const item = this.nearestItem();
     if (item) {
@@ -232,6 +260,8 @@ export class GameScene extends Phaser.Scene {
     for (const it of this.itemSprites.keys()) {
       const snap = this.currentItems.get(it);
       if (!snap) continue;
+      const itBuilding = this.world.buildingAt(snap.x, snap.y)?.id ?? null;
+      if (itBuilding !== this.currentBuilding) continue;
       const d = Math.hypot(snap.x - this.predicted.x, snap.y - this.predicted.y);
       if (d < bestD) {
         bestD = d;
@@ -292,11 +322,10 @@ export class GameScene extends Phaser.Scene {
       name: s.name,
     });
     this.selfView.setLocal(true);
-    this.cameras.main.startFollow(this.selfView.sprite, false, 0.16, 0.16);
+    this.cameras.main.startFollow(this.selfView.sprite, false, 0.24, 0.24);
     this.cameras.main.roundPixels = false;
     this.cameras.main.setFollowOffset(0, 24);
     this.cameras.main.setZoom(1.34);
-    this.dust?.startFollow(this.selfView.sprite, 0, 0);
   }
 
   private applyWelcome(msg: Extract<ServerMessage, { t: 'welcome' }>): void {
@@ -685,7 +714,7 @@ export class GameScene extends Phaser.Scene {
         const open = !!ev.open;
         this.world.setDoor(id, open);
         for (const view of this.chunks.values()) view.updateDoor(id, open);
-        if (dist < 16) this.audio.door(vol);
+        if (dist < 16) this.audio.door(open, vol);
         break;
       }
       case 'pickup': {
@@ -784,7 +813,17 @@ export class GameScene extends Phaser.Scene {
       this.selfView.update(dt, now);
       if ((mx !== 0 || my !== 0) && now - this.lastFootstep > (sprint ? 290 : 430)) {
         this.lastFootstep = now;
-        this.audio.footstep(0.7);
+        const tx = Math.floor(this.predicted.x);
+        const ty = Math.floor(this.predicted.y);
+        const tileId = this.world.tileAt(tx, ty);
+        let surface: 'asphalt' | 'wood' | 'grass' | 'dirt' | 'concrete' | 'interior' = 'asphalt';
+        if (this.currentBuilding || tileId === TILE.WOOD_FLOOR) surface = 'wood';
+        else if (tileId === TILE.TILE_FLOOR) surface = 'interior';
+        else if (tileId === TILE.GRASS) surface = 'grass';
+        else if (tileId === TILE.DIRT || tileId === TILE.RUBBLE) surface = 'dirt';
+        else if (tileId === TILE.CONCRETE || tileId === TILE.SIDEWALK) surface = 'concrete';
+        else surface = 'asphalt';
+        this.audio.footstep(surface, 0.7);
       }
     }
 
@@ -869,6 +908,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.hud.updateSelf(this.selfSnapshot, this.lastOnline);
+    this.hud.updateTelemetry(
+      this.predicted.x,
+      this.predicted.y,
+      this.currentBuilding,
+      Math.round(this.game.loop.actualFps),
+      this.zombieViews.size,
+      this.playerViews.size,
+    );
   }
 
   private updatePrompt(): void {
@@ -878,7 +925,7 @@ export class GameScene extends Phaser.Scene {
     }
     const x = this.predicted.x;
     const y = this.predicted.y;
-    const door = this.world.nearestDoor(x, y, 1.7);
+    const door = this.world.nearestDoor(x, y, 2.2);
     if (door) {
       const open = this.world.doorOpen.get(door.id) ?? door.open;
       this.hud.setPrompt(`<b>E</b>${open ? 'Закрыть дверь' : 'Открыть дверь'}`);
@@ -886,8 +933,11 @@ export class GameScene extends Phaser.Scene {
     }
     const container = this.world.nearestContainer(x, y, 1.95);
     if (container) {
-      this.hud.setPrompt(`<b>E</b>Обыскать: ${container.label}`);
-      return;
+      const cBuilding = this.world.buildingAt(container.x + 0.5, container.y + 0.5)?.id ?? null;
+      if (cBuilding === this.currentBuilding) {
+        this.hud.setPrompt(`<b>E</b>Обыскать: ${container.label}`);
+        return;
+      }
     }
     const item = this.nearestItem();
     if (item) {
@@ -900,22 +950,32 @@ export class GameScene extends Phaser.Scene {
   private setBuildingFade(visual: BuildingVisual, inside: boolean, animate = true): void {
     if (this.buildingFade.get(visual.id) === inside) return;
     this.buildingFade.set(visual.id, inside);
-    const roofAlpha = inside ? 0.04 : 1;
-    const wallAlpha = inside ? 0.32 : 1;
+    const roofAlpha = inside ? 0 : 1;
+    const frontWallAlpha = inside ? 0.08 : 1;
+    const backWallAlpha = inside ? 0.85 : 1;
+    const doorAlpha = inside ? 0.95 : 1;
     if (animate) {
       if (visual.roofs.length) {
         this.tweens.killTweensOf(visual.roofs);
-        this.tweens.add({ targets: visual.roofs, alpha: roofAlpha, duration: 170, ease: 'Sine.easeOut' });
+        this.tweens.add({ targets: visual.roofs, alpha: roofAlpha, duration: 160, ease: 'Sine.easeOut' });
       }
-      const walls = [...visual.walls, ...visual.doors];
-      if (walls.length) {
-        this.tweens.killTweensOf(walls);
-        this.tweens.add({ targets: walls, alpha: wallAlpha, duration: 170, ease: 'Sine.easeOut' });
+      if (visual.frontWalls?.length) {
+        this.tweens.killTweensOf(visual.frontWalls);
+        this.tweens.add({ targets: visual.frontWalls, alpha: frontWallAlpha, duration: 160, ease: 'Sine.easeOut' });
+      }
+      if (visual.backWalls?.length) {
+        this.tweens.killTweensOf(visual.backWalls);
+        this.tweens.add({ targets: visual.backWalls, alpha: backWallAlpha, duration: 160, ease: 'Sine.easeOut' });
+      }
+      if (visual.doors.length) {
+        this.tweens.killTweensOf(visual.doors);
+        this.tweens.add({ targets: visual.doors, alpha: doorAlpha, duration: 160, ease: 'Sine.easeOut' });
       }
     } else {
       for (const r of visual.roofs) r.setAlpha(roofAlpha);
-      for (const w of visual.walls) w.setAlpha(wallAlpha);
-      for (const d of visual.doors) d.setAlpha(wallAlpha);
+      for (const w of visual.frontWalls ?? visual.walls) w.setAlpha(frontWallAlpha);
+      for (const w of visual.backWalls ?? []) w.setAlpha(backWallAlpha);
+      for (const d of visual.doors) d.setAlpha(doorAlpha);
     }
   }
 

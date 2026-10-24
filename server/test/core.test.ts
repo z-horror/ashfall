@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  CRAFT_RECIPES,
   ITEMS,
   LOOT_TABLES,
   PLAYER_RADIUS,
@@ -97,4 +98,26 @@ test('a different seed produces a different city', () => {
   const aNames = a.buildings.map((x) => x.name).join('|');
   const bNames = b.buildings.map((x) => x.name).join('|');
   assert.notEqual(aNames, bNames);
+});
+
+test('craft recipes have valid items and positive ingredient counts', () => {
+  assert.ok(CRAFT_RECIPES.length > 0);
+  for (const recipe of CRAFT_RECIPES) {
+    assert.ok(ITEMS[recipe.resultKey], `Recipe ${recipe.id} produces unknown item ${recipe.resultKey}`);
+    assert.ok(recipe.resultQty > 0, `Recipe ${recipe.id} resultQty must be > 0`);
+    assert.ok(recipe.ingredients.length > 0, `Recipe ${recipe.id} has no ingredients`);
+    for (const ing of recipe.ingredients) {
+      assert.ok(ITEMS[ing.key], `Ingredient ${ing.key} in ${recipe.id} is unknown`);
+      assert.ok(ing.qty > 0, `Ingredient ${ing.key} quantity must be > 0`);
+    }
+  }
+});
+
+test('all building doors have passable interior thresholds', () => {
+  const world = new World('test-doors');
+  assert.ok(world.doors.size > 0);
+  for (const door of world.doors.values()) {
+    const idx = world.idx(door.x, door.y);
+    assert.equal(world.walls[idx], 0, `Doorway tile (${door.x}, ${door.y}) must not have a wall`);
+  }
 });

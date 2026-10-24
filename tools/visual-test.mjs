@@ -46,7 +46,12 @@ await page.waitForTimeout(1500);
 await page.screenshot({ path: 'screenshots/00-auth.png' });
 
 console.log('clicking guest...');
-await page.click('#auth-guest');
+const savedVisible = await page.evaluate(() => !document.getElementById('auth-saved-box')?.classList.contains('hidden'));
+if (savedVisible) {
+  await page.click('#auth-new-guest');
+} else {
+  await page.click('#auth-guest');
+}
 console.log('waiting for world...');
 await page.waitForFunction(
   () => document.getElementById('loading-screen')?.classList.contains('hidden'),

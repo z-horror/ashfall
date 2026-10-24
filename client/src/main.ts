@@ -17,6 +17,13 @@ const registerBtn = document.getElementById('auth-register') as HTMLButtonElemen
 const guestBtn = document.getElementById('auth-guest') as HTMLButtonElement;
 const form = document.getElementById('auth-form') as HTMLFormElement;
 
+// Saved session card elements
+const authSavedBox = document.getElementById('auth-saved-box') as HTMLElement;
+const authSavedName = document.getElementById('auth-saved-name') as HTMLElement;
+const authContinueBtn = document.getElementById('auth-continue') as HTMLButtonElement;
+const authNewGuestBtn = document.getElementById('auth-new-guest') as HTMLButtonElement;
+const authSwitchUserBtn = document.getElementById('auth-switch-user') as HTMLButtonElement;
+
 const audio = new AudioEngine();
 let net: NetClient;
 let hud: HUD;
@@ -31,7 +38,9 @@ function showError(message: string): void {
 
 function setBusy(value: boolean): void {
   busy = value;
-  for (const btn of [submitBtn, registerBtn, guestBtn]) btn.disabled = value;
+  for (const btn of [submitBtn, registerBtn, guestBtn, authContinueBtn, authNewGuestBtn, authSwitchUserBtn]) {
+    if (btn) btn.disabled = value;
+  }
 }
 
 function showAuth(message = ''): void {
@@ -50,7 +59,9 @@ function buildServices(): void {
     onStatus: (status, detail) => {
       hud.setConnection(status, detail);
     },
-    onLatency: () => {},
+    onLatency: (ms) => {
+      hud.setLatency(ms);
+    },
     onFatal: (message) => {
       api.clearSession();
       showAuth(message);
@@ -70,8 +81,28 @@ function buildServices(): void {
       hud.setSoundLabel(audio.enabled);
     },
     respawn: () => net.action({ t: 'respawn' }),
+    craft: (recipeId) => {
+      net.action({ t: 'craft', recipeId });
+      audio.craft();
+    },
+    devAction: (action, args) => {
+      net.action({ t: 'dev_action', action, args });
+    },
+    logout: () => {
+      net?.close();
+      api.clearSession();
+      location.reload();
+    },
+    setAudioVolume: (category, val) => {
+      if (category === 'master') audio.setMasterVolume(val);
+      else if (category === 'sfx') audio.setSfxVolume(val);
+      else if (category === 'ambient') audio.setAmbientVolume(val);
+    },
+    setAudioMuted: (muted) => {
+      audio.setMuted(muted);
+    },
   });
-  hud.setSoundLabel(true);
+  hud.setSoundLabel(audio.enabled);
 
   scene = new GameScene({ net, hud, audio });
 }
@@ -183,16 +214,42 @@ async function boot(): Promise<void> {
     showAuth();
     return;
   }
-  authScreen.classList.add('hidden');
+
+  // Validate saved session
   loadingScreen.classList.remove('hidden');
-  loadingText.textContent = 'Восстанавливаем сессию...';
+  loadingText.textContent = 'Проверка сессии...';
   const valid = await validateSession(saved.token);
+  loadingScreen.classList.add('hidden');
+
   if (!valid) {
     api.clearSession();
-    showAuth('Сессия истекла. Войдите снова.');
+    showAuth('Предыдущая сессия истекла. Войдите снова.');
     return;
   }
-  startGame(saved.token);
+
+  // Offer choice to continue, create new guest, or switch account
+  authSavedName.textContent = saved.name || 'Survivor';
+  authSavedBox.classList.remove('hidden');
+  form.classList.add('hidden');
+  showAuth();
+
+  authContinueBtn.onclick = () => {
+    audio.ensure();
+    startGame(saved.token);
+  };
+
+  authNewGuestBtn.onclick = () => {
+    void enterWith(api.guest());
+  };
+
+  authSwitchUserBtn.onclick = () => {
+    api.clearSession();
+    authSavedBox.classList.add('hidden');
+    form.classList.remove('hidden');
+    usernameInput.value = '';
+    passwordInput.value = '';
+    usernameInput.focus();
+  };
 }
 
 void boot();

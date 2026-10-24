@@ -92,7 +92,10 @@ export class NetClient {
         this.setStatus('online');
         this.startPing();
       }
-      if (msg.t === 'pong') this.latency = Math.round(performance.now() - this.lastPingAt);
+      if (msg.t === 'pong') {
+        this.latency = Math.round(performance.now() - this.lastPingAt);
+        this.handlers.onLatency(this.latency);
+      }
       this.handlers.onMessage(msg);
     });
 
@@ -130,10 +133,11 @@ export class NetClient {
   private startPing(): void {
     this.stopPing();
     this.lastPingAt = performance.now();
+    this.sendRaw({ t: 'ping', ts: Date.now() });
     this.pingTimer = window.setInterval(() => {
       this.lastPingAt = performance.now();
       this.sendRaw({ t: 'ping', ts: Date.now() });
-    }, 5000);
+    }, 3000);
   }
 
   private stopPing(): void {

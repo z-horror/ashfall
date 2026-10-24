@@ -684,7 +684,7 @@ body {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(820px, 92vw);
+  width: min(960px, 94vw);
   max-height: 76vh;
   background: var(--panel);
   border: 1px solid var(--line-strong);
@@ -736,7 +736,7 @@ body {
 }
 .inv-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1px;
   background: var(--line);
   overflow: hidden;
@@ -965,6 +965,338 @@ body {
 @keyframes hurt {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+/* ---------- HUD Right Bar & Large Action Buttons ---------- */
+.hud-right-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.hud-top-actions {
+  display: flex;
+  gap: 8px;
+}
+.hud-toolbar-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  background: rgba(14, 18, 16, 0.94);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  padding: 8px 14px;
+  min-height: 34px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.hud-toolbar-btn:hover {
+  background: rgba(32, 40, 35, 0.95);
+  border-color: var(--amber);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.hud-toolbar-btn.dev-toggle {
+  color: var(--amber);
+  border-color: rgba(211, 173, 100, 0.6);
+}
+.hud-toolbar-btn.dev-toggle:hover {
+  background: rgba(211, 173, 100, 0.22);
+  border-color: var(--amber);
+}
+
+/* ---------- Container Fast Looting Buttons ---------- */
+.col-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.col-head-row h3 {
+  margin: 0 !important;
+}
+.btn-take-all {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background: rgba(211, 173, 100, 0.2);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-take-all:hover {
+  background: var(--amber);
+  color: #0b0d0c;
+}
+.row-quick-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(127, 156, 134, 0.16);
+  border: 1px solid rgba(127, 156, 134, 0.45);
+  color: var(--moss);
+  padding: 4px 8px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.row-quick-btn:hover {
+  background: var(--moss);
+  color: #0b0d0c;
+}
+.row-quick-btn.put {
+  background: rgba(211, 173, 100, 0.14);
+  border-color: rgba(211, 173, 100, 0.4);
+  color: var(--amber);
+}
+.row-quick-btn.put:hover {
+  background: var(--amber);
+  color: #0b0d0c;
+}
+
+/* ---------- Modals (Settings & Dev Panel) ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: auto;
+}
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85);
+  width: 440px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.dev-modal-card {
+  width: 520px;
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+.modal-head h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 20px;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  margin: 0;
+}
+
+.setting-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.setting-section h3 {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+  margin: 0;
+  font-weight: 600;
+}
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.setting-row input[type='range'] {
+  accent-color: var(--amber);
+  cursor: pointer;
+  flex: 1;
+  max-width: 140px;
+  margin: 0 12px;
+}
+.setting-row span:last-child {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  width: 38px;
+  text-align: right;
+  color: var(--text);
+}
+.checkbox-row {
+  cursor: pointer;
+}
+.checkbox-row input[type='checkbox'] {
+  accent-color: var(--amber);
+  margin-right: 8px;
+  cursor: pointer;
+}
+.controls-guide {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.controls-guide b {
+  color: var(--text);
+}
+.session-section {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.btn.full-width {
+  width: 100%;
+  display: block;
+  text-align: center;
+}
+
+/* ---------- Dev Panel Layout ---------- */
+.dev-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dev-telemetry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.telem-item span {
+  color: var(--text-faint);
+  margin-right: 6px;
+}
+.telem-item b {
+  color: var(--amber);
+}
+.dev-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------- Crafting in Inventory ---------- */
+.craft-col {
+  background: var(--panel);
+  padding: 16px 20px;
+  min-height: 260px;
+  overflow-y: auto;
+}
+.craft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.craft-card {
+  background: rgba(20, 24, 21, 0.6);
+  border: 1px solid var(--line);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s;
+}
+.craft-card:hover {
+  border-color: var(--line-strong);
+}
+.craft-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.craft-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.craft-reqs {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.req-tag {
+  padding: 2px 6px;
+  border: 1px solid transparent;
+}
+.req-tag.ready {
+  color: var(--moss);
+  background: rgba(127, 156, 134, 0.12);
+  border-color: rgba(127, 156, 134, 0.25);
+}
+.req-tag.missing {
+  color: var(--rust-soft);
+  background: rgba(182, 72, 47, 0.12);
+  border-color: rgba(182, 72, 47, 0.25);
+}
+.craft-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 6px 12px;
+  background: rgba(211, 173, 100, 0.15);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.15s;
+}
+.craft-btn:hover:not(:disabled) {
+  background: var(--amber);
+  color: #000;
+}
+.craft-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--line);
+  color: var(--text-faint);
+  background: transparent;
+}
+
+/* ---------- Auth Saved Session Box ---------- */
+.auth-saved-box {
+  background: rgba(18, 22, 19, 0.85);
+  border: 1px solid var(--amber);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+.saved-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+  font-weight: 600;
+}
+.saved-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.12em;
+  color: var(--text);
 }
 
 @media (max-width: 860px) {
