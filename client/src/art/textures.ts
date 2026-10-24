@@ -135,59 +135,64 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
   };
 
   if (kind === 'asphalt') {
-    const bases = ['#33373a', '#2e3235', '#383c3e', '#303438', '#35393b', '#2b2f32'];
+    const bases = [
+      '#34383b', '#2f3336', '#363a3d', '#313538', '#35393c',
+      '#2c3033', '#33373a', '#303437', '#35383b', '#2e3235',
+    ];
     fillDiamond(bases[variant % bases.length]);
-    speckle(ctx, 0, 0, 64, 32, 120, ['#24282a', '#41464a', '#4a4f50', '#1e2224'], rnd, 1.6);
+    speckle(ctx, 0, 0, 64, 32, 130, ['#24282a', '#41464a', '#4a4f50', '#1e2224'], rnd, 1.5);
     // cracks
-    const cracks = 2 + Math.floor(rnd() * 3);
+    const cracks = variant % 3 === 0 ? 3 : variant % 2 === 0 ? 1 : 0;
     for (let c = 0; c < cracks; c++) {
       let x = rnd() * 64;
       let y = rnd() * 32;
-      ctx.strokeStyle = rgba('#121415', 0.55);
-      ctx.lineWidth = 0.6 + rnd() * 0.7;
+      ctx.strokeStyle = rgba('#121415', 0.45);
+      ctx.lineWidth = 0.5 + rnd() * 0.5;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      for (let i = 0; i < 5; i++) {
-        x += (rnd() - 0.5) * 15;
-        y += (rnd() - 0.35) * 7;
+      for (let i = 0; i < 4; i++) {
+        x += (rnd() - 0.5) * 12;
+        y += (rnd() - 0.35) * 6;
         ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
-    // patches / stains
-    if (rnd() < 0.5) {
-      ctx.fillStyle = 'rgba(18,20,21,0.28)';
-      ctx.beginPath();
-      ctx.ellipse(12 + rnd() * 40, 8 + rnd() * 16, 7 + rnd() * 7, 2.5 + rnd() * 2, rnd(), 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // subtle variations across road tiles
     if (variant === 3) {
-      // manhole
-      ctx.fillStyle = '#232628';
+      ctx.fillStyle = 'rgba(20,22,24,0.22)';
       ctx.beginPath();
-      ctx.ellipse(32, 16, 9, 4.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(32, 16, 12, 5, 0.2, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#41464a';
+    } else if (variant === 5) {
+      ctx.fillStyle = 'rgba(15,17,19,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(28, 17, 16, 4, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (variant === 7) {
+      ctx.strokeStyle = 'rgba(16,18,20,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(14, 25);
+      ctx.lineTo(48, 8);
+      ctx.stroke();
+    } else if (variant === 8) {
+      ctx.strokeStyle = 'rgba(195,182,132,0.22)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(22, 21);
+      ctx.lineTo(42, 11);
+      ctx.stroke();
+    } else if (variant === 9) {
+      ctx.fillStyle = '#222527';
+      ctx.beginPath();
+      ctx.ellipse(32, 16, 8.5, 4.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#43484c';
       ctx.lineWidth = 1;
       ctx.stroke();
-      for (let i = -6; i <= 6; i += 3) {
-        line(ctx, 23, 16 + i * 0.55, 41, 16 + i * 0.55, 'rgba(90,96,98,0.35)', 0.6);
+      for (let i = -5; i <= 5; i += 2.5) {
+        line(ctx, 24, 16 + i * 0.5, 40, 16 + i * 0.5, 'rgba(95,100,104,0.35)', 0.55);
       }
-    }
-    if (variant === 4) {
-      ctx.fillStyle = 'rgba(12,14,15,0.55)';
-      ctx.beginPath();
-      ctx.ellipse(36, 18, 8, 3.6, 0.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (variant === 5) {
-      // faded lane paint fleck
-      ctx.strokeStyle = 'rgba(190,178,130,0.22)';
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(20, 22);
-      ctx.lineTo(44, 12);
-      ctx.stroke();
     }
   } else if (kind === 'sidewalk') {
     const bases = ['#6a6a60', '#65655b', '#707066', '#616158'];
@@ -920,7 +925,7 @@ function makeTree(variant: number): HTMLCanvasElement {
     const x = 30 + rnd() * 125;
     const y = 24 + rnd() * 110;
     const r = 12 + rnd() * 22;
-    const green = variant === 1 ? ['#28371f', '#334526', '#405334'] : ['#2b3a22', '#38492b', '#4a5936'];
+    const green = variant === 1 ? ['#52371c', '#684722', '#7e5628', '#422c16'] : ['#25351e', '#2f4227', '#3d5232', '#212d1b'];
     ctx.fillStyle = green[Math.floor(rnd() * green.length)];
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * 0.8, rnd() * 3, 0, Math.PI * 2);
@@ -929,7 +934,7 @@ function makeTree(variant: number): HTMLCanvasElement {
   // lit edges
   ctx.globalCompositeOperation = 'screen';
   for (let i = 0; i < 16; i++) {
-    ctx.fillStyle = 'rgba(120,140,95,0.12)';
+    ctx.fillStyle = variant === 1 ? 'rgba(215,165,75,0.14)' : 'rgba(120,140,95,0.12)';
     ctx.beginPath();
     ctx.ellipse(38 + rnd() * 110, 26 + rnd() * 70, 4 + rnd() * 8, 2 + rnd() * 5, rnd() * 3, 0, Math.PI * 2);
     ctx.fill();
@@ -983,7 +988,7 @@ function makeCar(horizontal: boolean, variant: number): HTMLCanvasElement {
   const rnd = mulberry(2500 + variant * 21 + (horizontal ? 0 : 101));
   const cx = W / 2;
   const baseY = horizontal ? 92 : 126;
-  const colors = ['#5d4a3d', '#46514f', '#5a3b34', '#4a4d3b'];
+  const colors = ['#475542', '#2e3a47', '#6c5936', '#593430'];
   const color = colors[variant % colors.length];
   ctx.fillStyle = 'rgba(0,0,0,0.34)';
   ctx.beginPath();
@@ -1799,6 +1804,19 @@ function makeLight(): HTMLCanvasElement {
   return canvas;
 }
 
+interface SignTheme {
+  bgTop: string;
+  bgMid: string;
+  bgBot: string;
+  border: string;
+  textColor: string;
+  accentColor: string;
+  fontFamily: string;
+  hasCross?: boolean;
+  hasHazard?: boolean;
+  hasTrim?: boolean;
+}
+
 const signCache = new Map<string, string>();
 
 export function getBuildingSign(scene: Phaser.Scene, name: string): string {
@@ -1809,38 +1827,200 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
     signCache.set(name, key);
     return key;
   }
-  const { canvas, ctx } = makeCanvas(300, 74);
+  const { canvas, ctx } = makeCanvas(180, 52);
   const rnd = mulberry(hashString(name));
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(6, 8, 288, 60);
-  const board = ctx.createLinearGradient(0, 6, 0, 68);
-  board.addColorStop(0, '#4a4233');
-  board.addColorStop(0.5, '#3a342a');
-  board.addColorStop(1, '#2e2922');
-  ctx.fillStyle = board;
-  ctx.fillRect(4, 4, 292, 58);
-  ctx.strokeStyle = 'rgba(190, 175, 135, 0.25)';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(8, 8, 284, 50);
+
+  const lower = name.toLowerCase();
+  let theme: SignTheme;
+  if (lower.includes('pharmacy') || lower.includes('аптек') || lower.includes('med')) {
+    theme = {
+      bgTop: '#1a372d',
+      bgMid: '#122921',
+      bgBot: '#0c1b16',
+      border: 'rgba(75, 205, 140, 0.45)',
+      textColor: '#eafbf3',
+      accentColor: '#3ec788',
+      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+      hasCross: true,
+    };
+  } else if (lower.includes('market') || lower.includes('магаз') || lower.includes('quick stop')) {
+    theme = {
+      bgTop: '#4a221e',
+      bgMid: '#361715',
+      bgBot: '#260f0e',
+      border: 'rgba(235, 180, 80, 0.55)',
+      textColor: '#ffebd0',
+      accentColor: '#dfa642',
+      fontFamily: 'Georgia, "Times New Roman", serif',
+      hasTrim: true,
+    };
+  } else if (lower.includes('diner') || lower.includes('кафе') || lower.includes('laundromat') || lower.includes('tackle')) {
+    theme = {
+      bgTop: '#362518',
+      bgMid: '#281a10',
+      bgBot: '#1d120a',
+      border: 'rgba(255, 165, 65, 0.55)',
+      textColor: '#ffdda6',
+      accentColor: '#f5902b',
+      fontFamily: '"Impact", "Arial Black", sans-serif',
+      hasTrim: true,
+    };
+  } else if (lower.includes('gun') || lower.includes('pawn') || lower.includes('hardware')) {
+    theme = {
+      bgTop: '#2d333a',
+      bgMid: '#22262a',
+      bgBot: '#17191d',
+      border: 'rgba(185, 190, 200, 0.45)',
+      textColor: '#e8ecf0',
+      accentColor: '#e5b945',
+      fontFamily: '"Arial Black", "Trebuchet MS", sans-serif',
+      hasHazard: true,
+    };
+  } else if (
+    lower.includes('warehouse') ||
+    lower.includes('garage') ||
+    lower.includes('auto') ||
+    lower.includes('depot') ||
+    lower.includes('shop') ||
+    lower.includes('storage')
+  ) {
+    theme = {
+      bgTop: '#2c2a26',
+      bgMid: '#211f1c',
+      bgBot: '#161514',
+      border: 'rgba(220, 175, 55, 0.55)',
+      textColor: '#ece6d8',
+      accentColor: '#d8a32a',
+      fontFamily: '"Consolas", monospace, sans-serif',
+      hasHazard: true,
+    };
+  } else {
+    // Apartments, Tenements, Flats, Housing, default
+    theme = {
+      bgTop: '#3a3429',
+      bgMid: '#2c261e',
+      bgBot: '#1e1a14',
+      border: 'rgba(215, 190, 135, 0.45)',
+      textColor: '#f2e6cc',
+      accentColor: '#caa96a',
+      fontFamily: 'Georgia, "Times New Roman", serif',
+      hasTrim: true,
+    };
+  }
+
+  // Drop shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  roundRect(ctx, 4, 6, 172, 42, 3);
+  ctx.fill();
+
+  // Mounting plate gradient
+  const grad = ctx.createLinearGradient(0, 4, 0, 48);
+  grad.addColorStop(0, theme.bgTop);
+  grad.addColorStop(0.5, theme.bgMid);
+  grad.addColorStop(1, theme.bgBot);
+  ctx.fillStyle = grad;
+  roundRect(ctx, 3, 4, 174, 44, 3);
+  ctx.fill();
+
+  // Subtle inner highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(5, 6);
+  ctx.lineTo(175, 6);
+  ctx.stroke();
+
+  // Border frame
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 1.4;
+  roundRect(ctx, 3, 4, 174, 44, 3);
+  ctx.stroke();
+
+  // Optional decorative inner trim
+  if (theme.hasTrim) {
+    ctx.strokeStyle = 'rgba(220, 185, 125, 0.2)';
+    ctx.lineWidth = 0.8;
+    roundRect(ctx, 6, 7, 168, 38, 2);
+    ctx.stroke();
+  }
+
+  // Corner rivets
+  const rivets = [
+    [8, 9],
+    [172, 9],
+    [8, 43],
+    [172, 43],
+  ];
+  for (const [rx, ry] of rivets) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath();
+    ctx.arc(rx + 0.5, ry + 0.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#8e969a';
+    ctx.beginPath();
+    ctx.arc(rx, ry, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c5ccd0';
+    ctx.fillRect(rx - 0.5, ry - 0.5, 1, 1);
+  }
+
+  let textX = 90;
+  let maxTextW = 152;
+
+  // Green Cross icon for pharmacy
+  if (theme.hasCross) {
+    textX = 100;
+    maxTextW = 136;
+    ctx.fillStyle = theme.accentColor;
+    ctx.shadowColor = theme.accentColor;
+    ctx.shadowBlur = 4;
+    ctx.fillRect(14, 21, 14, 10);
+    ctx.fillRect(16, 17, 10, 18);
+    ctx.shadowBlur = 0;
+  }
+
+  // Caution hazard notch for industrial / weapons
+  if (theme.hasHazard) {
+    ctx.fillStyle = theme.accentColor;
+    ctx.beginPath();
+    ctx.moveTo(7, 7);
+    ctx.lineTo(15, 7);
+    ctx.lineTo(7, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(173, 41);
+    ctx.lineTo(165, 41);
+    ctx.lineTo(173, 33);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Text fitting
+  const cleanTitle = name.toUpperCase();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const size = name.length > 17 ? 20 : name.length > 12 ? 25 : 30;
-  ctx.font = `600 ${size}px Georgia, 'Times New Roman', serif`;
-  ctx.fillStyle = 'rgba(210, 197, 158, 0.82)';
-  ctx.fillText(name.toUpperCase(), 150, 32);
-  // weathering
-  for (let i = 0; i < 26; i++) {
-    ctx.fillStyle = `rgba(${rnd() < 0.5 ? '16,15,12' : '120,75,38'},${0.08 + rnd() * 0.22})`;
-    ctx.fillRect(6 + rnd() * 286, 6 + rnd() * 54, 1 + rnd() * 12, 1 + rnd() * 2);
+
+  let fontSize = 15;
+  ctx.font = `700 ${fontSize}px ${theme.fontFamily}`;
+  while (fontSize > 9 && ctx.measureText(cleanTitle).width > maxTextW) {
+    fontSize -= 0.8;
+    ctx.font = `700 ${fontSize.toFixed(1)}px ${theme.fontFamily}`;
   }
-  // broken corner
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.beginPath();
-  ctx.moveTo(296, 62);
-  ctx.lineTo(282, 62);
-  ctx.lineTo(296, 48);
-  ctx.closePath();
-  ctx.fill();
+
+  // Text drop shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillText(cleanTitle, textX + 1, 26.5);
+  // Text main fill
+  ctx.fillStyle = theme.textColor;
+  ctx.fillText(cleanTitle, textX, 25.5);
+
+  // Weathering specks & scratch lines
+  for (let i = 0; i < 18; i++) {
+    ctx.fillStyle = `rgba(${rnd() < 0.5 ? '12,14,15' : '110,75,40'},${0.08 + rnd() * 0.18})`;
+    ctx.fillRect(8 + rnd() * 164, 8 + rnd() * 36, 1 + rnd() * 6, 1 + rnd() * 1.5);
+  }
+
   if (!scene.textures.exists(key)) scene.textures.addCanvas(key, canvas);
   signCache.set(name, key);
   return key;
@@ -1977,7 +2157,7 @@ export const GROUND_KEYS: Record<GroundKind, string[]> = {
 
 export function buildEnvironmentArt(scene: Phaser.Scene): void {
   const groundCounts: Array<[GroundKind, number]> = [
-    ['asphalt', 6],
+    ['asphalt', 10],
     ['sidewalk', 4],
     ['grass', 5],
     ['dirt', 4],

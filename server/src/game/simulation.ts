@@ -318,7 +318,7 @@ export class Simulation {
       x,
       y,
       aim: character.aim,
-      hp: status === 'alive' ? Math.max(1, character.hp) : 0,
+      hp: status === 'alive' ? (config.testCombatBuffs ? Math.max(character.hp, 150) : Math.max(1, character.hp)) : 0,
       stamina: character.stamina,
       hunger: character.hunger,
       thirst: character.thirst,
@@ -496,7 +496,7 @@ export class Simulation {
         if (this.dedupe(p, 'respawn', msg.seq)) void this.handleRespawn(p);
         break;
       case 'chat':
-        this.handleChat(p, msg.text);
+        void this.handleChat(p, msg.text);
         break;
       case 'ping':
         this.send(p, { t: 'pong', ts: msg.ts });
@@ -585,8 +585,8 @@ export class Simulation {
       p.hp -= 0.65 * dt;
       p.lastDamageAt = now;
     }
-    if (p.hunger > 35 && p.thirst > 35 && now - p.lastDamageAt > 6000 && p.hp < PLAYER_MAX_HP) {
-      p.hp = Math.min(PLAYER_MAX_HP, p.hp + 0.9 * dt);
+    if (p.hunger > 35 && p.thirst > 35 && now - p.lastDamageAt > 6000 && p.hp < this.playerMaxHp) {
+      p.hp = Math.min(this.playerMaxHp, p.hp + 0.9 * dt);
     }
     if (p.hp <= 0 && p.status === 'alive') {
       void this.killPlayer(p, null, 'environment');
@@ -954,9 +954,13 @@ export class Simulation {
     await this.sendInventory(p);
   }
 
+  private get playerMaxHp(): number {
+    return config.testCombatBuffs ? 150 : PLAYER_MAX_HP;
+  }
+
   private async applyRespawn(p: SimPlayer): Promise<void> {
     p.status = 'alive';
-    p.hp = PLAYER_MAX_HP;
+    p.hp = this.playerMaxHp;
     p.stamina = PLAYER_MAX_STAMINA;
     p.hunger = Math.max(60, p.hunger);
     p.thirst = Math.max(55, p.thirst);
@@ -1178,7 +1182,7 @@ export class Simulation {
         return !!taken;
       });
       if (!ok) return;
-      if (def.heal) p.hp = Math.min(PLAYER_MAX_HP, p.hp + def.heal);
+      if (def.heal) p.hp = Math.min(this.playerMaxHp, p.hp + def.heal);
       if (def.hunger) p.hunger = Math.min(100, p.hunger + def.hunger);
       if (def.thirst) p.thirst = Math.min(100, p.thirst + def.thirst);
       this.emit({ t: 'use', playerId: p.id, itemKey: item.key, x: p.x, y: p.y });
@@ -1202,12 +1206,54 @@ export class Simulation {
     }
   }
 
-  private handleChat(p: SimPlayer, text: string): void {
+  private async handleChat(p: SimPlayer, text: string): Promise<void> {
     const now = Date.now();
     if (now - p.lastChatAt < 700) return;
     p.lastChatAt = now;
-    const clean = text.replace(/[\u0000-\u001f]/g, '').slice(0, 140);
+    const clean = text.replace(/[\u0000-\u001f]/g, '').slice(0, 140).trim();
     if (!clean) return;
+
+    if (clean.startsWith('/')) {
+      if (!config.testCombatBuffs) {
+        this.notice(p, 'Тестовые команды отключены на сервере (TEST_COMBAT_BUFFS=false).');
+        return;
+      }
+      const parts = clean.slice(1).toLowerCase().split(/\s+/);
+      const cmd = parts[0];
+      if (cmd === 'heal') {
+        p.hp = this.playerMaxHp;
+        p.stamina = PLAYER_MAX_STAMINA;
+        p.hunger = 100;
+        p.thirst = 100;
+        this.notice(p, `Здоровье и показатели восстановлены (${this.playerMaxHp} HP).`);
+        return;
+      }
+      if (cmd === 'kit' || cmd === 'buff') {
+        p.hp = this.playerMaxHp;
+        p.stamina = PLAYER_MAX_STAMINA;
+        p.hunger = 100;
+        p.thirst = 100;
+        try {
+          await repo.withTransaction(async (client) => {
+            await repo.addCharacterItem(client, p.id, 'spiked_bat', 1, 1);
+            await repo.addCharacterItem(client, p.id, 'ammo_9mm', 36, 1);
+            await repo.addCharacterItem(client, p.id, 'bandage', 4, 1);
+          });
+          await this.refreshInventory(p, true);
+          this.notice(p, 'Выдан боевой комплект: бита с шипами, патроны 9мм, бинты.');
+        } catch {
+          this.notice(p, 'Не удалось выдать комплект.');
+        }
+        return;
+      }
+      if (cmd === 'help') {
+        this.notice(p, 'Доступные тестовые команды: /heal, /kit, /buff');
+        return;
+      }
+      this.notice(p, `Неизвестная команда /${cmd}. Используйте /help`);
+      return;
+    }
+
     this.emit({ t: 'chat', name: p.name, playerId: p.id, text: clean });
   }
 
@@ -1237,7 +1283,7 @@ export class Simulation {
           y: o.y,
           aim: o.aim,
           hp: Math.max(0, Math.round(o.hp)),
-          maxHp: PLAYER_MAX_HP,
+          maxHp: this.playerMaxHp,
           stamina: Math.round(o.stamina),
           status: o.status,
           moving: Math.hypot(o.input.mx, o.input.my) > 0.01,
@@ -1282,7 +1328,7 @@ export class Simulation {
           y: p.y,
           aim: p.aim,
           hp: Math.max(0, p.hp),
-          maxHp: PLAYER_MAX_HP,
+          maxHp: this.playerMaxHp,
           stamina: p.stamina,
           hunger: p.hunger,
           thirst: p.thirst,

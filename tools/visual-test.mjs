@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 
 const executablePath =
   process.env.CHROMIUM_PATH ||
-  '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome';
+  (existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
+    ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    : '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
 
 if (!existsSync(executablePath)) {
   console.error('chromium not found at', executablePath);
@@ -48,6 +50,7 @@ await page.click('#auth-guest');
 console.log('waiting for world...');
 await page.waitForFunction(
   () => document.getElementById('loading-screen')?.classList.contains('hidden'),
+  null,
   { timeout: 180_000 },
 ).catch(() => console.log('loading screen did not hide in time'));
 await page.waitForTimeout(4000);

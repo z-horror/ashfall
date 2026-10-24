@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { ITEMS } from '@ashfall/shared';
+import { config } from '../config.js';
 import { pool, query, withTransaction } from './db.js';
 
 export interface UserRow {
@@ -120,14 +121,23 @@ export async function getOrCreateCharacter(
       const again = await client.query<CharacterRow>('SELECT * FROM characters WHERE user_id = $1', [userId]);
       return again.rows[0];
     }
-    const starter: Array<[string, number, boolean]> = [
-      ['bat', 1, true],
-      ['bandage', 2, false],
-      ['water_bottle', 1, false],
-      ['canned_food', 2, false],
-      ['pistol', 1, false],
-      ['ammo_9mm', 12, false],
-    ];
+    const starter: Array<[string, number, boolean]> = config.testCombatBuffs
+      ? [
+          ['spiked_bat', 1, true],
+          ['bandage', 4, false],
+          ['water_bottle', 2, false],
+          ['canned_food', 3, false],
+          ['pistol', 1, false],
+          ['ammo_9mm', 36, false],
+        ]
+      : [
+          ['bat', 1, true],
+          ['bandage', 2, false],
+          ['water_bottle', 1, false],
+          ['canned_food', 2, false],
+          ['pistol', 1, false],
+          ['ammo_9mm', 12, false],
+        ];
     for (const [key, qty, equip] of starter) {
       await addStacked(client, 'character_items', 'character_id', created.rows[0].id, key, qty, 1);
       if (equip) {

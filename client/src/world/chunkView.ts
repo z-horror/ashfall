@@ -231,11 +231,11 @@ export class ChunkView {
         if (doorCx === cx && doorCy === cy) {
           const key = getBuildingSign(this.scene, b.name);
           const p = iso(door.x + 0.5, door.y + 0.5);
-          const img = artImage(this.scene, p.x, p.y - 64, key)
-            .setOrigin(0.5, 0.5)
-            .setScale(0.82)
-            .setDepth(visual.maxDepth + 0.86)
-            .setAlpha(0.92);
+          const img = artImage(this.scene, p.x, p.y - 52, key)
+            .setOrigin(0.5, 0.85)
+            .setScale(0.85)
+            .setDepth(visual.maxDepth + 0.98)
+            .setAlpha(0.96);
           this.sprites.push(img);
           visual.walls.push(img);
         }

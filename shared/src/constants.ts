@@ -58,6 +58,10 @@ export interface ItemDef {
 }
 
 export const ITEMS: Record<string, ItemDef> = {
+  spiked_bat: {
+    key: 'spiked_bat', name: 'Усиленная бита', kind: 'weapon', weight: 1.8, stack: 1, color: '#d46532', icon: 'bat',
+    desc: 'Бита с арматурными шипами. Высокий урон для боевых тестов.', damage: 65, range: 1.95, cooldown: 0.52,
+  },
   bat: {
     key: 'bat', name: 'Бейсбольная бита', kind: 'weapon', weight: 1.6, stack: 1, color: '#b48a56', icon: 'bat',
     desc: 'Тяжёлая деревянная бита. Медленно, но больно.', damage: 27, range: 1.75, cooldown: 0.72,

@@ -41,6 +41,7 @@ export const config = {
   maxMessageBytes: num('MAX_MESSAGE_BYTES', 16384),
   maxMessagesPerSec: num('MAX_MESSAGES_PER_SEC', 90),
   migrateOnStart: (process.env.MIGRATE_ON_START ?? 'true') !== 'false',
+  testCombatBuffs: (process.env.TEST_COMBAT_BUFFS ?? 'true') !== 'false',
   saveIntervalMs: 8000,
   disconnectGraceMs: 25000,
 };

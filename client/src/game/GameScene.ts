@@ -292,7 +292,8 @@ export class GameScene extends Phaser.Scene {
       name: s.name,
     });
     this.selfView.setLocal(true);
-    this.cameras.main.startFollow(this.selfView.sprite, true, 0.16, 0.16);
+    this.cameras.main.startFollow(this.selfView.sprite, false, 0.16, 0.16);
+    this.cameras.main.roundPixels = false;
     this.cameras.main.setFollowOffset(0, 24);
     this.cameras.main.setZoom(1.34);
     this.dust?.startFollow(this.selfView.sprite, 0, 0);
@@ -469,11 +470,11 @@ export class GameScene extends Phaser.Scene {
         this.selfView?.revive();
       } else {
         const err = Math.hypot(msg.self.x - this.predicted.x, msg.self.y - this.predicted.y);
-        if (err > 1.15) {
+        if (err > 2.0) {
           this.predicted = { x: msg.self.x, y: msg.self.y };
-        } else if (!this.movingInput() && err > 0.05) {
-          this.predicted.x += (msg.self.x - this.predicted.x) * 0.2;
-          this.predicted.y += (msg.self.y - this.predicted.y) * 0.2;
+        } else if (!this.movingInput() && err > 0.35) {
+          this.predicted.x += (msg.self.x - this.predicted.x) * 0.08;
+          this.predicted.y += (msg.self.y - this.predicted.y) * 0.08;
         }
       }
       this.ensureSelfView({
@@ -779,7 +780,7 @@ export class GameScene extends Phaser.Scene {
       );
       this.predicted.x = Phaser.Math.Clamp(res.x, 0.4, 127.6);
       this.predicted.y = Phaser.Math.Clamp(res.y, 0.4, 127.6);
-      this.selfView.setPredicted(this.predicted.x, this.predicted.y, this.aim, mx !== 0 || my !== 0, sprint);
+      this.selfView.setPredicted(this.predicted.x, this.predicted.y, this.aim, mx !== 0 || my !== 0, sprint, mx, my);
       this.selfView.update(dt, now);
       if ((mx !== 0 || my !== 0) && now - this.lastFootstep > (sprint ? 290 : 430)) {
         this.lastFootstep = now;

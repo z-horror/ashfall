@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { ITEMS, ZOMBIE_TYPES, type PlayerSnapshot, type ZombieSnapshot } from '@ashfall/shared';
-import { screenDirectionFromAngle, iso } from '../game/iso.js';
+import { screenDirectionFromAngle, directionFromDelta, iso } from '../game/iso.js';
 import { CHARACTER_ATLAS, initialFrame, playerSheetFor, zombieSheetFor } from '../art/characters.js';
 import { hashString } from '../art/util.js';
 import { artImage } from '../art/textures.js';
@@ -39,6 +39,8 @@ export class CharacterView {
   private lastActionAt = 0;
   private lastAnim = '';
   private local = false;
+  private facingDir = 2;
+  private moveDir: number | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -67,6 +69,7 @@ export class CharacterView {
     this.taim = opts.aim;
     this.hp = opts.hp;
     this.maxHp = opts.maxHp;
+    this.facingDir = screenDirectionFromAngle(opts.aim);
 
     if (opts.kind === 'player') {
       const variant = hashString(String(opts.id)) % 4;
@@ -107,6 +110,14 @@ export class CharacterView {
   }
 
   applyPlayer(s: PlayerSnapshot): void {
+    const dx = s.x - this.tx;
+    const dy = s.y - this.ty;
+    if (s.moving && Math.hypot(dx, dy) > 0.005) {
+      this.moveDir = directionFromDelta(dx, dy);
+      this.facingDir = this.moveDir;
+    } else if (!s.moving) {
+      this.moveDir = null;
+    }
     this.tx = s.x;
     this.ty = s.y;
     this.taim = s.aim;
@@ -123,6 +134,17 @@ export class CharacterView {
   }
 
   applyZombie(s: ZombieSnapshot): void {
+    const dx = s.x - this.tx;
+    const dy = s.y - this.ty;
+    if (s.moving && Math.hypot(dx, dy) > 0.005) {
+      this.moveDir = directionFromDelta(dx, dy);
+      this.facingDir = this.moveDir;
+    } else if (s.state === 'attack' || s.state === 'chase') {
+      this.facingDir = screenDirectionFromAngle(s.aim);
+      this.moveDir = null;
+    } else if (!s.moving) {
+      this.moveDir = null;
+    }
     this.tx = s.x;
     this.ty = s.y;
     this.taim = s.aim;
@@ -135,7 +157,7 @@ export class CharacterView {
     }
   }
 
-  setPredicted(x: number, y: number, aim: number, moving: boolean, sprinting: boolean): void {
+  setPredicted(x: number, y: number, aim: number, moving: boolean, sprinting: boolean, mx = 0, my = 0): void {
     this.x = x;
     this.y = y;
     this.aim = aim;
@@ -144,6 +166,12 @@ export class CharacterView {
     this.taim = aim;
     this.moving = moving;
     this.sprinting = sprinting;
+    if (moving && (mx !== 0 || my !== 0)) {
+      this.moveDir = directionFromDelta(mx, my);
+      this.facingDir = this.moveDir;
+    } else if (!moving) {
+      this.moveDir = null;
+    }
   }
 
   setDead(): void {
@@ -166,6 +194,7 @@ export class CharacterView {
     if (this.dead) return;
     this.attackUntil = this.scene.time.now + 330;
     const dir = screenDirectionFromAngle(this.aim);
+    this.facingDir = dir;
     const key = `${this.sheet}-attack-${dir}`;
     this.sprite.play(key, true);
     this.lastAnim = key;
@@ -217,8 +246,18 @@ export class CharacterView {
       this.hpFill.setFillStyle(this.kind === 'player' ? 0x8c9d72 : 0x9d3328, 0.95);
     }
 
-    const dir = screenDirectionFromAngle(this.aim);
     const attacking = now < this.attackUntil;
+    let dir: number;
+    if (attacking) {
+      dir = screenDirectionFromAngle(this.aim);
+      this.facingDir = dir;
+    } else if (this.moving && this.moveDir !== null) {
+      dir = this.moveDir;
+      this.facingDir = dir;
+    } else {
+      dir = this.facingDir;
+    }
+
     let key: string;
     if (attacking) {
       key = `${this.sheet}-attack-${dir}`;
