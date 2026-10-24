@@ -633,8 +633,8 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.moveTo(32, 88);
     ctx.lineTo(64, 72);
     ctx.stroke();
-  } else if (orientation === 'corner' || orientation === 'corner_sw' || orientation === 'corner_ne') {
-    // Outside corner: meets both faces at full 56px height
+  } else if (orientation === 'corner') {
+    // Outside SE corner: meets both front faces at full 56px height
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
 
@@ -658,6 +658,48 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.moveTo(0, 72);
     ctx.lineTo(32, 88);
     ctx.lineTo(64, 72);
+    ctx.stroke();
+  } else if (orientation === 'corner_sw') {
+    // SW corner: West full-height wall meeting the South front wall at (32, 88).
+    // Only draws right face (West wall). Never extends past West wall into grass!
+    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
+
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.fillStyle = shade(pal.trim, -0.2);
+    ctx.fillRect(60, 0, 4, 64);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(10,11,10,0.38)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 32);
+    ctx.lineTo(64, 16);
+    ctx.moveTo(32, 88);
+    ctx.lineTo(64, 72);
+    ctx.moveTo(32, 32);
+    ctx.lineTo(32, 88);
+    ctx.stroke();
+  } else if (orientation === 'corner_ne') {
+    // NE corner: North full-height wall meeting the East front wall at (32, 88).
+    // Only draws left face (North wall). Never extends past North wall into street!
+    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
+
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.fillStyle = shade(pal.trim, -0.12);
+    ctx.fillRect(0, 60, 64, 4);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(10,11,10,0.38)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 16);
+    ctx.lineTo(32, 32);
+    ctx.moveTo(0, 72);
+    ctx.lineTo(32, 88);
+    ctx.moveTo(32, 32);
+    ctx.lineTo(32, 88);
     ctx.stroke();
   } else {
     // Back corner or enclosure: thin coping (NOT a 64x32 solid block!)
@@ -755,17 +797,10 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.stroke();
   } else if (orientation === 'corner_sw') {
     // Cutaway SW corner:
-    // Left face (South wall) cuts down to 18px!
-    // Right face (West wall) stays full 56px!
-    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
+    // West wall stays full 56px!
+    // Meets adjacent 18px South cut half-wall at (32, 70).
+    // Only draws right face (West wall). Never extends past West wall into grass!
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
-
-    // Coping for 18px South half-wall
-    ctx.save();
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
-    ctx.fillStyle = shade(pal.trim, -0.05);
-    ctx.fillRect(0, 60, 64, 4);
-    ctx.restore();
 
     // Coping for 56px West full wall
     ctx.save();
@@ -774,30 +809,28 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.fillRect(60, 0, 4, 64);
     ctx.restore();
 
-    // Outlines and vertical connection
+    // Outlines and solid vertical masonry seam down to 18px South half-wall
     ctx.strokeStyle = 'rgba(10,11,10,0.45)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    // West full wall
+    // West full wall top and bottom
     ctx.moveTo(32, 32);
     ctx.lineTo(64, 16);
     ctx.moveTo(32, 88);
     ctx.lineTo(64, 72);
-    // South cut wall
-    ctx.moveTo(0, 54);
-    ctx.lineTo(32, 70);
-    ctx.moveTo(0, 72);
-    ctx.lineTo(32, 88);
-    // Solid vertical masonry seam connecting 56px West wall top (32, 32) to 18px South wall top (32, 70)
+    // Vertical corner front seam connecting 56px West top (32, 32) down to 18px South top (32, 70) and base (32, 88)
     ctx.moveTo(32, 32);
+    ctx.lineTo(32, 88);
+    // Sill endcap for 18px South wall meeting point
+    ctx.moveTo(30, 71);
     ctx.lineTo(32, 70);
     ctx.stroke();
   } else if (orientation === 'corner_ne') {
     // Cutaway NE corner:
-    // Left face (North wall) stays full 56px!
-    // Right face (East wall) cuts down to 18px!
+    // North wall stays full 56px!
+    // Meets adjacent 18px East cut half-wall at (32, 70).
+    // Only draws left face (North wall). Never extends past North wall into street (no cardboard window)!
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
-    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
 
     // Coping for 56px North full wall
     ctx.save();
@@ -806,30 +839,21 @@ function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: nu
     ctx.fillRect(0, 60, 64, 4);
     ctx.restore();
 
-    // Coping for 18px East cut wall
-    ctx.save();
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
-    ctx.fillStyle = shade(pal.trim, -0.1);
-    ctx.fillRect(60, 0, 4, 64);
-    ctx.restore();
-
-    // Outlines and vertical connection
+    // Outlines and solid vertical masonry seam down to 18px East half-wall
     ctx.strokeStyle = 'rgba(10,11,10,0.45)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    // North full wall
+    // North full wall top and bottom
     ctx.moveTo(0, 16);
     ctx.lineTo(32, 32);
     ctx.moveTo(0, 72);
     ctx.lineTo(32, 88);
-    // East cut wall
-    ctx.moveTo(32, 70);
-    ctx.lineTo(64, 54);
-    ctx.moveTo(32, 88);
-    ctx.lineTo(64, 72);
-    // Solid vertical masonry seam connecting 56px North wall top (32, 32) to 18px East wall top (32, 70)
+    // Vertical corner front seam connecting 56px North top (32, 32) down to 18px East top (32, 70) and base (32, 88)
     ctx.moveTo(32, 32);
-    ctx.lineTo(32, 70);
+    ctx.lineTo(32, 88);
+    // Sill endcap for 18px East wall meeting point
+    ctx.moveTo(32, 70);
+    ctx.lineTo(34, 71);
     ctx.stroke();
   } else {
     // Cutaway back

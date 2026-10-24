@@ -191,7 +191,7 @@ export class ChunkView {
         if (building) {
           const vis = this.visualFor(building);
           vis.walls.push(img);
-          const isFront = gy === building.y + building.h - 1 || (gx === building.x + building.w - 1 && gy > building.y);
+          const isFront = gy === building.y + building.h - 1 || gx === building.x + building.w - 1;
           if (isFront) vis.frontWalls.push(img);
           else vis.backWalls.push(img);
         }

@@ -23,7 +23,11 @@ async function explore() {
     null,
     { timeout: 60_000 }
   );
-  await page.waitForTimeout(3000);
+  await page.waitForFunction(
+    () => (window.__ashfall?.scene?.world?.doors?.size ?? 0) > 0,
+    null,
+    { timeout: 30_000 }
+  );
 
   const doorsAndBuildings = await page.evaluate(() => {
     const ash = window.__ashfall;
@@ -59,6 +63,8 @@ async function explore() {
     await page.evaluate(({ ox, oy }) => {
       const ash = window.__ashfall;
       if (ash && ash.net) {
+        ash.net.action({ t: 'dev_action', action: 'godmode' });
+        ash.net.action({ t: 'dev_action', action: 'heal' });
         ash.net.action({ t: 'dev_action', action: 'teleport', args: { x: ox, y: oy } });
       }
     }, { ox: outsideX, oy: outsideY });
