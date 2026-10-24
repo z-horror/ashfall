@@ -302,7 +302,7 @@ export class World {
       placed += this.addBuilding(lot.x0 + 1, lot.y0 + 1, Math.min(lw - 2, 6), Math.min(lh - 3, 5));
     }
     if (placed === 0) this.makeVacantLot(lot);
-    else if (rng.chance(0.6)) this.addParkedCars(lot);
+    else if (rng.chance(0.25)) this.addParkedCars(lot);
   }
 
   private makeVacantLot(lot: Rect): void {
@@ -331,20 +331,47 @@ export class World {
 
   private addParkedCars(lot: Rect): void {
     const rng = this.rng;
-    const n = rng.int(1, 3);
-    for (let i = 0; i < n; i++) {
-      for (let attempt = 0; attempt < 25; attempt++) {
-        const horizontal = rng.chance(0.5);
-        const w = horizontal ? 2 : 1;
-        const h = horizontal ? 1 : 2;
-        const x = rng.int(lot.x0 + 1, lot.x1 - w);
-        const y = rng.int(lot.y0 + 1, lot.y1 - h);
-        if (this.canPlaceRect(x, y, w, h, false)) {
-          this.addCar(x, y, horizontal, true);
-          break;
-        }
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const horizontal = rng.chance(0.5);
+      const w = horizontal ? 2 : 1;
+      const h = horizontal ? 1 : 2;
+      const x = rng.int(lot.x0 + 2, lot.x1 - w - 1);
+      const y = rng.int(lot.y0 + 2, lot.y1 - h - 1);
+      if (this.canPlaceCar(x, y, horizontal, false)) {
+        this.addCar(x, y, horizontal, true);
+        break; // Only 1 car per lot max
       }
     }
+  }
+
+  private canPlaceCar(x: number, y: number, horizontal: boolean, allowRoad: boolean): boolean {
+    const w = horizontal ? 2 : 1;
+    const h = horizontal ? 1 : 2;
+    // Check clearance buffer: 2 tiles in all directions so large visual sprite (208px) never collides
+    const margin = 2;
+    for (let yy = y - margin; yy < y + h + margin; yy++) {
+      for (let xx = x - margin; xx < x + w + margin; xx++) {
+        if (!this.inside(xx, yy)) return false;
+        const i = this.idx(xx, yy);
+        if (this.buildingOcc[i]) return false;
+        if (this.propOcc[i]) return false;
+        if (this.clearTiles.has(i)) return false;
+        if (this.walls[i] !== WALL.NONE) return false;
+      }
+    }
+    // Check footprint ground type
+    for (let yy = y; yy < y + h; yy++) {
+      for (let xx = x; xx < x + w; xx++) {
+        const i = this.idx(xx, yy);
+        if (this.tiles[i] === TILE.ASPHALT && !allowRoad) return false;
+        if (this.tiles[i] !== TILE.ASPHALT && allowRoad) return false;
+      }
+    }
+    // Keep cars well away from doors (at least 4 tiles)
+    for (const d of this.doors.values()) {
+      if (Math.hypot(d.x - x, d.y - y) < 4.5) return false;
+    }
+    return true;
   }
 
   private canPlaceRect(x: number, y: number, w: number, h: number, allowRoad: boolean, ignoreBuildings = false): boolean {
@@ -620,6 +647,12 @@ export class World {
       destructible: true,
       hp: 120,
     });
+    // Reserve margin around car in propOcc so lamps, trees, crates never spawn inside/overlapping it
+    for (let yy = Math.max(0, y - 1); yy <= Math.min(WORLD_TILES - 1, y + h); yy++) {
+      for (let xx = Math.max(0, x - 1); xx <= Math.min(WORLD_TILES - 1, x + w); xx++) {
+        this.propOcc[this.idx(xx, yy)] = 1;
+      }
+    }
     if (parked && rng.chance(0.3)) {
       const px = horizontal ? x : x + 0.5;
       const py = horizontal ? y + 0.5 : y;
@@ -630,10 +663,10 @@ export class World {
   private placeStreetDetails(): void {
     const rng = this.rng;
 
-    // Abandoned cars on the roads.
+    // Abandoned cars on the roads (rare, sparse wrecks).
     for (let lane = 0; lane < ROAD_CENTERS.length; lane++) {
-      for (let along = 6; along < WORLD_TILES - 6; along += 9) {
-        if (rng.chance(0.34)) {
+      for (let along = 12; along < WORLD_TILES - 12; along += 24) {
+        if (rng.chance(0.18)) {
           const c = ROAD_CENTERS[lane];
           const horizontal = rng.chance(0.5);
           const offset = rng.chance(0.5) ? -2 : 2;
@@ -641,14 +674,14 @@ export class World {
             const y = c + offset;
             const x = along + rng.int(-2, 2);
             if (!this.isRoadCoord(y) || this.isRoadCoord(x)) continue;
-            if (Math.abs(x - this.spawn.x) < 6 && Math.abs(y - this.spawn.y) < 6) continue;
-            if (this.canPlaceRect(x, y, 2, 1, true)) this.addCar(x, y, true, false);
+            if (Math.abs(x - this.spawn.x) < 8 && Math.abs(y - this.spawn.y) < 8) continue;
+            if (this.canPlaceCar(x, y, true, true)) this.addCar(x, y, true, false);
           } else {
             const x = c + offset;
             const y = along + rng.int(-2, 2);
             if (!this.isRoadCoord(x) || this.isRoadCoord(y)) continue;
-            if (Math.abs(x - this.spawn.x) < 6 && Math.abs(y - this.spawn.y) < 6) continue;
-            if (this.canPlaceRect(x, y, 1, 2, true)) this.addCar(x, y, false, false);
+            if (Math.abs(x - this.spawn.x) < 8 && Math.abs(y - this.spawn.y) < 8) continue;
+            if (this.canPlaceCar(x, y, false, true)) this.addCar(x, y, false, false);
           }
         }
       }

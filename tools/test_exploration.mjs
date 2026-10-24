@@ -48,7 +48,7 @@ async function explore() {
 
   if (doorsAndBuildings && doorsAndBuildings.nearest.length > 0) {
     // Specifically target the building from the user's screenshot: b:65:87:23 Усадьба (door at 69, 90)
-    let target = doorsAndBuildings.nearest.find(n => n.door.id === 'd:69:90') || doorsAndBuildings.nearest[0];
+    let target = doorsAndBuildings.nearest.find(n => n.building?.name === 'Усадьба') || doorsAndBuildings.nearest[0];
     const door = target.door;
     console.log(`Teleporting near door of ${target.building?.name} at (${door.x}, ${door.y})...`);
 

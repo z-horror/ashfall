@@ -164,7 +164,9 @@ export class ChunkView {
           const isWest = gx === building.x;
 
           if (isNorth && isWest) {
-            orientation = 'back';
+            // NW corner is behind the intersection of North and West interior walls.
+            // Drawing wall faces here creates phantom exterior "tails" sticking out into the street.
+            continue;
           } else if (isSouth && isEast) {
             orientation = 'corner';
           } else if (isSouth && isWest) {
