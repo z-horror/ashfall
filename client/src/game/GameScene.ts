@@ -284,7 +284,7 @@ export class GameScene extends Phaser.Scene {
     const pointer = this.input.activePointer;
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const p = iso(this.predicted.x, this.predicted.y);
-    return aimFromScreenDelta(worldPoint.x - p.x, worldPoint.y - p.y);
+    return aimFromScreenDelta(worldPoint.x - p.x, worldPoint.y - (p.y - 30));
   }
 
   private doAttack(): void {
@@ -293,10 +293,21 @@ export class GameScene extends Phaser.Scene {
     if (!this.selfSnapshot || this.selfSnapshot.status !== 'alive' || this.hud.blocksInput) return;
     this.lastAttackSent = now;
     this.attackAim = this.computeAim();
+    const isGun = this.equippedKey === 'pistol';
+    if (isGun) {
+      const hasAmmo = this.hud.hasAmmoFor('pistol');
+      if (!hasAmmo) {
+        this.audio.empty();
+        this.hud.setPrompt('НЕТ ПАТРОНОВ');
+        this.time.delayedCall(1200, () => {
+          if (this.hud) this.hud.setPrompt(null);
+        });
+        return;
+      }
+    }
     this.net.action({ t: 'attack', aim: this.attackAim });
     this.hud.flashAttack();
     this.selfView?.playAttack();
-    const isGun = this.equippedKey === 'pistol';
     if (isGun) {
       this.audio.shot(1);
       this.spawnTracer(this.predicted.x, this.predicted.y, this.attackAim, 14);
@@ -1006,31 +1017,51 @@ export class GameScene extends Phaser.Scene {
     if (this.buildingFade.get(visual.id) === inside) return;
     this.buildingFade.set(visual.id, inside);
     const roofAlpha = inside ? 0 : 1;
-    const frontWallAlpha = inside ? 0.08 : 1;
-    const backWallAlpha = inside ? 0.85 : 1;
-    const doorAlpha = inside ? 0.95 : 1;
-    if (animate) {
-      if (visual.roofs.length) {
-        this.tweens.killTweensOf(visual.roofs);
-        this.tweens.add({ targets: visual.roofs, alpha: roofAlpha, duration: 160, ease: 'Sine.easeOut' });
-      }
-      if (visual.frontWalls?.length) {
-        this.tweens.killTweensOf(visual.frontWalls);
-        this.tweens.add({ targets: visual.frontWalls, alpha: frontWallAlpha, duration: 160, ease: 'Sine.easeOut' });
-      }
-      if (visual.backWalls?.length) {
-        this.tweens.killTweensOf(visual.backWalls);
-        this.tweens.add({ targets: visual.backWalls, alpha: backWallAlpha, duration: 160, ease: 'Sine.easeOut' });
-      }
-      if (visual.doors.length) {
-        this.tweens.killTweensOf(visual.doors);
-        this.tweens.add({ targets: visual.doors, alpha: doorAlpha, duration: 160, ease: 'Sine.easeOut' });
-      }
+    const signAlpha = inside ? 0 : 1;
+
+    if (animate && visual.roofs.length) {
+      this.tweens.killTweensOf(visual.roofs);
+      this.tweens.add({ targets: visual.roofs, alpha: roofAlpha, duration: 160, ease: 'Sine.easeOut' });
     } else {
       for (const r of visual.roofs) r.setAlpha(roofAlpha);
-      for (const w of visual.frontWalls ?? visual.walls) w.setAlpha(frontWallAlpha);
-      for (const w of visual.backWalls ?? []) w.setAlpha(backWallAlpha);
-      for (const d of visual.doors) d.setAlpha(doorAlpha);
+    }
+
+    // Classic Cutaway (Вариант Б): front walls switch to 18px waist-height cutaway textures at 100% alpha!
+    if (visual.frontWalls?.length) {
+      for (const w of visual.frontWalls) {
+        if (w.getData('isSign')) {
+          if (animate) {
+            this.tweens.killTweensOf(w);
+            this.tweens.add({ targets: w, alpha: signAlpha, duration: 140, ease: 'Sine.easeOut' });
+          } else {
+            w.setAlpha(signAlpha);
+          }
+          continue;
+        }
+        const targetKey = inside ? w.getData('cutKey') : w.getData('fullKey');
+        if (targetKey && this.textures.exists(targetKey)) {
+          w.setTexture(targetKey);
+        }
+        w.setAlpha(1.0);
+      }
+    }
+
+    if (visual.backWalls?.length) {
+      for (const w of visual.backWalls) w.setAlpha(1.0);
+    }
+
+    // Cutaway doors
+    if (visual.doors?.length) {
+      for (const d of visual.doors) {
+        const doorId = d.getData('doorId');
+        const facing = d.getData('facing') ?? 'south';
+        const open = doorId ? (this.world.doorOpen.get(doorId) ?? false) : false;
+        const targetKey = `door_${facing}_${inside ? 'cut_' : ''}${open ? 'open' : 'closed'}`;
+        if (this.textures.exists(targetKey)) {
+          d.setTexture(targetKey);
+        }
+        d.setAlpha(1.0);
+      }
     }
   }
 
@@ -1102,11 +1133,11 @@ export class GameScene extends Phaser.Scene {
     const end = iso(wx + Math.cos(aim) * range, wy + Math.sin(aim) * range);
     const g = this.add.graphics().setDepth(wx + wy + 4);
     g.lineStyle(1.4, 0xffe4a6, 0.8);
-    g.lineBetween(start.x, start.y - 34, end.x, end.y - 20);
+    g.lineBetween(start.x, start.y - 30, end.x, end.y - 30);
     g.lineStyle(5, 0xffc66e, 0.08);
-    g.lineBetween(start.x, start.y - 34, end.x, end.y - 20);
+    g.lineBetween(start.x, start.y - 30, end.x, end.y - 30);
     this.time.delayedCall(70, () => g.destroy());
-    const flash = artImage(this, start.x + Math.cos(aim) * 18, start.y - 34 + Math.sin(aim) * 10, 'fx_light')
+    const flash = artImage(this, start.x + Math.cos(aim) * 18, start.y - 30 + Math.sin(aim) * 10, 'fx_light')
       .setScale(0.14)
       .setAlpha(0.75)
       .setBlendMode(Phaser.BlendModes.ADD)

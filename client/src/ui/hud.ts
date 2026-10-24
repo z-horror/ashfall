@@ -223,6 +223,7 @@ export class HUD {
     });
 
     setInterval(() => this.pruneTransient(), 2000);
+    this.loadQuickbarBindings();
   }
 
   get isInventoryOpen(): boolean {
@@ -494,10 +495,78 @@ export class HUD {
     this.checkMute.checked = !on;
   }
 
+  private quickbarBindings: Array<string | null> = [null, null, null, null, null];
+
+  private loadQuickbarBindings(): void {
+    try {
+      const raw = localStorage.getItem('ashfall_quickbar_bindings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 5) {
+          this.quickbarBindings = parsed;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private saveQuickbarBindings(): void {
+    try {
+      localStorage.setItem('ashfall_quickbar_bindings', JSON.stringify(this.quickbarBindings));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  assignToSlot(slotIndex: number, itemKeyOrId: string | null): void {
+    if (slotIndex < 0 || slotIndex >= 5) return;
+    this.quickbarBindings[slotIndex] = itemKeyOrId;
+    this.saveQuickbarBindings();
+    this.renderQuickbar();
+    this.renderInventory();
+  }
+
+  getItemForSlot(index: number): ItemView | null {
+    if (!this.inv || !this.inv.items) return null;
+    const bound = this.quickbarBindings[index];
+    if (bound) {
+      const match = this.inv.items.find((it) => it.id === bound || it.key === bound);
+      if (match) return match;
+    }
+    const allEmpty = this.quickbarBindings.every((b) => b === null);
+    if (allEmpty) {
+      if (index === 0) {
+        return this.inv.items.find((it) => ITEMS[it.key]?.kind === 'weapon') ?? this.inv.items[0] ?? null;
+      } else if (index === 1) {
+        const weapons = this.inv.items.filter((it) => ITEMS[it.key]?.kind === 'weapon');
+        if (weapons.length > 1) return weapons[1];
+        return this.inv.items.find((it) => ITEMS[it.key]?.kind === 'med') ?? this.inv.items[1] ?? null;
+      } else if (index === 2) {
+        return this.inv.items.find((it) => ITEMS[it.key]?.kind === 'med') ?? this.inv.items[2] ?? null;
+      } else if (index === 3) {
+        return this.inv.items.find((it) => ITEMS[it.key]?.kind === 'food') ?? this.inv.items[3] ?? null;
+      } else if (index === 4) {
+        return this.inv.items.find((it) => ITEMS[it.key]?.kind === 'drink') ?? this.inv.items[4] ?? null;
+      }
+    }
+    return null;
+  }
+
+  hasAmmoFor(weaponKey: string): boolean {
+    if (!this.inv?.items) return false;
+    const def = ITEMS[weaponKey];
+    if (!def?.ammo) return true;
+    return this.inv.items.some((it) => it.key === def.ammo && it.qty > 0);
+  }
+
+  getInventory(): InventoryView | null {
+    return this.inv;
+  }
+
   private renderQuickbar(): void {
     if (!this.inv) return;
     this.quickbar.replaceChildren();
-    const items = this.inv.items.slice(0, 5);
     for (let i = 0; i < 5; i++) {
       const slot = document.createElement('div');
       slot.className = 'quick-slot';
@@ -505,7 +574,7 @@ export class HUD {
       key.className = 'key';
       key.textContent = String(i + 1);
       slot.appendChild(key);
-      const item = items[i];
+      const item = this.getItemForSlot(i);
       if (item) {
         const def = ITEMS[item.key];
         const img = document.createElement('img');
@@ -519,20 +588,28 @@ export class HUD {
           slot.appendChild(qty);
         }
         if (item.equipped) slot.classList.add('equipped');
-        slot.title = def?.name ?? item.key;
+        slot.title = `[${i + 1}] ${def?.name ?? item.key}`;
         slot.addEventListener('click', (ev) => {
           ev.stopPropagation();
           this.quickUse(i);
         });
       } else {
         slot.classList.add('empty');
+        slot.title = `Слот ${i + 1} (пусто — назначьте в инвентаре)`;
+        slot.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (this.selectedId) {
+            const sel = this.inv?.items.find((it) => it.id === this.selectedId);
+            if (sel) this.assignToSlot(i, sel.key);
+          }
+        });
       }
       this.quickbar.appendChild(slot);
     }
   }
 
   quickUse(index: number): void {
-    const item = this.inv?.items[index];
+    const item = this.getItemForSlot(index);
     if (!item) return;
     const def = ITEMS[item.key];
     if (!def) return;
@@ -666,6 +743,17 @@ export class HUD {
     const name = document.createElement('div');
     name.className = 'iname';
     name.textContent = def?.name ?? item.key;
+    if (source === 'player') {
+      for (let s = 0; s < 5; s++) {
+        if (this.quickbarBindings[s] === item.key || this.quickbarBindings[s] === item.id) {
+          const badge = document.createElement('span');
+          badge.className = 'slot-badge';
+          badge.textContent = `[${s + 1}]`;
+          badge.title = `На панели быстрого доступа (${s + 1})`;
+          name.appendChild(badge);
+        }
+      }
+    }
     if (item.equipped) {
       const tag = document.createElement('span');
       tag.className = 'equipped-tag';
@@ -768,6 +856,32 @@ export class HUD {
       if (kind && ['food', 'drink', 'med'].includes(kind)) addBtn('ИСПОЛЬЗОВАТЬ', () => this.actions.useItem(item.id));
       if (this.container) addBtn('ПОЛОЖИТЬ', () => this.actions.transfer(item.id, item.qty, 'put'));
       if (!item.equipped) addBtn('ВЫБРОСИТЬ', () => this.actions.dropItem(item.id, item.qty > 1 ? 1 : item.qty));
+
+      const hotbarWrap = document.createElement('div');
+      hotbarWrap.className = 'hotbar-assign-wrap';
+      const hotbarLabel = document.createElement('span');
+      hotbarLabel.className = 'hotbar-assign-label';
+      hotbarLabel.textContent = 'НА ПАНЕЛЬ (1–5):';
+      hotbarWrap.appendChild(hotbarLabel);
+
+      const hotbarBtns = document.createElement('div');
+      hotbarBtns.className = 'hotbar-assign-btns';
+      for (let s = 0; s < 5; s++) {
+        const slotBtn = document.createElement('button');
+        slotBtn.className = 'hotbar-slot-btn';
+        slotBtn.textContent = String(s + 1);
+        const isBound = this.quickbarBindings[s] === item.key || this.quickbarBindings[s] === item.id;
+        if (isBound) slotBtn.classList.add('active');
+        slotBtn.title = isBound ? `Слот ${s + 1} (нажмите, чтобы убрать)` : `Назначить в слот ${s + 1}`;
+        slotBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.assignToSlot(s, isBound ? null : item.key);
+          this.renderDetail();
+        });
+        hotbarBtns.appendChild(slotBtn);
+      }
+      hotbarWrap.appendChild(hotbarBtns);
+      actionsWrap.appendChild(hotbarWrap);
     }
     if (inContainer) {
       addBtn('ВЗЯТЬ', () => this.actions.transfer(item.id, item.qty, 'take'));

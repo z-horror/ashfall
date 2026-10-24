@@ -152,20 +152,32 @@ export class ChunkView {
         const style = building?.style ?? 0;
         let orientation: import('../art/textures.js').WallOrientation = 'south';
         if (wall === WALL.INTERIOR) {
-          orientation = 'back';
+          const hasNorthSouth = (this.world.wallAt(gx, gy - 1) !== 0) || (this.world.wallAt(gx, gy + 1) !== 0);
+          const hasWestEast = (this.world.wallAt(gx - 1, gy) !== 0) || (this.world.wallAt(gx + 1, gy) !== 0);
+          if (hasNorthSouth && hasWestEast) orientation = 'corner';
+          else if (hasNorthSouth) orientation = 'east';
+          else orientation = 'south';
         } else if (building) {
           const isSouth = gy === building.y + building.h - 1;
           const isEast = gx === building.x + building.w - 1;
+          const isNorth = gy === building.y;
+          const isWest = gx === building.x;
           if (isSouth && isEast) orientation = 'corner';
           else if (isSouth) orientation = 'south';
           else if (isEast) orientation = 'east';
-          else orientation = 'back';
+          else if (isNorth && isWest) orientation = 'corner';
+          else if (isNorth) orientation = 'south';
+          else if (isWest) orientation = 'east';
+          else orientation = 'south';
         }
-        const key = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR, orientation);
+        const fullKey = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR, orientation, false);
+        const cutKey = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR, orientation, true);
         const p = iso(gx + 0.5, gy + 0.5);
-        const img = artImage(this.scene, p.x, p.y + TILE_H / 2, key)
+        const img = artImage(this.scene, p.x, p.y + TILE_H / 2, fullKey)
           .setOrigin(0.5, 1)
           .setDepth(gx + gy + 0.75);
+        img.setData('fullKey', fullKey);
+        img.setData('cutKey', cutKey);
         this.sprites.push(img);
         if (building) {
           const vis = this.visualFor(building);
@@ -194,6 +206,8 @@ export class ChunkView {
     const img = artImage(this.scene, p.x, p.y + TILE_H / 2, key)
       .setOrigin(0.5, 1)
       .setDepth(door.x + door.y + 0.74);
+    img.setData('doorId', door.id);
+    img.setData('facing', facing);
     this.sprites.push(img);
     this.doorSprites.set(door.id, img);
     if (building) this.visualFor(building).doors.push(img);
@@ -206,7 +220,9 @@ export class ChunkView {
     const building = door ? this.world.buildingAt(door.x + 0.5, door.y + 0.5) : null;
     const isEast = door && building ? door.x === building.x + building.w - 1 : false;
     const facing = door?.facing ?? (isEast ? 'east' : 'south');
-    artSetTexture(img, `door_${facing}_${open ? 'open' : 'closed'}`);
+    const isInside = building && (this.scene as any).buildingFade?.get(building.id) === true;
+    const cut = isInside ? 'cut_' : '';
+    artSetTexture(img, `door_${facing}_${cut}${open ? 'open' : 'closed'}`);
   }
 
   private buildRoofs(): void {
@@ -251,7 +267,16 @@ export class ChunkView {
         this.sprites.push(img);
         visual.roofs.push(img);
       }
-      if (b.doorTiles.length > 0 && b.style !== 3) {
+      // Only generate signs for commercial shops (style === 1) that have a recognized shop type
+      const isShop = b.style === 1;
+      const lower = b.name.toLowerCase();
+      const hasShopSign = isShop && (
+        lower.includes('аптек') || lower.includes('pharmacy') ||
+        lower.includes('продукт') || lower.includes('магаз') || lower.includes('market') ||
+        lower.includes('кафе') || lower.includes('diner') ||
+        lower.includes('охот') || lower.includes('gun')
+      );
+      if (hasShopSign && b.doorTiles.length > 0) {
         const door = b.doorTiles[0];
         const doorCx = Math.floor(door.x / CHUNK);
         const doorCy = Math.floor(door.y / CHUNK);
@@ -262,6 +287,7 @@ export class ChunkView {
             .setOrigin(0.5, 1)
             .setDepth(visual.maxDepth + 0.98)
             .setAlpha(0.96);
+          img.setData('isSign', true);
           this.sprites.push(img);
           visual.walls.push(img);
           visual.frontWalls.push(img);

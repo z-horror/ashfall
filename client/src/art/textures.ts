@@ -393,12 +393,19 @@ function drawWallFace(
   variant: number,
   seed: number,
   rnd: () => number,
+  cutHeight?: number,
 ): void {
   const pal = MATERIALS[mat];
   const light = side === 'left' ? 0.11 : -0.2;
   ctx.save();
   if (side === 'left') ctx.setTransform(0.5, 0.25, 0, 1, 0, 16);
   else ctx.setTransform(0.5, -0.25, 0, 1, 32, 32);
+
+  if (cutHeight) {
+    ctx.beginPath();
+    ctx.rect(0, 56 - cutHeight, 64, cutHeight);
+    ctx.clip();
+  }
 
   ctx.fillStyle = shade(pal.base, light);
   ctx.fillRect(0, 0, 64, 56);
@@ -652,14 +659,15 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.lineTo(64, 72);
     ctx.stroke();
   } else {
-    // Back enclosure (North / West walls)
+    // Back corner or enclosure: thin coping (NOT a 64x32 solid block!)
     drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd);
     drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd);
 
     ctx.save();
     ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
     ctx.fillStyle = shade(pal.trim, -0.16);
-    ctx.fillRect(0, 0, 64, 32);
+    ctx.fillRect(0, 0, 64, 5);
+    ctx.fillRect(0, 0, 5, 32);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(10,11,10,0.28)';
@@ -668,6 +676,100 @@ function makeWallOriented(mat: WallMat, orientation: WallOrientation, variant: n
     ctx.moveTo(0, 16);
     ctx.lineTo(32, 32);
     ctx.lineTo(64, 16);
+    ctx.stroke();
+  }
+
+  return canvas;
+}
+
+export const CUTAWAY_WALL_HEIGHT = 18;
+
+function makeWallCutaway(mat: WallMat, orientation: WallOrientation, variant: number): HTMLCanvasElement {
+  const { canvas, ctx } = makeCanvas(64, 88);
+  const rnd = mulberry(hashString(`${mat}:cut:${orientation}:${variant}`));
+  const pal = MATERIALS[mat];
+  const cutH = CUTAWAY_WALL_HEIGHT; // 18px
+
+  if (orientation === 'south') {
+    // Cutaway south wall: runs along +X, height 18px
+    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
+
+    // Architectural top cut coping / sill
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
+    ctx.fillStyle = shade(pal.trim, -0.05);
+    ctx.fillRect(0, 27, 64, 5);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(10,11,10,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 54);
+    ctx.lineTo(32, 70);
+    ctx.moveTo(0, 72);
+    ctx.lineTo(32, 88);
+    ctx.stroke();
+  } else if (orientation === 'east') {
+    // Cutaway east wall: runs along +Y, height 18px
+    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
+
+    // Architectural top cut coping / sill
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
+    ctx.fillStyle = shade(pal.trim, -0.1);
+    ctx.fillRect(59, 0, 5, 32);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(10,11,10,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 70);
+    ctx.lineTo(64, 54);
+    ctx.moveTo(32, 88);
+    ctx.lineTo(64, 72);
+    ctx.stroke();
+  } else if (orientation === 'corner') {
+    // Cutaway corner: both faces meeting at height 18px
+    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
+    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
+
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
+    ctx.fillStyle = shade(pal.trim, -0.08);
+    ctx.fillRect(0, 27, 64, 5);
+    ctx.fillRect(59, 0, 5, 32);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(10,11,10,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 54);
+    ctx.lineTo(32, 70);
+    ctx.lineTo(64, 54);
+    ctx.moveTo(32, 70);
+    ctx.lineTo(32, 88);
+    ctx.moveTo(0, 72);
+    ctx.lineTo(32, 88);
+    ctx.lineTo(64, 72);
+    ctx.stroke();
+  } else {
+    // Cutaway back
+    drawWallFace(ctx, mat, 'left', variant, hashString(mat) + variant * 13, rnd, cutH);
+    drawWallFace(ctx, mat, 'right', variant, hashString(mat) + variant * 29, rnd, cutH);
+
+    ctx.save();
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 56 - cutH);
+    ctx.fillStyle = shade(pal.trim, -0.08);
+    ctx.fillRect(0, 0, 64, 5);
+    ctx.fillRect(0, 0, 5, 32);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(10,11,10,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 54);
+    ctx.lineTo(32, 70);
+    ctx.lineTo(64, 54);
     ctx.stroke();
   }
 
@@ -1043,36 +1145,39 @@ function makeBush(): HTMLCanvasElement {
 }
 
 function makeCar(horizontal: boolean, variant: number): HTMLCanvasElement {
-  const W = horizontal ? 184 : 152;
-  const H = horizontal ? 132 : 180;
+  const W = horizontal ? 196 : 164;
+  const H = horizontal ? 140 : 192;
   const { canvas, ctx } = makeCanvas(W, H);
   const rnd = mulberry(2500 + variant * 21 + (horizontal ? 0 : 101));
   const cx = W / 2;
-  const baseY = horizontal ? 104 : 144;
+  const baseY = horizontal ? 106 : 148;
 
-  // Authentic post-apocalyptic vehicle variants:
-  // 0: Civilian Sedan (faded primer gray-blue, rust streaks)
-  // 1: Abandoned Patrol Police Car (dark slate body, weathered white door, flasher bar)
-  // 2: Station Wagon (matte oxidized moss-green, roof rack with spare tire)
-  // 3: Heavy Rusted Pickup (oxidized burnt umber, open cargo bed with scrap)
-  const isPolice = variant === 1;
-  const isWagon = variant === 2;
-  const isPickup = variant === 3;
+  // Fallout 2 Authentic Atomic Cruiser Wrecks:
+  // 0: Chryslus Highwayman Classic (deep oxidized atomic cherry / burgundy, chrome trim, tail fins)
+  // 1: Corvega Atomic Cruiser (weathered seafoam teal, heavy iron rust, tail fins)
+  // 2: Wasteland Cruiser (desert primer tan & raw rusted steel, battered chrome)
+  // 3: Chryslus Nuclear Reactor Wreck (gutted hood exposing atomic fusion core & copper coils)
+  const isHighwayman = variant === 0;
+  const isTeal = variant === 1;
+  const isDesert = variant === 2;
+  const isWreck = variant === 3;
 
-  const baseBodyColor = isPolice
-    ? '#222830'
-    : isWagon
-      ? '#3b473a'
-      : isPickup
-        ? '#5c3322'
-        : '#3a4249';
+  const baseBodyColor = isHighwayman
+    ? '#44191d'
+    : isTeal
+      ? '#223c38'
+      : isDesert
+        ? '#4a3d2e'
+        : '#342219';
 
+  const rustColor = '#5c2b18';
   const highlightColor = shade(baseBodyColor, 0.18);
-  const shadowColor = shade(baseBodyColor, -0.3);
+  const shadowColor = shade(baseBodyColor, -0.32);
+  const sideColor = shadowColor;
 
-  // Proportions: L = 46 (full 2-tile length), Wh = 18 (realistic width)
-  const L = 46;
-  const Wh = 18;
+  // Proportions: L = 50 (long low-slung streamliner), Wh = 20 (wide muscular stance)
+  const L = 50;
+  const Wh = 20;
 
   const pt = (u: number, v: number, z: number) => {
     if (horizontal) {
@@ -1105,76 +1210,118 @@ function makeCar(horizontal: boolean, variant: number): HTMLCanvasElement {
     }
   };
 
-  // 1. Ground Drop Shadow
-  ctx.fillStyle = 'rgba(8, 10, 9, 0.5)';
+  // 1. Heavy Ground Drop Shadow
+  ctx.fillStyle = 'rgba(6, 8, 7, 0.58)';
   ctx.beginPath();
-  ctx.ellipse(cx, baseY + (horizontal ? 4 : 6), horizontal ? 62 : 36, horizontal ? 19 : 32, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, baseY + (horizontal ? 5 : 7), horizontal ? 68 : 40, horizontal ? 21 : 36, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 2. Far Wheels (v = -0.92, behind vehicle)
-  const drawWheel = (u: number, v: number) => {
-    const pBase = pt(u, v, 0);
-    const pTop = pt(u, v, 11);
-    const radX = horizontal ? 6 : 4.5;
-    const radY = horizontal ? 4.5 : 6;
-    ctx.fillStyle = '#141617';
+  // 2. Far Wheels (v = -0.95, partially sunken in wasteland dirt)
+  const drawWheel = (u: number, v: number, isFlat = false) => {
+    const pBase = pt(u, v, isFlat ? 1 : 0);
+    const pTop = pt(u, v, isFlat ? 8 : 11);
+    const radX = horizontal ? 6.5 : 4.8;
+    const radY = isFlat ? (horizontal ? 3.5 : 4.5) : (horizontal ? 4.8 : 6.5);
+    // Tire rubber
+    ctx.fillStyle = '#111314';
     ctx.beginPath();
     ctx.ellipse(pBase.x, (pBase.y + pTop.y) / 2, radX, radY, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#4c5256';
+    // Rusted steel hub / chrome cap
+    ctx.fillStyle = isHighwayman ? '#6c7378' : '#3d342c';
     ctx.beginPath();
     ctx.ellipse(pBase.x, (pBase.y + pTop.y) / 2, radX * 0.55, radY * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
   };
 
-  drawWheel(-0.65, -0.92);
-  drawWheel(0.65, -0.92);
+  drawWheel(-0.62, -0.95, true);
+  drawWheel(0.68, -0.95);
 
-  // 3. Chassis Lower Body
-  poly([pt(-1, -1, 4), pt(1, -1, 4), pt(1, 1, 4), pt(-1, 1, 4)], '#101213');
+  // 3. Chassis Lower Frame (Low, heavy clearance)
+  poly([pt(-1.1, -1, 3), pt(1.05, -1, 3), pt(1.05, 1, 3), pt(-1.1, 1, 3)], '#0c0e0e');
 
-  // Near Side Face (v = 1, facing camera)
-  const sideColor = shadowColor;
-  poly([pt(-1, 1, 4), pt(1, 1, 4), pt(1, 1, 19), pt(-1, 1, 19)], sideColor, 'rgba(15,18,17,0.7)', 0.8);
+  // Near Side Bodywork (v = 1, facing camera)
+  poly([pt(-1.12, 1, 4), pt(1.06, 1, 4), pt(1.04, 1, 17), pt(-1.1, 1, 17)], shadowColor, 'rgba(12,14,13,0.7)', 0.8);
 
-  // Police cruiser weathered white door panel
-  if (isPolice) {
-    poly([pt(-0.45, 1, 5), pt(0.35, 1, 5), pt(0.35, 1, 18.5), pt(-0.45, 1, 18.5)], '#d0d4d6');
-    const starP = pt(-0.05, 1, 11.5);
-    ctx.fillStyle = '#8a7638';
-    ctx.beginPath();
-    ctx.arc(starP.x, starP.y, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Classic 1950s Chrome Side Spear Trim (splitting body and rocker panel)
+  const spearColor = isWreck ? '#4c4238' : '#9ea7ad';
+  poly([pt(-1.08, 1, 12), pt(1.02, 1, 12), pt(1.01, 1, 13.5), pt(-1.07, 1, 13.5)], spearColor);
 
-  // Rust / grime patches on body
-  for (let i = 0; i < (isPickup ? 7 : 3); i++) {
-    const ru = -0.8 + i * 0.28 + (rnd() - 0.5) * 0.1;
+  // Fallout 2 Fender Skirt (covers upper half of rear wheel!)
+  poly([pt(-0.84, 1.01, 4), pt(-0.4, 1.01, 4), pt(-0.38, 1.01, 15), pt(-0.86, 1.01, 15)], shadowColor, 'rgba(12,14,13,0.6)', 0.7);
+
+  // Near Front Wheel (open wheel arch at u = 0.68)
+  drawWheel(0.68, 0.98);
+  // Rear wheel peeking out under skirt
+  drawWheel(-0.62, 0.96, true);
+
+  // Heavy Rust & Patina streaks across side
+  for (let i = 0; i < 5; i++) {
+    const ru = -0.9 + i * 0.38 + (rnd() - 0.5) * 0.1;
     poly(
-      [pt(ru, 1, 5 + rnd() * 6), pt(ru + 0.16, 1, 5 + rnd() * 6), pt(ru + 0.14, 1, 15), pt(ru - 0.04, 1, 15)],
-      isPickup ? 'rgba(78, 38, 20, 0.75)' : 'rgba(50, 40, 30, 0.45)',
+      [pt(ru, 1, 4 + rnd() * 4), pt(ru + 0.18, 1, 4 + rnd() * 4), pt(ru + 0.14, 1, 13), pt(ru - 0.02, 1, 13)],
+      rustColor,
     );
   }
 
-  // Door seam grooves & handles
-  poly([pt(-0.08, 1, 5), pt(-0.05, 1, 5), pt(-0.05, 1, 18.5), pt(-0.08, 1, 18.5)], 'rgba(15,18,16,0.6)');
-  poly([pt(0.36, 1, 5), pt(0.39, 1, 5), pt(0.39, 1, 18.5), pt(0.36, 1, 18.5)], 'rgba(15,18,16,0.6)');
-  const h1 = pt(-0.25, 1, 15);
-  const h2 = pt(0.18, 1, 15);
-  ctx.fillStyle = '#676e72';
-  ctx.fillRect(h1.x - 2, h1.y - 1, 4, 1.8);
-  ctx.fillRect(h2.x - 2, h2.y - 1, 4, 1.8);
+  // 4. Fallout 2 Iconic Atomic Tail Fins!
+  // Near Fin (rising from u = -0.3 back to u = -1.18, height z = 17 up to 26!)
+  poly(
+    [pt(-0.35, 1.01, 17), pt(-1.18, 1.01, 26), pt(-1.18, 1.01, 15), pt(-0.35, 1.01, 15)],
+    shadowColor,
+    'rgba(12,14,13,0.75)',
+    0.8,
+  );
+  // Near Fin top chrome ridge
+  poly([pt(-0.35, 1.01, 17), pt(-1.18, 1.01, 26), pt(-1.16, 0.92, 26), pt(-0.35, 0.92, 17)], spearColor);
+  // Far Fin (visible behind rear trunk)
+  poly(
+    [pt(-0.35, -0.98, 17), pt(-1.18, -0.98, 26), pt(-1.18, -0.9, 26), pt(-0.35, -0.9, 17)],
+    shade(shadowColor, -0.2),
+  );
 
-  // Front Face (u = 1, facing SE/SW)
-  const frontColor = shade(baseBodyColor, -0.15);
-  poly([pt(1, -1, 4), pt(1, 1, 4), pt(1, 1, 19), pt(1, -1, 19)], frontColor, 'rgba(15,18,17,0.7)', 0.8);
+  // Bullet Rocket Taillights on tips of rear fins!
+  const tailNear = pt(-1.18, 1.01, 24);
+  const tailFar = pt(-1.18, -0.98, 24);
+  const drawRocketTail = (p: { x: number; y: number }) => {
+    // Chrome bullet housing
+    ctx.fillStyle = '#6a7277';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 2.8, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Glowing ruby red bullet lens
+    ctx.fillStyle = '#b81c14';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 1.8, 1.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  drawRocketTail(tailNear);
+  drawRocketTail(tailFar);
 
-  // Front Grille
-  poly([pt(1, -0.6, 6), pt(1, 0.6, 6), pt(1, 0.6, 14), pt(1, -0.6, 14)], '#141617');
-  for (let gy = 8; gy <= 13; gy += 2) {
-    const gL = pt(1, -0.55, gy);
-    const gR = pt(1, 0.55, gy);
-    ctx.strokeStyle = '#4e565b';
+  // Rear Trunk Deck between fins
+  poly([pt(-1.14, -0.92, 16), pt(-0.35, -0.92, 17), pt(-0.35, 0.92, 17), pt(-1.14, 0.92, 16)], highlightColor, 'rgba(12,14,13,0.5)', 0.6);
+
+  // 5. Front Nose & Torpedo Hood
+  const frontColor = shade(baseBodyColor, -0.16);
+  // Front Face
+  poly([pt(1.06, -0.96, 4), pt(1.06, 0.96, 4), pt(1.03, 0.96, 17), pt(1.03, -0.96, 17)], frontColor, 'rgba(12,14,13,0.7)', 0.8);
+
+  // Chryslus Heavy Chrome Bumper with overrider guards
+  const bumperMat = isWreck ? '#3c352c' : '#889196';
+  poly([pt(1.1, -1.02, 4), pt(1.1, 1.02, 4), pt(1.1, 1.02, 8.5), pt(1.1, -1.02, 8.5)], bumperMat, '#0d0f10', 0.8);
+  // Bumper vertical overriders
+  const ov1 = pt(1.12, -0.4, 6);
+  const ov2 = pt(1.12, 0.4, 6);
+  ctx.fillStyle = bumperMat;
+  ctx.fillRect(ov1.x - 2, ov1.y - 4, 4, 8);
+  ctx.fillRect(ov2.x - 2, ov2.y - 4, 4, 8);
+
+  // Front Chryslus Slotted Grille
+  poly([pt(1.07, -0.65, 8.5), pt(1.07, 0.65, 8.5), pt(1.07, 0.65, 14.5), pt(1.07, -0.65, 14.5)], '#131617');
+  for (let gy = 10; gy <= 14; gy += 1.8) {
+    const gL = pt(1.07, -0.6, gy);
+    const gR = pt(1.07, 0.6, gy);
+    ctx.strokeStyle = '#687278';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(gL.x, gL.y);
@@ -1182,128 +1329,132 @@ function makeCar(horizontal: boolean, variant: number): HTMLCanvasElement {
     ctx.stroke();
   }
 
-  // Headlights (dusty/cracked)
-  const hlL = pt(1, -0.82, 11);
-  const hlR = pt(1, 0.82, 11);
-  const drawHeadlight = (p: { x: number; y: number }, broken: boolean) => {
-    ctx.fillStyle = broken ? '#251b14' : '#e2dbb0';
+  // Dual Bullet Headlights sunken in hooded pods
+  const hlL = pt(1.06, -0.82, 13);
+  const hlR = pt(1.06, 0.82, 13);
+  const drawAtomicHeadlight = (p: { x: number; y: number }, broken: boolean) => {
+    // Hooded chrome bezel
+    ctx.fillStyle = '#6e777d';
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, 3.5, 2.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x, p.y, 4, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Glass reflector
+    ctx.fillStyle = broken ? '#261c16' : '#ece5c0';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 2.6, 2.1, 0, 0, Math.PI * 2);
     ctx.fill();
     if (!broken) {
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y, 1.6, 1.3, 0, 0, Math.PI * 2);
+      ctx.ellipse(p.x - 0.4, p.y - 0.3, 1.2, 1, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   };
-  drawHeadlight(hlL, isPickup || rnd() < 0.3);
-  drawHeadlight(hlR, rnd() < 0.2);
+  drawAtomicHeadlight(hlL, isWreck || rnd() < 0.3);
+  drawAtomicHeadlight(hlR, rnd() < 0.25);
 
-  // Front Bumper
-  poly([pt(1.04, -0.95, 4), pt(1.04, 0.95, 4), pt(1.04, 0.95, 8), pt(1.04, -0.95, 8)], '#262a2d', '#111314', 0.8);
-  if (isPolice) {
-    // Bullbar push bumper
-    poly([pt(1.08, -0.4, 4), pt(1.08, 0.4, 4), pt(1.08, 0.4, 15), pt(1.08, -0.4, 15)], '#181a1c', '#33383d', 0.8);
-  }
-
-  // Rear Taillights
-  const rl = pt(-1, 0.82, 12);
-  ctx.fillStyle = '#9e1a12';
-  ctx.beginPath();
-  ctx.ellipse(rl.x, rl.y, 2.2, 1.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 4. Near Wheels (v = 0.95, in foreground)
-  drawWheel(-0.65, 0.95);
-  drawWheel(0.65, 0.95);
-
-  // 5. Hood & Trunk / Bed (Top body planes at z = 19)
-  poly([pt(0.25, -0.98, 19), pt(1, -0.98, 19), pt(1, 0.98, 19), pt(0.25, 0.98, 19)], highlightColor, 'rgba(15,18,17,0.5)', 0.6);
-
-  if (isPickup) {
-    // Open cargo bed in the back (u: -1.0 to -0.15)
-    poly([pt(-0.95, -0.85, 9), pt(-0.15, -0.85, 9), pt(-0.15, 0.85, 9), pt(-0.95, 0.85, 9)], '#1a1410');
-    poly([pt(-1, 0.85, 19), pt(-0.15, 0.85, 19), pt(-0.15, 0.98, 19), pt(-1, 0.98, 19)], highlightColor);
-    const scrapP = pt(-0.55, 0.05, 10);
-    ctx.fillStyle = '#3c4246';
+  // Long Torpedo Hood
+  if (isWreck) {
+    // Stripped / crumpled hood exposing Chryslus Fusion Reactor!
+    poly([pt(0.25, -0.94, 17), pt(1.03, -0.94, 17), pt(1.03, 0.94, 17), pt(0.25, 0.94, 17)], '#1a1410');
+    // Exposed Fusion Core Engine Block
+    const coreP = pt(0.65, 0, 10);
+    ctx.fillStyle = '#1e2326';
     ctx.beginPath();
-    ctx.ellipse(scrapP.x, scrapP.y, 5, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(coreP.x, coreP.y, 14, 9, 0, 0, Math.PI * 2);
     ctx.fill();
-  } else if (isWagon) {
-    poly([pt(-1, -0.95, 19), pt(-0.7, -0.95, 19), pt(-0.7, 0.95, 19), pt(-1, 0.95, 19)], highlightColor, 'rgba(15,18,17,0.5)', 0.6);
+    // Radioactive blue core glow
+    ctx.fillStyle = 'rgba(70, 190, 230, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(coreP.x, coreP.y, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Copper manifold conduit coils
+    const c1 = pt(0.5, -0.3, 13);
+    const c2 = pt(0.8, -0.3, 13);
+    ctx.strokeStyle = '#a45728';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(c1.x, c1.y);
+    ctx.lineTo(c2.x, c2.y);
+    ctx.stroke();
+    // Crumpled loose hood sheet leaning back
+    poly([pt(0.22, -0.9, 17), pt(0.6, -0.9, 23), pt(0.6, 0.7, 23), pt(0.22, 0.7, 17)], rustColor, '#120f0d', 0.8);
   } else {
-    poly([pt(-1, -0.95, 19), pt(-0.6, -0.95, 19), pt(-0.6, 0.95, 19), pt(-1, 0.95, 19)], highlightColor, 'rgba(15,18,17,0.5)', 0.6);
+    // Solid retro-streamliner torpedo hood
+    poly([pt(0.24, -0.96, 17), pt(1.03, -0.96, 17), pt(1.03, 0.96, 17), pt(0.24, 0.96, 17)], highlightColor, 'rgba(12,14,13,0.5)', 0.6);
+    // Center rocket chrome spine
+    poly([pt(0.24, -0.04, 17.5), pt(1.04, -0.04, 17.5), pt(1.04, 0.04, 17.5), pt(0.24, 0.04, 17.5)], spearColor);
+    // Hood rust patches
+    poly([pt(0.45, 0.2, 17.2), pt(0.72, 0.3, 17.2), pt(0.68, 0.65, 17.2), pt(0.42, 0.55, 17.2)], rustColor);
   }
 
-  // 6. Cabin / Greenhouse (Extruded z = 19 to 33)
-  const cabRearU = isPickup ? -0.15 : isWagon ? -0.82 : -0.6;
-  const cabFrontU = 0.25;
-  const roofRearU = isPickup ? -0.12 : isWagon ? -0.75 : -0.48;
-  const roofFrontU = 0.06;
+  // 6. Retro-Futuristic Panoramic Curved Cockpit (Bubble canopy)
+  const cabRearU = -0.35;
+  const cabFrontU = 0.24;
+  const roofRearU = -0.25;
+  const roofFrontU = 0.08;
 
-  // Angled Windshield
+  // Curved Panoramic Windshield
   poly(
-    [pt(roofFrontU, -0.8, 33), pt(roofFrontU, 0.8, 33), pt(cabFrontU, 0.88, 19), pt(cabFrontU, -0.88, 19)],
-    '#1c262a',
-    '#101416',
+    [pt(roofFrontU, -0.78, 29), pt(roofFrontU, 0.78, 29), pt(cabFrontU, 0.86, 17), pt(cabFrontU, -0.86, 17)],
+    '#131e21',
+    '#0c1214',
     0.8,
   );
-  ctx.fillStyle = 'rgba(200, 220, 230, 0.22)';
-  poly([pt(roofFrontU + 0.02, -0.1, 33), pt(roofFrontU + 0.06, 0.2, 33), pt(cabFrontU - 0.04, 0.45, 19.2), pt(cabFrontU - 0.08, 0.15, 19.2)], 'rgba(200, 220, 230, 0.22)');
-
-  // Cabin Near Side Windows
-  poly(
-    [pt(roofRearU, 0.8, 33), pt(roofFrontU, 0.8, 33), pt(cabFrontU, 0.88, 19), pt(cabRearU, 0.88, 19)],
-    '#172023',
-    'rgba(15,18,17,0.7)',
-    0.8,
-  );
-
-  // Pillars
-  if (!isPickup) {
-    const pillarTop = pt((roofRearU + roofFrontU) * 0.48, 0.8, 33);
-    const pillarBot = pt((cabRearU + cabFrontU) * 0.48, 0.88, 19);
-    ctx.strokeStyle = sideColor;
-    ctx.lineWidth = 1.8;
+  // Glass greenish reflection & spider-crack
+  poly([pt(roofFrontU + 0.02, -0.15, 29), pt(roofFrontU + 0.06, 0.15, 29), pt(cabFrontU - 0.04, 0.35, 17.2), pt(cabFrontU - 0.08, 0.05, 17.2)], 'rgba(180, 225, 215, 0.24)');
+  if (rnd() < 0.6) {
+    // Spiderweb crack on windshield
+    const cp = pt(0.16, 0.25, 23);
+    ctx.strokeStyle = 'rgba(230, 245, 240, 0.6)';
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
-    ctx.moveTo(pillarTop.x, pillarTop.y);
-    ctx.lineTo(pillarBot.x, pillarBot.y);
+    ctx.moveTo(cp.x - 4, cp.y - 3);
+    ctx.lineTo(cp.x + 3, cp.y + 2);
+    ctx.lineTo(cp.x + 5, cp.y - 4);
+    ctx.moveTo(cp.x, cp.y);
+    ctx.lineTo(cp.x - 3, cp.y + 5);
     ctx.stroke();
   }
 
-  // Cabin Roof (z = 33)
-  const roofColor = isPolice ? '#d2d6d8' : shade(baseBodyColor, 0.12);
+  // Wraparound Rear Window
   poly(
-    [pt(roofRearU, -0.8, 33), pt(roofFrontU, -0.8, 33), pt(roofFrontU, 0.8, 33), pt(roofRearU, 0.8, 33)],
-    roofColor,
-    'rgba(15,18,17,0.6)',
+    [pt(roofRearU, 0.78, 29), pt(roofRearU, -0.78, 29), pt(cabRearU, -0.86, 17), pt(cabRearU, 0.86, 17)],
+    '#11191c',
+    '#0c1214',
     0.8,
   );
 
-  // 7. Roof Props
-  if (isPolice) {
-    const lbU = (roofRearU + roofFrontU) * 0.5;
-    poly([pt(lbU - 0.04, -0.65, 34), pt(lbU + 0.04, -0.65, 34), pt(lbU + 0.04, 0.65, 34), pt(lbU - 0.04, 0.65, 34)], '#2a3034');
-    poly([pt(lbU - 0.04, -0.6, 35), pt(lbU + 0.04, -0.6, 35), pt(lbU + 0.04, -0.05, 35), pt(lbU - 0.04, -0.05, 35)], '#b82016');
-    poly([pt(lbU - 0.04, 0.05, 35), pt(lbU + 0.04, 0.05, 35), pt(lbU + 0.04, 0.6, 35), pt(lbU - 0.04, 0.6, 35)], '#1650b8');
-  } else if (isWagon) {
-    const rU1 = roofRearU + 0.06;
-    const rU2 = roofFrontU - 0.06;
-    poly([pt(rU1, -0.7, 35), pt(rU2, -0.7, 35), pt(rU2, 0.7, 35), pt(rU1, 0.7, 35)], 'rgba(40,32,24,0.3)', '#463b30', 1.2);
-    const tireP = pt((rU1 + rU2) * 0.5, 0, 36);
-    ctx.fillStyle = '#161819';
-    ctx.beginPath();
-    ctx.ellipse(tireP.x, tireP.y, 6.5, 4.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#62584c';
-    ctx.beginPath();
-    ctx.ellipse(tireP.x, tireP.y, 3, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Near Side Windows
+  poly(
+    [pt(roofRearU, 0.78, 29), pt(roofFrontU, 0.78, 29), pt(cabFrontU, 0.86, 17), pt(cabRearU, 0.86, 17)],
+    '#121b1e',
+    'rgba(12,14,13,0.7)',
+    0.8,
+  );
 
-  // 8. Ground Glass & Debris Specks
-  speckle(ctx, cx - 44, baseY - 12, 88, 32, 22, ['rgba(190,205,195,0.24)', 'rgba(35,38,34,0.45)', 'rgba(120,95,50,0.25)'], rnd, 1.4);
+  // Center Window Pillar
+  const pTop = pt((roofRearU + roofFrontU) * 0.5, 0.78, 29);
+  const pBot = pt((cabRearU + cabFrontU) * 0.5, 0.86, 17);
+  ctx.strokeStyle = sideColor;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(pTop.x, pTop.y);
+  ctx.lineTo(pBot.x, pBot.y);
+  ctx.stroke();
+
+  // Teardrop Rounded Roof Deck
+  poly(
+    [pt(roofRearU, -0.78, 29), pt(roofFrontU, -0.78, 29), pt(roofFrontU, 0.78, 29), pt(roofRearU, 0.78, 29)],
+    shade(baseBodyColor, 0.14),
+    'rgba(12,14,13,0.6)',
+    0.8,
+  );
+  // Roof rust patches
+  poly([pt(-0.12, -0.2, 29.1), pt(0.04, -0.15, 29.1), pt(0.02, 0.25, 29.1), pt(-0.14, 0.15, 29.1)], rustColor);
+
+  // 7. Wasteland Debris & Glass Specks
+  speckle(ctx, cx - 48, baseY - 14, 96, 36, 26, ['rgba(195,210,200,0.22)', 'rgba(30,34,32,0.45)', 'rgba(110,85,45,0.28)'], rnd, 1.4);
 
   return canvas;
 }
@@ -2202,13 +2353,23 @@ export function getBuildingSign(scene: Phaser.Scene, name: string): string {
     ctx.fillRect(11.5, 10, 7, 14);
   }
 
-  const cleanTitle = name.toUpperCase();
+  let cleanTitle = name.toUpperCase();
+  if (lower.includes('pharmacy') || lower.includes('аптек') || lower.includes('med')) {
+    cleanTitle = 'АПТЕКА';
+  } else if (lower.includes('market') || lower.includes('магаз') || lower.includes('продукт') || lower.includes('гастроном')) {
+    cleanTitle = 'ПРОДУКТЫ';
+  } else if (lower.includes('diner') || lower.includes('кафе')) {
+    cleanTitle = 'КАФЕ';
+  } else if (lower.includes('gun') || lower.includes('охот') || lower.includes('оружи')) {
+    cleanTitle = 'ОХОТНИК';
+  }
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  let fontSize = 11.5;
+  let fontSize = 13.5;
   ctx.font = `700 ${fontSize}px ${theme.fontFamily}`;
-  while (fontSize > 7.5 && ctx.measureText(cleanTitle).width > maxTextW) {
+  while (fontSize > 8.5 && ctx.measureText(cleanTitle).width > maxTextW) {
     fontSize -= 0.6;
     ctx.font = `700 ${fontSize.toFixed(1)}px ${theme.fontFamily}`;
   }
@@ -2292,7 +2453,7 @@ function makeCrosswalk(alongX: boolean): HTMLCanvasElement {
   return canvas;
 }
 
-function makeDoor(facing: 'south' | 'east' = 'south', open = false): HTMLCanvasElement {
+function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = false): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(64, 88);
   const rnd = mulberry(open ? 402 : 401);
 
@@ -2303,6 +2464,12 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false): HTMLCanvasE
   } else {
     // Right face frame (facing camera along South-West axis)
     ctx.setTransform(0.5, -0.25, 0, 1, 32, 32);
+  }
+
+  if (cutaway) {
+    ctx.beginPath();
+    ctx.rect(0, 56 - CUTAWAY_WALL_HEIGHT, 64, CUTAWAY_WALL_HEIGHT);
+    ctx.clip();
   }
 
   // Wall surround
@@ -2372,13 +2539,14 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false): HTMLCanvasE
   ctx.restore();
 
   // Thin architectural coping strip along top edge of wall
+  const topY = cutaway ? 56 - CUTAWAY_WALL_HEIGHT : 0;
   ctx.save();
   if (facing === 'south') {
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, topY);
     ctx.fillStyle = '#2f2c27';
     ctx.fillRect(0, 27, 64, 5);
   } else {
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, topY);
     ctx.fillStyle = '#282521';
     ctx.fillRect(59, 0, 5, 32);
   }
@@ -2388,16 +2556,30 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false): HTMLCanvasE
   ctx.strokeStyle = 'rgba(10,12,11,0.45)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  if (facing === 'south') {
-    ctx.moveTo(0, 16);
-    ctx.lineTo(32, 32);
-    ctx.lineTo(32, 88);
-    ctx.lineTo(0, 72);
+  if (cutaway) {
+    if (facing === 'south') {
+      ctx.moveTo(0, 54);
+      ctx.lineTo(32, 70);
+      ctx.lineTo(32, 88);
+      ctx.lineTo(0, 72);
+    } else {
+      ctx.moveTo(32, 70);
+      ctx.lineTo(64, 54);
+      ctx.lineTo(64, 72);
+      ctx.lineTo(32, 88);
+    }
   } else {
-    ctx.moveTo(32, 32);
-    ctx.lineTo(64, 16);
-    ctx.lineTo(64, 72);
-    ctx.lineTo(32, 88);
+    if (facing === 'south') {
+      ctx.moveTo(0, 16);
+      ctx.lineTo(32, 32);
+      ctx.lineTo(32, 88);
+      ctx.lineTo(0, 72);
+    } else {
+      ctx.moveTo(32, 32);
+      ctx.lineTo(64, 16);
+      ctx.lineTo(64, 72);
+      ctx.lineTo(32, 88);
+    }
   }
   ctx.stroke();
 
@@ -2444,6 +2626,7 @@ export function buildEnvironmentArt(scene: Phaser.Scene): void {
       register(scene, `wall_${mat}_${v}`, makeWall(mat, v));
       for (const ori of ['south', 'east', 'corner', 'back'] as const) {
         register(scene, `wall_${mat}_${ori}_${v}`, makeWallOriented(mat, ori, v));
+        register(scene, `wall_${mat}_${ori}_cut_${v}`, makeWallCutaway(mat, ori, v));
       }
     }
   }
@@ -2502,12 +2685,14 @@ export function buildEnvironmentArt(scene: Phaser.Scene): void {
   register(scene, 'mark_lane_v', makeLane(false));
   register(scene, 'mark_cross_h', makeCrosswalk(true));
   register(scene, 'mark_cross_v', makeCrosswalk(false));
-  register(scene, 'door_south_closed', makeDoor('south', false));
-  register(scene, 'door_south_open', makeDoor('south', true));
-  register(scene, 'door_east_closed', makeDoor('east', false));
-  register(scene, 'door_east_open', makeDoor('east', true));
-  register(scene, 'door_closed', makeDoor('south', false));
-  register(scene, 'door_open', makeDoor('south', true));
+  for (const facing of ['south', 'east'] as const) {
+    register(scene, `door_${facing}_closed`, makeDoor(facing, false, false));
+    register(scene, `door_${facing}_open`, makeDoor(facing, true, false));
+    register(scene, `door_${facing}_cut_closed`, makeDoor(facing, false, true));
+    register(scene, `door_${facing}_cut_open`, makeDoor(facing, true, true));
+  }
+  register(scene, 'door_closed', makeDoor('south', false, false));
+  register(scene, 'door_open', makeDoor('south', true, false));
   register(scene, 'item_glow', (() => {
     const { canvas, ctx } = makeCanvas(48, 24);
     const g = ctx.createRadialGradient(24, 12, 1, 24, 12, 22);
@@ -2547,8 +2732,10 @@ export function wallTextureKey(
   style: number,
   interior: boolean,
   orientation: WallOrientation = 'south',
+  cutaway = false,
 ): string {
-  if (material === 4) return `wall_interior_${orientation}_${Math.floor(hash2(tx, ty, 5) * 3)}`;
+  const cut = cutaway ? 'cut_' : '';
+  if (material === 4) return `wall_interior_${orientation}_${cut}${Math.floor(hash2(tx, ty, 5) * 3)}`;
   const mat: WallMat = material === 3 ? 'industrial' : material === 2 ? 'concrete' : 'brick';
   const h = hash2(tx, ty, material);
   let variant = 0;
@@ -2557,7 +2744,7 @@ export function wallTextureKey(
   if (h > 0.9) variant = 3;
   if (h > 0.95) variant = 4;
   if (style === 1 && h > 0.62 && h < 0.74) variant = 5;
-  return `wall_${mat}_${orientation}_${variant}`;
+  return `wall_${mat}_${orientation}_${cut}${variant}`;
 }
 
 export function roofTextureKey(style: number, tx: number, ty: number): string {

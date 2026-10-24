@@ -445,7 +445,9 @@ export class AudioEngine {
   }
 
   empty(): void {
-    this.tone(this.uiGain, 900, 0.04, 0.025, 'square', 400);
+    if (!this.sfxGain) return;
+    this.tone(this.sfxGain, 1200, 0.08, 0.015, 'triangle', 400);
+    this.burst(this.sfxGain, 2600, 3.5, 0.02, 0.035, 'bandpass');
   }
 
   inventory(open = true): void {
