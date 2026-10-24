@@ -57,7 +57,7 @@
           <div id="quickbar" class="quickbar"></div>
           <div class="hud-hints">
             <span><b>WASD</b> движение</span><span><b>SHIFT</b> бег</span><span><b>ЛКМ</b> атака</span>
-            <span><b>E</b> использовать</span><span><b>I</b> инвентарь</span><span><b>T</b> чат</span>
+            <span><b>E</b> обыск/дверь</span><span><b>I</b> рюкзак</span><span><b>C</b> крафт</span>
             <span><b>F1</b> DEV</span><span><b>ESC</b> меню</span>
           </div>
         </div>
@@ -65,13 +65,17 @@
         <div id="inventory-panel" class="panel hidden">
           <div class="panel-head">
             <div>
-              <h2>СНАРЯЖЕНИЕ И КРАФТ</h2>
+              <h2 id="inv-panel-title">СНАРЯЖЕНИЕ</h2>
               <div id="inv-weight" class="subtle">0 / 26 кг</div>
+            </div>
+            <div id="panel-tabs" class="panel-head-tabs">
+              <button id="tab-btn-inv" class="panel-tab active" type="button">🎒 РЮКЗАК</button>
+              <button id="tab-btn-craft" class="panel-tab" type="button">🛠 КРАФТ</button>
             </div>
             <button id="inv-close" class="icon-btn">ESC</button>
           </div>
           <div class="inv-columns">
-            <div class="inv-col">
+            <div class="inv-col" id="player-inv-col">
               <h3>РЮКЗАК <span id="inv-count"></span></h3>
               <div id="inv-list" class="item-list"></div>
             </div>
@@ -82,7 +86,7 @@
               </div>
               <div id="container-list" class="item-list"></div>
             </div>
-            <div class="inv-col craft-col" id="craft-col">
+            <div class="inv-col craft-col hidden" id="craft-col">
               <h3>СОЗДАНИЕ ПРЕДМЕТОВ</h3>
               <div id="craft-list" class="craft-list"></div>
             </div>

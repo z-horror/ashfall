@@ -255,19 +255,137 @@ export class AudioEngine {
   }
 
   swing(vol = 1): void {
-    this.burst(this.sfxGain, 1100, 1.4, 0.055 * vol, 0.16);
-    this.tone(this.sfxGain, 150, 0.09, 0.015 * vol, 'triangle', 90);
+    if (!this.ctx || !this.sfxGain || this.settings.muted) return;
+    const ctx = this.ctx;
+    const t = this.now();
+    // Aerodynamic whoosh: rapid resonant bandpass filter sweep on white noise
+    const buffer = this.noise;
+    if (!buffer) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 3.2;
+    filter.frequency.setValueAtTime(1400, t);
+    filter.frequency.exponentialRampToValueAtTime(320, t + 0.11);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(0.12 * vol, t + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+    src.start(t);
+    src.stop(t + 0.14);
   }
 
   hit(vol = 1): void {
-    this.tone(this.sfxGain, 110, 0.16, 0.09 * vol, 'sine', 55);
-    this.burst(this.sfxGain, 300, 0.7, 0.08 * vol, 0.14, 'lowpass');
+    if (!this.ctx || !this.sfxGain || this.settings.muted) return;
+    const ctx = this.ctx;
+    const t = this.now();
+    const buffer = this.noise;
+
+    // 1. Transient click/crack (initial bone/wood impact)
+    if (buffer) {
+      const snap = ctx.createBufferSource();
+      snap.buffer = buffer;
+      const snapFilter = ctx.createBiquadFilter();
+      snapFilter.type = 'highpass';
+      snapFilter.frequency.value = 1600;
+      const snapGain = ctx.createGain();
+      snapGain.gain.setValueAtTime(0.22 * vol, t);
+      snapGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+      snap.connect(snapFilter);
+      snapFilter.connect(snapGain);
+      snapGain.connect(this.sfxGain);
+      snap.start(t);
+      snap.stop(t + 0.04);
+    }
+
+    // 2. Heavy blunt body (sub-thud)
+    const thud = ctx.createOscillator();
+    thud.type = 'triangle';
+    thud.frequency.setValueAtTime(160, t);
+    thud.frequency.exponentialRampToValueAtTime(38, t + 0.09);
+    const thudGain = ctx.createGain();
+    thudGain.gain.setValueAtTime(0.24 * vol, t);
+    thudGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    thud.connect(thudGain);
+    thudGain.connect(this.sfxGain);
+    thud.start(t);
+    thud.stop(t + 0.11);
+
+    // 3. Meaty mid-range crunch (bandpass noise flutter)
+    if (buffer) {
+      const crunch = ctx.createBufferSource();
+      crunch.buffer = buffer;
+      const crunchFilter = ctx.createBiquadFilter();
+      crunchFilter.type = 'bandpass';
+      crunchFilter.frequency.value = 460;
+      crunchFilter.Q.value = 2.4;
+      const crunchGain = ctx.createGain();
+      crunchGain.gain.setValueAtTime(0.18 * vol, t + 0.005);
+      crunchGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      crunch.connect(crunchFilter);
+      crunchFilter.connect(crunchGain);
+      crunchGain.connect(this.sfxGain);
+      crunch.start(t);
+      crunch.stop(t + 0.09);
+    }
   }
 
   shot(vol = 1): void {
-    this.burst(this.sfxGain, 900, 0.4, 0.28 * vol, 0.22, 'lowpass');
-    this.burst(this.sfxGain, 2400, 0.8, 0.12 * vol, 0.08, 'highpass');
-    this.tone(this.sfxGain, 70, 0.24, 0.16 * vol, 'triangle', 38);
+    if (!this.ctx || !this.sfxGain || this.settings.muted) return;
+    const ctx = this.ctx;
+    const t = this.now();
+    const buffer = this.noise;
+
+    // 1. Supersonic muzzle crack
+    if (buffer) {
+      const crack = ctx.createBufferSource();
+      crack.buffer = buffer;
+      const crackFilter = ctx.createBiquadFilter();
+      crackFilter.type = 'highpass';
+      crackFilter.frequency.value = 1800;
+      const crackGain = ctx.createGain();
+      crackGain.gain.setValueAtTime(0.45 * vol, t);
+      crackGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      crack.connect(crackFilter);
+      crackFilter.connect(crackGain);
+      crackGain.connect(this.sfxGain);
+      crack.start(t);
+      crack.stop(t + 0.07);
+    }
+
+    // 2. Low blast boom
+    const boom = ctx.createOscillator();
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(140, t);
+    boom.frequency.exponentialRampToValueAtTime(32, t + 0.18);
+    const boomGain = ctx.createGain();
+    boomGain.gain.setValueAtTime(0.35 * vol, t);
+    boomGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    boom.connect(boomGain);
+    boomGain.connect(this.sfxGain);
+    boom.start(t);
+    boom.stop(t + 0.24);
+
+    // 3. Environmental room echo tail
+    if (buffer) {
+      const tail = ctx.createBufferSource();
+      tail.buffer = buffer;
+      const tailFilter = ctx.createBiquadFilter();
+      tailFilter.type = 'lowpass';
+      tailFilter.frequency.value = 650;
+      const tailGain = ctx.createGain();
+      tailGain.gain.setValueAtTime(0.18 * vol, t + 0.02);
+      tailGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+      tail.connect(tailFilter);
+      tailFilter.connect(tailGain);
+      tailGain.connect(this.sfxGain);
+      tail.start(t + 0.02);
+      tail.stop(t + 0.34);
+    }
   }
 
   growl(vol = 1): void {

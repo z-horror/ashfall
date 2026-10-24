@@ -150,7 +150,18 @@ export class ChunkView {
         if (!wall) continue;
         const building = this.world.buildingAt(gx + 0.5, gy + 0.5);
         const style = building?.style ?? 0;
-        const key = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR);
+        let orientation: import('../art/textures.js').WallOrientation = 'south';
+        if (wall === WALL.INTERIOR) {
+          orientation = 'back';
+        } else if (building) {
+          const isSouth = gy === building.y + building.h - 1;
+          const isEast = gx === building.x + building.w - 1;
+          if (isSouth && isEast) orientation = 'corner';
+          else if (isSouth) orientation = 'south';
+          else if (isEast) orientation = 'east';
+          else orientation = 'back';
+        }
+        const key = wallTextureKey(wall, gx, gy, style, wall === WALL.INTERIOR, orientation);
         const p = iso(gx + 0.5, gy + 0.5);
         const img = artImage(this.scene, p.x, p.y + TILE_H / 2, key)
           .setOrigin(0.5, 1)
@@ -176,20 +187,26 @@ export class ChunkView {
   private addDoorSprite(door: DoorDef): void {
     const open = this.world.doorOpen.get(door.id) ?? door.open;
     const p = iso(door.x + 0.5, door.y + 0.5);
-    const key = open ? 'door_open' : 'door_closed';
+    const building = this.world.buildingAt(door.x + 0.5, door.y + 0.5);
+    const isEast = building ? door.x === building.x + building.w - 1 : false;
+    const facing = isEast ? 'east' : 'south';
+    const key = `door_${facing}_${open ? 'open' : 'closed'}`;
     const img = artImage(this.scene, p.x, p.y + TILE_H / 2, key)
       .setOrigin(0.5, 1)
       .setDepth(door.x + door.y + 0.74);
     this.sprites.push(img);
     this.doorSprites.set(door.id, img);
-    const building = this.world.buildingAt(door.x + 0.5, door.y + 0.5);
     if (building) this.visualFor(building).doors.push(img);
   }
 
   updateDoor(id: string, open: boolean): void {
     const img = this.doorSprites.get(id);
     if (!img) return;
-    artSetTexture(img, open ? 'door_open' : 'door_closed');
+    const door = this.world.doors.get(id);
+    const building = door ? this.world.buildingAt(door.x + 0.5, door.y + 0.5) : null;
+    const isEast = door && building ? door.x === building.x + building.w - 1 : false;
+    const facing = isEast ? 'east' : 'south';
+    artSetTexture(img, `door_${facing}_${open ? 'open' : 'closed'}`);
   }
 
   private buildRoofs(): void {
@@ -241,9 +258,8 @@ export class ChunkView {
         if (doorCx === cx && doorCy === cy) {
           const key = getBuildingSign(this.scene, b.name);
           const p = iso(door.x + 0.5, door.y + 0.5);
-          const img = artImage(this.scene, p.x, p.y - 52, key)
-            .setOrigin(0.5, 0.85)
-            .setScale(0.85)
+          const img = artImage(this.scene, p.x, p.y - 28, key)
+            .setOrigin(0.5, 1)
             .setDepth(visual.maxDepth + 0.98)
             .setAlpha(0.96);
           this.sprites.push(img);

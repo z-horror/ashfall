@@ -69,15 +69,22 @@ export class HUD {
   private prompt = el('interaction-prompt');
   private quickbar = el('quickbar');
   private panel = el('inventory-panel');
+  private invPanelTitle = el('inv-panel-title');
+  private panelTabs = el('panel-tabs');
+  private tabBtnInv = el('tab-btn-inv');
+  private tabBtnCraft = el('tab-btn-craft');
+  private playerInvCol = el('player-inv-col');
   private invList = el('inv-list');
   private containerCol = el('container-col');
   private containerTitle = el('container-title');
   private containerList = el('container-list');
   private btnTakeAll = el('container-take-all');
+  private craftCol = el('craft-col');
   private craftList = el('craft-list');
   private invWeight = el('inv-weight');
   private invCount = el('inv-count');
   private detail = el('inv-detail');
+  private activeTab: 'inv' | 'craft' = 'inv';
   private death = el('death-overlay');
   private deathCause = el('death-cause');
   private respawnTimer = el('respawn-timer');
@@ -124,6 +131,15 @@ export class HUD {
     this.actions = actions;
     el('inv-close').addEventListener('click', () => this.closeInventory(true));
     this.soundBtn.addEventListener('click', () => this.actions.toggleSound());
+
+    this.tabBtnInv.addEventListener('click', () => {
+      this.activeTab = 'inv';
+      this.renderInventory();
+    });
+    this.tabBtnCraft.addEventListener('click', () => {
+      this.activeTab = 'craft';
+      this.renderInventory();
+    });
 
     this.btnTakeAll.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -333,7 +349,15 @@ export class HUD {
     this.inventoryOpen = true;
     this.panel.classList.remove('hidden');
     this.renderInventory();
-    this.renderCrafting();
+  }
+
+  openCrafting(): void {
+    if (this.inventoryOpen && this.activeTab === 'craft') {
+      this.closeInventory(true);
+      return;
+    }
+    this.activeTab = 'craft';
+    this.openInventory();
   }
 
   closeInventory(sendContainerClose = false): void {
@@ -533,7 +557,13 @@ export class HUD {
     }
 
     if (this.container) {
+      // LOOTING MODE: 2 clean columns (Backpack <---> Container). Hide Crafting and tabs!
+      this.panelTabs.classList.add('hidden');
+      this.playerInvCol.classList.remove('hidden');
       this.containerCol.classList.remove('hidden');
+      this.craftCol.classList.add('hidden');
+      this.invPanelTitle.textContent = `ОБЫСК: ${this.container.label.toUpperCase()}`;
+
       this.containerTitle.textContent = this.container.label.toUpperCase();
       this.containerList.replaceChildren();
       if (this.container.items.length === 0) {
@@ -546,8 +576,25 @@ export class HUD {
         this.containerList.appendChild(this.itemRow(item, 'container'));
       }
     } else {
+      // NORMAL MODE: Container hidden, show Tabs!
       this.containerCol.classList.add('hidden');
       this.containerList.replaceChildren();
+      this.panelTabs.classList.remove('hidden');
+
+      if (this.activeTab === 'inv') {
+        this.playerInvCol.classList.remove('hidden');
+        this.craftCol.classList.add('hidden');
+        this.invPanelTitle.textContent = 'СНАРЯЖЕНИЕ И РЮКЗАК';
+        this.tabBtnInv.classList.add('active');
+        this.tabBtnCraft.classList.remove('active');
+      } else {
+        this.playerInvCol.classList.add('hidden');
+        this.craftCol.classList.remove('hidden');
+        this.invPanelTitle.textContent = 'СОЗДАНИЕ ПРЕДМЕТОВ';
+        this.tabBtnInv.classList.remove('active');
+        this.tabBtnCraft.classList.add('active');
+        this.renderCrafting();
+      }
     }
 
     this.renderDetail();
@@ -615,6 +662,7 @@ export class HUD {
     img.src = getItemIconUrl(item.key) ?? '';
     img.alt = def?.name ?? item.key;
     const info = document.createElement('div');
+    info.className = 'iinfo';
     const name = document.createElement('div');
     name.className = 'iname';
     name.textContent = def?.name ?? item.key;
@@ -636,7 +684,7 @@ export class HUD {
     const quickBtn = document.createElement('button');
     quickBtn.className = 'row-quick-btn';
     if (source === 'container') {
-      quickBtn.textContent = 'ВЗЯТЬ ➡';
+      quickBtn.textContent = '⬅ ВЗЯТЬ';
       quickBtn.title = 'Переложить в рюкзак';
       quickBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -646,7 +694,7 @@ export class HUD {
     } else if (this.container) {
       quickBtn.className += ' put';
       quickBtn.textContent = 'В ЯЩИК ➡';
-      quickBtn.title = 'Переложить в контейнер';
+      quickBtn.title = 'Переложить в ящик';
       quickBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         this.actions.transfer(item.id, item.qty, 'put');

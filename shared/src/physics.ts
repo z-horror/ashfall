@@ -22,11 +22,19 @@ export function isBlocked(grid: CollisionGrid, x: number, y: number): boolean {
   return grid.cells[ty * grid.w + tx] === 1;
 }
 
+const DIAG = 0.70710678118;
+
 export function circleHits(grid: CollisionGrid, x: number, y: number, r = PLAYER_RADIUS): boolean {
-  if (isBlocked(grid, x - r, y - r)) return true;
-  if (isBlocked(grid, x + r, y - r)) return true;
-  if (isBlocked(grid, x - r, y + r)) return true;
-  if (isBlocked(grid, x + r, y + r)) return true;
+  if (isBlocked(grid, x, y)) return true;
+  if (isBlocked(grid, x + r, y)) return true;
+  if (isBlocked(grid, x - r, y)) return true;
+  if (isBlocked(grid, x, y + r)) return true;
+  if (isBlocked(grid, x, y - r)) return true;
+  const dr = r * DIAG;
+  if (isBlocked(grid, x + dr, y + dr)) return true;
+  if (isBlocked(grid, x - dr, y + dr)) return true;
+  if (isBlocked(grid, x + dr, y - dr)) return true;
+  if (isBlocked(grid, x - dr, y - dr)) return true;
   return false;
 }
 
@@ -43,24 +51,44 @@ export function moveCircle(
   r = PLAYER_RADIUS,
 ): { x: number; y: number } {
   const dist = Math.hypot(dx, dy);
-  const steps = Math.max(1, Math.ceil(dist / 0.12));
+  if (dist < 0.0001) return { x, y };
+  const steps = Math.max(1, Math.ceil(dist / 0.08));
   const sx = dx / steps;
   const sy = dy / steps;
   let px = x;
   let py = y;
+
   for (let i = 0; i < steps; i++) {
-    if (sx !== 0 && !circleHits(grid, px + sx, py, r)) px += sx;
-    else if (sx !== 0) {
-      // tiny nudge toward the free side keeps movement along walls smooth
-      const n = 0.02 * Math.sign(sx);
-      if (!circleHits(grid, px, py + n, r * 0.9)) py += n;
-      else if (!circleHits(grid, px, py - n, r * 0.9)) py -= n;
+    if (sx !== 0 && sy !== 0 && !circleHits(grid, px + sx, py + sy, r)) {
+      px += sx;
+      py += sy;
+      continue;
     }
-    if (sy !== 0 && !circleHits(grid, px, py + sy, r)) py += sy;
-    else if (sy !== 0) {
-      const n = 0.02 * Math.sign(sy);
-      if (!circleHits(grid, px + n, py, r * 0.9)) px += n;
-      else if (!circleHits(grid, px - n, py, r * 0.9)) px -= n;
+
+    let movedX = false;
+    if (sx !== 0 && !circleHits(grid, px + sx, py, r)) {
+      px += sx;
+      movedX = true;
+    }
+
+    let movedY = false;
+    if (sy !== 0 && !circleHits(grid, px, py + sy, r)) {
+      py += sy;
+      movedY = true;
+    }
+
+    if (!movedX && sx !== 0 && !movedY) {
+      const n = 0.04;
+      const hitPos = circleHits(grid, px + sx * 0.5, py + n, r * 0.9);
+      const hitNeg = circleHits(grid, px + sx * 0.5, py - n, r * 0.9);
+      if (!hitPos && hitNeg) py += n;
+      else if (!hitNeg && hitPos) py -= n;
+    } else if (!movedY && sy !== 0 && !movedX) {
+      const n = 0.04;
+      const hitPos = circleHits(grid, px + n, py + sy * 0.5, r * 0.9);
+      const hitNeg = circleHits(grid, px - n, py + sy * 0.5, r * 0.9);
+      if (!hitPos && hitNeg) px += n;
+      else if (!hitNeg && hitPos) px -= n;
     }
   }
   return { x: px, y: py };

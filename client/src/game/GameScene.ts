@@ -200,6 +200,12 @@ export class GameScene extends Phaser.Scene {
       this.keys.clear();
       return;
     }
+    if (ev.code === 'KeyC' && !ev.repeat) {
+      this.hud.openCrafting();
+      this.audio.inventory(this.hud.isInventoryOpen);
+      this.keys.clear();
+      return;
+    }
     if (ev.code === 'KeyT' && !ev.repeat) {
       if (!this.hud.isInventoryOpen) {
         this.hud.openChat();
@@ -499,11 +505,12 @@ export class GameScene extends Phaser.Scene {
         this.selfView?.revive();
       } else {
         const err = Math.hypot(msg.self.x - this.predicted.x, msg.self.y - this.predicted.y);
-        if (err > 2.0) {
+        if (err > 3.0) {
           this.predicted = { x: msg.self.x, y: msg.self.y };
-        } else if (!this.movingInput() && err > 0.35) {
-          this.predicted.x += (msg.self.x - this.predicted.x) * 0.08;
-          this.predicted.y += (msg.self.y - this.predicted.y) * 0.08;
+        } else if (err > 0.03) {
+          const blend = this.movingInput() ? 0.12 : 0.28;
+          this.predicted.x += (msg.self.x - this.predicted.x) * blend;
+          this.predicted.y += (msg.self.y - this.predicted.y) * blend;
         }
       }
       this.ensureSelfView({

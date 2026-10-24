@@ -307,6 +307,16 @@ body {
   border-color: var(--line-strong);
   color: var(--text);
 }
+.btn.danger {
+  background: rgba(182, 72, 47, 0.16);
+  border-color: rgba(182, 72, 47, 0.45);
+  color: var(--rust-soft);
+}
+.btn.danger:hover {
+  background: rgba(182, 72, 47, 0.32);
+  border-color: var(--rust-soft);
+  color: #fff;
+}
 .btn:disabled {
   opacity: 0.45;
   cursor: wait;
@@ -704,9 +714,10 @@ body {
 .panel-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: 22px 26px 16px;
+  align-items: center;
+  padding: 18px 24px 16px;
   border-bottom: 1px solid var(--line);
+  gap: 16px;
 }
 .panel h2 {
   margin: 0;
@@ -720,6 +731,34 @@ body {
   color: var(--text-faint);
   font-size: 10px;
   letter-spacing: 0.08em;
+}
+.panel-head-tabs {
+  display: flex;
+  gap: 8px;
+}
+.panel-tab {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-radius: 2px;
+}
+.panel-tab:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.panel-tab.active {
+  background: rgba(211, 173, 100, 0.18);
+  border-color: var(--amber);
+  color: var(--amber);
+  box-shadow: inset 0 0 12px rgba(211, 173, 100, 0.15);
 }
 .icon-btn {
   background: transparent;
@@ -764,14 +803,14 @@ body {
   gap: 5px;
 }
 .item-row {
-  display: grid;
-  grid-template-columns: 38px 1fr auto;
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 9px;
+  padding: 7px 10px;
   border: 1px solid transparent;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.015);
+  transition: all 0.12s ease;
 }
 .item-row:hover {
   border-color: var(--line);
@@ -784,20 +823,36 @@ body {
 .item-row img {
   width: 34px;
   height: 34px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.item-row .iinfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .item-row .iname {
   font-size: 11.5px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .item-row .idesc {
   font-size: 9px;
   color: var(--text-faint);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .item-row .iqty {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--amber);
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 .item-row .equipped-tag {
   font-size: 8px;
@@ -977,32 +1032,42 @@ body {
 .hud-top-actions {
   display: flex;
   gap: 8px;
+  margin-top: 4px;
 }
 .hud-toolbar-btn {
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 700;
   letter-spacing: 0.08em;
-  background: rgba(14, 18, 16, 0.94);
+  background: rgba(14, 18, 16, 0.95);
   border: 1px solid var(--line-strong);
   color: var(--text);
-  padding: 8px 14px;
-  min-height: 34px;
+  padding: 8px 16px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   cursor: pointer;
   pointer-events: auto;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
   transition: all 0.15s ease;
   white-space: nowrap;
+  border-radius: 3px;
 }
 .hud-toolbar-btn:hover {
-  background: rgba(32, 40, 35, 0.95);
+  background: rgba(36, 44, 39, 0.98);
   border-color: var(--amber);
   color: #fff;
   transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.8), 0 0 8px rgba(211, 173, 100, 0.3);
+}
+.hud-toolbar-btn:active {
+  transform: translateY(1px);
 }
 .hud-toolbar-btn.dev-toggle {
   color: var(--amber);
-  border-color: rgba(211, 173, 100, 0.6);
+  border-color: rgba(211, 173, 100, 0.65);
 }
 .hud-toolbar-btn.dev-toggle:hover {
   background: rgba(211, 173, 100, 0.22);
@@ -1021,45 +1086,52 @@ body {
 }
 .btn-take-all {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   background: rgba(211, 173, 100, 0.2);
   border: 1px solid var(--amber);
   color: var(--amber);
-  padding: 4px 10px;
+  padding: 6px 14px;
   cursor: pointer;
   transition: all 0.15s;
+  border-radius: 2px;
 }
 .btn-take-all:hover {
   background: var(--amber);
   color: #0b0d0c;
+  box-shadow: 0 0 10px rgba(211, 173, 100, 0.4);
 }
 .row-quick-btn {
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  background: rgba(127, 156, 134, 0.16);
-  border: 1px solid rgba(127, 156, 134, 0.45);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(127, 156, 134, 0.18);
+  border: 1px solid rgba(127, 156, 134, 0.5);
   color: var(--moss);
-  padding: 4px 8px;
+  padding: 5px 11px;
   cursor: pointer;
-  margin-left: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
   transition: all 0.15s;
   white-space: nowrap;
+  border-radius: 2px;
 }
 .row-quick-btn:hover {
   background: var(--moss);
   color: #0b0d0c;
+  box-shadow: 0 0 8px rgba(127, 156, 134, 0.4);
 }
 .row-quick-btn.put {
-  background: rgba(211, 173, 100, 0.14);
-  border-color: rgba(211, 173, 100, 0.4);
+  background: rgba(211, 173, 100, 0.18);
+  border-color: rgba(211, 173, 100, 0.5);
   color: var(--amber);
 }
 .row-quick-btn.put:hover {
   background: var(--amber);
   color: #0b0d0c;
+  box-shadow: 0 0 8px rgba(211, 173, 100, 0.4);
 }
 
 /* ---------- Modals (Settings & Dev Panel) ---------- */

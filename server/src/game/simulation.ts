@@ -427,15 +427,12 @@ export class Simulation {
     }
   }
 
-  private async refreshInventory(p: SimPlayer, withContainer = false): Promise<void> {
+  private async refreshInventory(p: SimPlayer, sendToClient = true): Promise<void> {
     p.inventory = await repo.loadCharacterItems(p.id);
     p.equippedId = p.inventory.find((i) => i.equipped)?.id ?? null;
-    if (!withContainer) return;
-    if (p.openContainerId) {
-      this.send(p, { t: 'inventory', inv: this.inventoryView(p), container: await this.containerView(p.openContainerId) });
-    } else {
-      this.send(p, { t: 'inventory', inv: this.inventoryView(p), container: null });
-    }
+    if (!sendToClient) return;
+    const container = p.openContainerId ? await this.containerView(p.openContainerId) : null;
+    this.send(p, { t: 'inventory', inv: this.inventoryView(p), container });
   }
 
   private chunkKey(cx: number, cy: number): string {
@@ -1032,9 +1029,11 @@ export class Simulation {
         await repo.addCharacterItem(client, p.id, 'canned_food', 3, 1);
         await repo.addCharacterItem(client, p.id, 'pistol', 1, 1);
         await repo.addCharacterItem(client, p.id, 'ammo_9mm', 36, 1);
+        await client.query('UPDATE character_items SET equipped = false WHERE character_id = $1', [p.id]);
         await client.query("UPDATE character_items SET equipped = true WHERE character_id = $1 AND item_key = 'spiked_bat'", [p.id]);
       });
-      await this.refreshInventory(p, false);
+      await this.refreshInventory(p, true);
+      this.emit({ t: 'equip', playerId: p.id, itemKey: 'spiked_bat' });
     } catch (err) {
       console.error('[sim] grantTestKit failed', err);
     }
@@ -1332,6 +1331,12 @@ export class Simulation {
     const item = p.inventory.find((i) => i.id === itemId);
     if (!item || ITEMS[item.key]?.kind !== 'weapon') return;
     try {
+      if (item.equipped) {
+        await repo.unequipAll(p.id);
+        await this.refreshInventory(p, true);
+        this.emit({ t: 'equip', playerId: p.id, itemKey: null });
+        return;
+      }
       const ok = await repo.setEquipped(p.id, itemId);
       if (!ok) return;
       await this.refreshInventory(p, true);
