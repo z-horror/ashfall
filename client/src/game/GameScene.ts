@@ -59,6 +59,7 @@ export class GameScene extends Phaser.Scene {
   private aim = 0;
   private keys: Keys = new Set();
   private pointerDown = false;
+  private pendingInputs: Array<{ seq: number; mx: number; my: number; speed: number; dt: number }> = [];
   private lastInputSent = 0;
   private lastAttackSent = 0;
   private lastFootstep = 0;
@@ -502,15 +503,34 @@ export class GameScene extends Phaser.Scene {
     if (msg.self.status === 'alive') {
       if (prevStatus === 'dead' || !this.selfView) {
         this.predicted = { x: msg.self.x, y: msg.self.y };
+        this.pendingInputs = [];
         this.selfView?.revive();
       } else {
-        const err = Math.hypot(msg.self.x - this.predicted.x, msg.self.y - this.predicted.y);
-        if (err > 3.0) {
-          this.predicted = { x: msg.self.x, y: msg.self.y };
-        } else if (err > 0.03) {
-          const blend = this.movingInput() ? 0.12 : 0.28;
-          this.predicted.x += (msg.self.x - this.predicted.x) * blend;
-          this.predicted.y += (msg.self.y - this.predicted.y) * blend;
+        const ack = msg.self.ack ?? 0;
+        this.pendingInputs = this.pendingInputs.filter((i) => i.seq > ack);
+
+        let rx = msg.self.x;
+        let ry = msg.self.y;
+        for (const inp of this.pendingInputs) {
+          const res = moveCircle(
+            { w: 128, h: 128, cells: this.world.collision },
+            rx,
+            ry,
+            inp.mx * inp.speed * inp.dt,
+            inp.my * inp.speed * inp.dt,
+            PLAYER_RADIUS,
+          );
+          rx = Phaser.Math.Clamp(res.x, 0.4, 127.6);
+          ry = Phaser.Math.Clamp(res.y, 0.4, 127.6);
+        }
+
+        const err = Math.hypot(rx - this.predicted.x, ry - this.predicted.y);
+        if (err > 0.8) {
+          this.predicted = { x: rx, y: ry };
+        } else if (err > 0.04) {
+          const blend = this.movingInput() ? 0.15 : 0.35;
+          this.predicted.x += (rx - this.predicted.x) * blend;
+          this.predicted.y += (ry - this.predicted.y) * blend;
         }
       }
       this.ensureSelfView({
@@ -721,6 +741,25 @@ export class GameScene extends Phaser.Scene {
         const open = !!ev.open;
         this.world.setDoor(id, open);
         for (const view of this.chunks.values()) view.updateDoor(id, open);
+        if (!open) {
+          const door = this.world.doors.get(id);
+          if (door) {
+            const minX = door.x - PLAYER_RADIUS;
+            const maxX = door.x + 1 + PLAYER_RADIUS;
+            const minY = door.y - PLAYER_RADIUS;
+            const maxY = door.y + 1 + PLAYER_RADIUS;
+            if (this.predicted.x >= minX && this.predicted.x <= maxX && this.predicted.y >= minY && this.predicted.y <= maxY) {
+              const building = this.world.buildingAt(door.x + 0.5, door.y + 0.5);
+              const isEast = door.facing === 'east' || (building ? door.x === building.x + building.w - 1 : false);
+              if (isEast) {
+                this.predicted.x = this.predicted.x < door.x + 0.5 ? door.x - 0.45 : door.x + 1.45;
+              } else {
+                this.predicted.y = this.predicted.y < door.y + 0.5 ? door.y - 0.45 : door.y + 1.45;
+              }
+              this.pendingInputs = [];
+            }
+          }
+        }
         if (dist < 16) this.audio.door(open, vol);
         break;
       }
@@ -835,8 +874,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (now - this.lastInputSent > 50) {
+      const inputDt = this.lastInputSent > 0 ? Math.min((now - this.lastInputSent) / 1000, 0.1) : 0.05;
       this.lastInputSent = now;
-      this.net.sendInput(blocked ? 0 : mx, blocked ? 0 : my, this.aim, sprint && !blocked);
+      const effectiveMx = blocked ? 0 : mx;
+      const effectiveMy = blocked ? 0 : my;
+      const effectiveSprint = sprint && !blocked;
+      const seq = this.net.sendInput(effectiveMx, effectiveMy, this.aim, effectiveSprint);
+      if (alive && (effectiveMx !== 0 || effectiveMy !== 0)) {
+        const speed = effectiveSprint ? PLAYER_SPRINT : PLAYER_SPEED;
+        this.pendingInputs.push({ seq, mx: effectiveMx, my: effectiveMy, speed, dt: inputDt });
+        if (this.pendingInputs.length > 60) this.pendingInputs.shift();
+      }
     }
     if (this.pointerDown && alive && !blocked) this.doAttack();
 

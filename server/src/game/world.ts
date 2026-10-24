@@ -26,6 +26,7 @@ export interface Door {
   open: boolean;
   locked: boolean;
   hp: number;
+  facing: 'south' | 'east';
 }
 
 export interface Container {
@@ -396,10 +397,6 @@ export class World {
     for (let x = bx + 1; x < bx + w - 1; x++) doorCandidatesSouth.push([x, by + h - 1]);
     const doorCandidatesEast: Array<[number, number]> = [];
     for (let y = by + 1; y < by + h - 1; y++) doorCandidatesEast.push([bx + w - 1, y]);
-    const doorCandidatesWest: Array<[number, number]> = [];
-    for (let y = by + 1; y < by + h - 1; y++) doorCandidatesWest.push([bx, y]);
-    const doorCandidatesNorth: Array<[number, number]> = [];
-    for (let x = bx + 1; x < bx + w - 1; x++) doorCandidatesNorth.push([x, by]);
 
     const doorTiles: Array<{ x: number; y: number }> = [];
     const chooseDoor = (cands: Array<[number, number]>, front: (x: number, y: number) => [number, number]) => {
@@ -414,12 +411,18 @@ export class World {
       }
       return null;
     };
+
+    const trySouth = () => {
+      const d = chooseDoor(doorCandidatesSouth, (x, y) => [x, y + 1]);
+      return d ? { ...d, facing: 'south' as const } : null;
+    };
+    const tryEast = () => {
+      const d = chooseDoor(doorCandidatesEast, (x, y) => [x + 1, y]);
+      return d ? { ...d, facing: 'east' as const } : null;
+    };
+
     const useSouth = rng.chance(0.65);
-    let door = useSouth ? chooseDoor(doorCandidatesSouth, (x, y) => [x, y + 1]) : chooseDoor(doorCandidatesEast, (x, y) => [x + 1, y]);
-    if (!door) door = chooseDoor(doorCandidatesSouth, (x, y) => [x, y + 1]);
-    if (!door) door = chooseDoor(doorCandidatesEast, (x, y) => [x + 1, y]);
-    if (!door) door = chooseDoor(doorCandidatesWest, (x, y) => [x - 1, y]);
-    if (!door) door = chooseDoor(doorCandidatesNorth, (x, y) => [x, y - 1]);
+    const chosen = useSouth ? (trySouth() ?? tryEast()) : (tryEast() ?? trySouth());
 
     for (let y = by; y < by + h; y++) {
       for (let x = bx; x < bx + w; x++) {
@@ -428,16 +431,24 @@ export class World {
       }
     }
 
-    if (door) {
-      this.walls[this.idx(door.x, door.y)] = WALL.NONE;
-      doorTiles.push({ x: door.x, y: door.y });
-      const doorId = `d:${door.x}:${door.y}`;
-      this.doors.set(doorId, { id: doorId, x: door.x, y: door.y, open: false, locked: false, hp: 100 });
-      this.doorAt.set(this.idx(door.x, door.y), doorId);
+    if (chosen) {
+      this.walls[this.idx(chosen.x, chosen.y)] = WALL.NONE;
+      doorTiles.push({ x: chosen.x, y: chosen.y });
+      const doorId = `d:${chosen.x}:${chosen.y}`;
+      this.doors.set(doorId, {
+        id: doorId,
+        x: chosen.x,
+        y: chosen.y,
+        open: false,
+        locked: false,
+        hp: 100,
+        facing: chosen.facing,
+      });
+      this.doorAt.set(this.idx(chosen.x, chosen.y), doorId);
       for (let dy = -2; dy <= 2; dy++) {
         for (let dx = -2; dx <= 2; dx++) {
-          const cx = door.x + dx;
-          const cy = door.y + dy;
+          const cx = chosen.x + dx;
+          const cy = chosen.y + dy;
           if (this.inside(cx, cy)) this.clearTiles.add(this.idx(cx, cy));
         }
       }
@@ -463,7 +474,7 @@ export class World {
       }
     }
 
-    this.furnishBuilding(def, door);
+    this.furnishBuilding(def, chosen);
     return 1;
   }
 
@@ -872,7 +883,7 @@ export class World {
     const doors: DoorDef[] = [];
     for (const d of this.doors.values()) {
       if (d.x >= x0 && d.x < x0 + CHUNK_TILES && d.y >= y0 && d.y < y0 + CHUNK_TILES) {
-        doors.push({ id: d.id, x: d.x, y: d.y, open: d.open, locked: d.locked, hp: d.hp });
+        doors.push({ id: d.id, x: d.x, y: d.y, open: d.open, locked: d.locked, hp: d.hp, facing: d.facing });
       }
     }
     const containers: ChunkData['containers'] = [];

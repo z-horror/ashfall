@@ -37,6 +37,7 @@ export interface DoorDef {
   open: boolean;
   locked: boolean;
   hp: number;
+  facing?: 'south' | 'east';
 }
 
 export interface ChunkData {

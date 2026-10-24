@@ -189,7 +189,7 @@ export class ChunkView {
     const p = iso(door.x + 0.5, door.y + 0.5);
     const building = this.world.buildingAt(door.x + 0.5, door.y + 0.5);
     const isEast = building ? door.x === building.x + building.w - 1 : false;
-    const facing = isEast ? 'east' : 'south';
+    const facing = door.facing ?? (isEast ? 'east' : 'south');
     const key = `door_${facing}_${open ? 'open' : 'closed'}`;
     const img = artImage(this.scene, p.x, p.y + TILE_H / 2, key)
       .setOrigin(0.5, 1)
@@ -205,7 +205,7 @@ export class ChunkView {
     const door = this.world.doors.get(id);
     const building = door ? this.world.buildingAt(door.x + 0.5, door.y + 0.5) : null;
     const isEast = door && building ? door.x === building.x + building.w - 1 : false;
-    const facing = isEast ? 'east' : 'south';
+    const facing = door?.facing ?? (isEast ? 'east' : 'south');
     artSetTexture(img, `door_${facing}_${open ? 'open' : 'closed'}`);
   }
 

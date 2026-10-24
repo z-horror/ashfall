@@ -25,6 +25,7 @@ import {
   moveCircle,
   hasLineOfSight,
   totalWeight,
+  type StackLike,
   type ChunkData,
   type ContainerView,
   type EventView,
@@ -72,6 +73,7 @@ interface SimPlayer {
   lastSubCheck: number;
   lastChatAt: number;
   godmode?: boolean;
+  craftingLock?: boolean;
 }
 
 interface SimZombie {
@@ -1039,6 +1041,12 @@ export class Simulation {
     }
   }
 
+  public isPlayerAdmin(p: SimPlayer): boolean {
+    if (config.allowDevActions) return true;
+    if (config.adminUsers.length > 0 && config.adminUsers.includes(p.name.toLowerCase())) return true;
+    return false;
+  }
+
   private async handleCraft(p: SimPlayer, recipeId: string): Promise<void> {
     if (p.status !== 'alive') return;
     const recipe = CRAFT_RECIPES.find((r) => r.id === recipeId);
@@ -1046,42 +1054,87 @@ export class Simulation {
       this.notice(p, 'Неизвестный рецепт крафта.');
       return;
     }
-    for (const ing of recipe.ingredients) {
-      const count = p.inventory
-        .filter((i) => i.key === ing.key)
-        .reduce((sum, i) => sum + i.qty, 0);
-      if (count < ing.qty) {
-        this.notice(p, `Недостаточно ингредиентов для "${recipe.name}": требуется ${ing.name} x${ing.qty}.`);
-        return;
-      }
+    if (p.craftingLock) {
+      this.notice(p, 'Создание предмета уже выполняется.');
+      return;
     }
+    p.craftingLock = true;
+
     try {
-      await repo.withTransaction(async (client) => {
+      const ok = await repo.withTransaction(async (client) => {
+        const res = await client.query<{ id: string; key: string; qty: number; durability: number; equipped: boolean }>(
+          'SELECT id, item_key as key, qty, durability, equipped FROM character_items WHERE character_id = $1 FOR UPDATE',
+          [p.id],
+        );
+        const dbItems = res.rows;
+
+        for (const ing of recipe.ingredients) {
+          const count = dbItems
+            .filter((i) => i.key === ing.key)
+            .reduce((sum, i) => sum + i.qty, 0);
+          if (count < ing.qty) {
+            throw new Error(`NOT_ENOUGH_INGREDIENTS:${ing.name}:${ing.qty}`);
+          }
+        }
+
+        const simulated: StackLike[] = dbItems.map((i) => ({ key: i.key, qty: i.qty }));
         for (const ing of recipe.ingredients) {
           let needed = ing.qty;
-          const matching = p.inventory.filter((i) => i.key === ing.key);
+          for (let idx = 0; idx < simulated.length; idx++) {
+            if (needed <= 0) break;
+            if (simulated[idx].key === ing.key) {
+              const take = Math.min(simulated[idx].qty, needed);
+              simulated[idx].qty -= take;
+              needed -= take;
+            }
+          }
+        }
+        const afterDeduction = simulated.filter((s) => s.qty > 0);
+        if (!canCarry(afterDeduction, recipe.resultKey, recipe.resultQty)) {
+          throw new Error('INVENTORY_FULL_FOR_RESULT');
+        }
+
+        for (const ing of recipe.ingredients) {
+          let needed = ing.qty;
+          const matching = dbItems.filter((i) => i.key === ing.key);
           for (const item of matching) {
             if (needed <= 0) break;
             const take = Math.min(item.qty, needed);
             const taken = await repo.takeCharacterItem(client, p.id, item.id, take);
-            if (!taken) throw new Error('Failed to take ingredient');
+            if (!taken) throw new Error('FAILED_TO_TAKE_INGREDIENT');
             needed -= take;
           }
         }
+
         await repo.addCharacterItem(client, p.id, recipe.resultKey, recipe.resultQty, 1);
+        return true;
       });
+
+      if (ok) {
+        await this.refreshInventory(p, true);
+        this.notice(p, `Изготовлено: ${recipe.name} (x${recipe.resultQty}).`);
+        this.emit({ t: 'use', playerId: p.id, itemKey: recipe.resultKey, x: p.x, y: p.y });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith('NOT_ENOUGH_INGREDIENTS:')) {
+        const [, name, qty] = msg.split(':');
+        this.notice(p, `Недостаточно ингредиентов для "${recipe.name}": требуется ${name} x${qty}.`);
+      } else if (msg === 'INVENTORY_FULL_FOR_RESULT') {
+        this.notice(p, 'Недостаточно места или перегруз в инвентаре для получения результата.');
+      } else {
+        console.error('[sim] craft failed', err);
+        this.notice(p, 'Ошибка при создании предмета.');
+      }
       await this.refreshInventory(p, true);
-      this.notice(p, `Изготовлено: ${recipe.name} (x${recipe.resultQty}).`);
-      this.emit({ t: 'use', playerId: p.id, itemKey: recipe.resultKey, x: p.x, y: p.y });
-    } catch (err) {
-      console.error('[sim] craft failed', err);
-      this.notice(p, 'Ошибка при создании предмета.');
+    } finally {
+      p.craftingLock = false;
     }
   }
 
   private async handleDevAction(p: SimPlayer, action: string, _args?: Record<string, unknown>): Promise<void> {
-    if (!config.testCombatBuffs) {
-      this.notice(p, 'Режим разработчика выключен на сервере.');
+    if (!this.isPlayerAdmin(p)) {
+      this.notice(p, 'Действие запрещено: требуются права администратора или режим разработки.');
       return;
     }
     switch (action) {
@@ -1115,6 +1168,69 @@ export class Simulation {
     }
   }
 
+  public resolveDoorClose(door: { id: string; x: number; y: number; facing?: 'south' | 'east' }): void {
+    const minX = door.x - PLAYER_RADIUS;
+    const maxX = door.x + 1 + PLAYER_RADIUS;
+    const minY = door.y - PLAYER_RADIUS;
+    const maxY = door.y + 1 + PLAYER_RADIUS;
+
+    for (const p of this.players.values()) {
+      if (p.status !== 'alive') continue;
+      if (p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) {
+        this.displaceFromDoor(p, door);
+      }
+    }
+
+    for (const z of this.zombies.values()) {
+      if (z.hp <= 0) continue;
+      if (z.x >= minX && z.x <= maxX && z.y >= minY && z.y <= maxY) {
+        this.displaceFromDoor(z, door);
+      }
+    }
+  }
+
+  private displaceFromDoor(entity: { x: number; y: number }, door: { x: number; y: number; facing?: 'south' | 'east' }): void {
+    const facing = door.facing ?? (door.x % 2 === 0 ? 'south' : 'east');
+    let t1: { x: number; y: number };
+    let t2: { x: number; y: number };
+
+    if (facing === 'south') {
+      const interior = { x: door.x + 0.5, y: door.y - 0.45 };
+      const exterior = { x: door.x + 0.5, y: door.y + 1.45 };
+      if (entity.y < door.y + 0.5) {
+        t1 = interior;
+        t2 = exterior;
+      } else {
+        t1 = exterior;
+        t2 = interior;
+      }
+    } else {
+      const interior = { x: door.x - 0.45, y: door.y + 0.5 };
+      const exterior = { x: door.x + 1.45, y: door.y + 0.5 };
+      if (entity.x < door.x + 0.5) {
+        t1 = interior;
+        t2 = exterior;
+      } else {
+        t1 = exterior;
+        t2 = interior;
+      }
+    }
+
+    if (this.world.isWalkable(t1.x, t1.y)) {
+      entity.x = t1.x;
+      entity.y = t1.y;
+    } else if (this.world.isWalkable(t2.x, t2.y)) {
+      entity.x = t2.x;
+      entity.y = t2.y;
+    } else {
+      if (facing === 'south') {
+        entity.y = entity.y < door.y + 0.5 ? door.y - 0.45 : door.y + 1.45;
+      } else {
+        entity.x = entity.x < door.x + 0.5 ? door.x - 0.45 : door.x + 1.45;
+      }
+    }
+  }
+
   private async handleRespawn(p: SimPlayer): Promise<void> {
     if (p.status === 'dead' && p.deadUntil && Date.now() >= p.deadUntil) {
       await this.applyRespawn(p);
@@ -1128,6 +1244,9 @@ export class Simulation {
       const open = !door.open;
       const updated = this.world.setDoorOpen(door.id, open);
       if (updated) {
+        if (!open) {
+          this.resolveDoorClose(door);
+        }
         this.emit({ t: 'door', id: door.id, x: door.x, y: door.y, open });
         void repo.saveDoorState(door.id, door.x, door.y, open, door.locked, door.hp);
       }
@@ -1284,8 +1403,7 @@ export class Simulation {
         if (!item) return;
         const amount = Math.min(qty, item.qty);
         const containerRows = await repo.loadContainerItems(container.id);
-        const isNewStack = !containerRows.some((r) => r.key === item.key && r.qty < (ITEMS[item.key]?.stack ?? 1));
-        if (isNewStack && containerRows.length >= container.maxSlots) {
+        if (!canCarry(containerRows, item.key, amount, container.maxSlots, Infinity)) {
           this.notice(p, 'В контейнере нет места.');
           return;
         }
@@ -1354,40 +1472,45 @@ export class Simulation {
     if (!clean) return;
 
     if (clean.startsWith('/')) {
-      if (!config.testCombatBuffs) {
-        this.notice(p, 'Тестовые команды отключены на сервере (TEST_COMBAT_BUFFS=false).');
-        return;
-      }
       const parts = clean.slice(1).toLowerCase().split(/\s+/);
       const cmd = parts[0];
-      if (cmd === 'heal') {
-        p.hp = this.playerMaxHp;
-        p.stamina = PLAYER_MAX_STAMINA;
-        p.hunger = 100;
-        p.thirst = 100;
-        this.notice(p, `Здоровье и показатели восстановлены (${this.playerMaxHp} HP).`);
-        return;
-      }
-      if (cmd === 'kit' || cmd === 'buff') {
-        p.hp = this.playerMaxHp;
-        p.stamina = PLAYER_MAX_STAMINA;
-        p.hunger = 100;
-        p.thirst = 100;
-        try {
-          await repo.withTransaction(async (client) => {
-            await repo.addCharacterItem(client, p.id, 'spiked_bat', 1, 1);
-            await repo.addCharacterItem(client, p.id, 'ammo_9mm', 36, 1);
-            await repo.addCharacterItem(client, p.id, 'bandage', 4, 1);
-          });
-          await this.refreshInventory(p, true);
-          this.notice(p, 'Выдан боевой комплект: бита с шипами, патроны 9мм, бинты.');
-        } catch {
-          this.notice(p, 'Не удалось выдать комплект.');
+      const devCommands = ['heal', 'kit', 'buff', 'god', 'godmode', 'spawn', 'teleport_spawn'];
+      if (devCommands.includes(cmd)) {
+        if (!this.isPlayerAdmin(p)) {
+          this.notice(p, 'Команда запрещена: требуются права администратора или режим разработки.');
+          return;
         }
-        return;
+        if (cmd === 'heal') {
+          p.hp = this.playerMaxHp;
+          p.stamina = PLAYER_MAX_STAMINA;
+          p.hunger = 100;
+          p.thirst = 100;
+          this.notice(p, `Здоровье и показатели восстановлены (${this.playerMaxHp} HP).`);
+          return;
+        }
+        if (cmd === 'kit' || cmd === 'buff') {
+          p.hp = this.playerMaxHp;
+          p.stamina = PLAYER_MAX_STAMINA;
+          p.hunger = 100;
+          p.thirst = 100;
+          await this.grantTestKit(p);
+          this.notice(p, 'Выдан боевой комплект (/kit).');
+          return;
+        }
+        if (cmd === 'god' || cmd === 'godmode') {
+          p.godmode = !p.godmode;
+          this.notice(p, `Режим бога (неуязвимость): ${p.godmode ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}.`);
+          return;
+        }
+        if (cmd === 'spawn' || cmd === 'teleport_spawn') {
+          p.x = this.world.spawn.x;
+          p.y = this.world.spawn.y;
+          this.notice(p, 'Телепортирован в безопасную зону.');
+          return;
+        }
       }
       if (cmd === 'help') {
-        this.notice(p, 'Доступные тестовые команды: /heal, /kit, /buff');
+        this.notice(p, 'Доступные команды: /heal, /kit, /buff, /god, /spawn');
         return;
       }
       this.notice(p, `Неизвестная команда /${cmd}. Используйте /help`);
