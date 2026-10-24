@@ -245,7 +245,7 @@ export class ChunkView {
         for (let tx = 0; tx < CHUNK; tx++) {
           const gx = x0 + tx;
           const gy = y0 + ty;
-          if (gx < b.x || gy < b.y || gx >= b.x + b.w || gy >= b.y + b.h) continue;
+          if (gx < b.x + 1 || gy < b.y + 1 || gx >= b.x + b.w || gy >= b.y + b.h) continue;
           if (!b.roof) continue;
           const p = iso(gx + 0.5, gy + 0.5);
           const key = roofTextureKey(b.style, gx, gy);
