@@ -117,10 +117,6 @@ export class GameScene extends Phaser.Scene {
     this.load.image('prop_tree_1', 'assets/props/prop_tree_1.png');
     this.load.image('prop_tree_2', 'assets/props/prop_tree_2.png');
 
-    this.load.image('roof_0_0', 'assets/roofs/roof_0.png');
-    this.load.image('roof_0_1', 'assets/roofs/roof_0.png');
-    this.load.image('roof_0_2', 'assets/roofs/roof_0.png');
-
     this.load.image('sign_pharmacy', 'assets/signs/sign_pharmacy.png');
     this.load.image('sign_market', 'assets/signs/sign_market.png');
     this.load.image('sign_cafe', 'assets/signs/sign_cafe.png');
