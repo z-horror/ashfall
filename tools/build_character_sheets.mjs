@@ -29,25 +29,29 @@ const SOURCES = [
     key: 'p0',
     src: 'C:/Users/User/.gemini/antigravity/brain/e3c92ffc-34cb-4b34-9d32-aebadf56a8af/char_survivor_8dir_1792913289644.jpg',
     targetH: 72,
-    isZombie: false
+    isZombie: false,
+    archetype: 'survivor'
   },
   {
     key: 'z0',
     src: 'C:/Users/User/.gemini/antigravity/brain/e3c92ffc-34cb-4b34-9d32-aebadf56a8af/char_zombie_walker_8dir_1792913400567.jpg',
     targetH: 71,
-    isZombie: true
+    isZombie: true,
+    archetype: 'walker'
   },
   {
     key: 'z1',
     src: 'C:/Users/User/.gemini/antigravity/brain/e3c92ffc-34cb-4b34-9d32-aebadf56a8af/char_zombie_runner_8dir_1792913495684.jpg',
     targetH: 69,
-    isZombie: true
+    isZombie: true,
+    archetype: 'runner'
   },
   {
     key: 'z2',
     src: 'C:/Users/User/.gemini/antigravity/brain/e3c92ffc-34cb-4b34-9d32-aebadf56a8af/char_zombie_brute_8dir_1792913533594.jpg',
     targetH: 80,
-    isZombie: true
+    isZombie: true,
+    archetype: 'brute'
   }
 ];
 
@@ -70,7 +74,7 @@ async function main() {
     const b64 = buf.toString('base64');
     await page.setContent(`<img id="img" src="data:image/jpeg;base64,${b64}">`);
 
-    const result = await page.evaluate(({ dirMapping, dirAngles, targetH, isZombie }) => {
+    const result = await page.evaluate(({ dirMapping, dirAngles, targetH, isZombie, archetype }) => {
       const img = document.getElementById('img');
       const w = img.naturalWidth;
       const h = img.naturalHeight;
@@ -197,45 +201,95 @@ async function main() {
           sCtx.translate(destX, destY);
 
           if (col === 0) {
-            // Idle (base stance)
+            // Idle stance
             sCtx.drawImage(baseFrame, 0, 0);
           } else if (col >= 1 && col < 6) {
-            // Walk cycle frames 1..5 (frame 0 is base)
+            // Articulate Walk Cycle (frames 1..5)
             const walkStep = col;
             const phase = (walkStep / 6) * Math.PI * 2;
-            const bob = Math.sin(phase * 2) * (isZombie ? 1.4 : 1.8);
-            const sway = Math.sin(phase) * (isZombie ? 1.6 : 1.2);
-            const scaleY = 1.0 - Math.abs(Math.sin(phase)) * 0.025;
 
+            let stride = Math.sin(phase);
+            let bob = Math.abs(Math.sin(phase * 2));
+            let sway = Math.sin(phase);
+            let forwardLean = 1.2;
+            let shearAmt = 0.10;
+            let liftAmt = 0;
+
+            if (archetype === 'walker') {
+              // Asymmetric shambling limp
+              stride = Math.sin(phase) + 0.3 * Math.sin(phase * 2);
+              bob = (phase < Math.PI ? 2.8 : 1.4) * Math.abs(Math.sin(phase));
+              sway = Math.sin(phase) * 2.2;
+              forwardLean = 2.4;
+              shearAmt = 0.12;
+            } else if (archetype === 'runner') {
+              // Low predatory crouch sprint
+              stride = Math.sin(phase) * 1.35;
+              bob = Math.abs(Math.sin(phase * 2)) * 2.6;
+              sway = Math.sin(phase) * 1.8;
+              forwardLean = 3.6;
+              shearAmt = 0.15;
+            } else if (archetype === 'brute') {
+              // Heavy colossal stomp with massive lateral shoulder sway
+              stride = Math.sin(phase) * 0.9;
+              bob = Math.abs(Math.sin(phase * 2)) * 3.2;
+              sway = Math.sin(phase) * 3.4;
+              forwardLean = 0.9;
+              shearAmt = 0.08;
+            } else {
+              // Survivor tactical stride
+              bob = bob * 2.0;
+              sway = sway * 1.5;
+            }
+
+            // 1. Lower body (legs anchored at waist pivot 32, 50, swinging forward/backward)
             sCtx.save();
-            sCtx.translate(32 + sway, 82);
-            sCtx.scale(1.0, scaleY);
-            sCtx.translate(-32, -82 + bob);
+            sCtx.beginPath();
+            sCtx.rect(0, 48, 64, 40);
+            sCtx.clip();
+            sCtx.translate(32 + sway + fx * forwardLean, 50 - bob);
+            const legShear = -stride * shearAmt * (fx !== 0 ? fx : (fy >= 0 ? 0.8 : -0.8));
+            sCtx.transform(1, 0, legShear, 1, 0, 0);
+            sCtx.translate(-32, -50);
+            sCtx.drawImage(baseFrame, 0, 0);
+            sCtx.restore();
+
+            // 2. Upper body (torso, arms, head: natural counter-sway and tilt)
+            sCtx.save();
+            sCtx.beginPath();
+            sCtx.rect(0, 0, 64, 52);
+            sCtx.clip();
+            sCtx.translate(32 + sway + fx * forwardLean, 50 - bob + fy * 0.4);
+            sCtx.rotate(sway * 0.022);
+            sCtx.translate(-32, -50);
             sCtx.drawImage(baseFrame, 0, 0);
             sCtx.restore();
           } else if (col >= 6 && col < 9) {
             // Attack animation (cols 6..8)
             const step = col - 6;
             if (step === 0) {
-              // Windup: slight crouch and pull back
+              // Windup: torso coils back, knees flex
               sCtx.save();
-              sCtx.translate(32 - fx * 2.5, 82);
-              sCtx.scale(0.98, 0.98);
-              sCtx.translate(-32, -82 + 1);
+              sCtx.translate(32 - fx * 3.5, 82 - fy * 1.5);
+              sCtx.rotate(-0.06 * (fx >= 0 ? 1 : -1));
+              sCtx.scale(0.97, 0.96);
+              sCtx.translate(-32, -82);
               sCtx.drawImage(baseFrame, 0, 0);
               sCtx.restore();
             } else if (step === 1) {
               // Strike / lunge: explosive forward lunge
               sCtx.save();
-              sCtx.translate(32 + fx * 4.5, 82);
-              sCtx.scale(1.02, 1.02);
-              sCtx.translate(-32, -82 - 1.5 + fy * 1.5);
+              const lungeDist = archetype === 'runner' ? 8.5 : archetype === 'brute' ? 5.5 : 7.0;
+              sCtx.translate(32 + fx * lungeDist, 82 + fy * 3.5);
+              sCtx.rotate(0.08 * (fx >= 0 ? 1 : -1));
+              sCtx.scale(1.05, 1.03);
+              sCtx.translate(-32, -82);
               sCtx.drawImage(baseFrame, 0, 0);
               sCtx.restore();
             } else {
               // Recovery: settling forward momentum
               sCtx.save();
-              sCtx.translate(32 + fx * 1.8, 82);
+              sCtx.translate(32 + fx * 2.5, 82 + fy * 1.2);
               sCtx.translate(-32, -82);
               sCtx.drawImage(baseFrame, 0, 0);
               sCtx.restore();
@@ -244,29 +298,29 @@ async function main() {
             // Death animation (cols 9..11)
             const step = col - 9;
             if (step === 0) {
-              // Stagger back
+              // Fatal blow impact: body violently recoils backward
               sCtx.save();
-              sCtx.translate(32 - fx * 2, 82);
-              sCtx.rotate(-0.25 * (fx >= 0 ? 1 : -1));
+              sCtx.translate(32 - fx * 4.5, 82 - fy * 2.0);
+              sCtx.rotate(-0.28 * (fx >= 0 ? 1 : -1));
               sCtx.translate(-32, -82);
               sCtx.drawImage(baseFrame, 0, 0);
               sCtx.restore();
             } else if (step === 1) {
-              // Buckling fall
+              // Buckling knees, body collapsing downward
               sCtx.save();
-              sCtx.translate(32 - fx * 4, 82);
-              sCtx.rotate(-0.85 * (fx >= 0 ? 1 : -1));
-              sCtx.scale(1.0, 0.65);
-              sCtx.translate(-32, -82 + 12);
+              sCtx.translate(32 - fx * 2.0, 82 + 8);
+              sCtx.rotate(-0.78 * (fx >= 0 ? 1 : -1));
+              sCtx.scale(1.02, 0.68);
+              sCtx.translate(-32, -82);
               sCtx.drawImage(baseFrame, 0, 0);
               sCtx.restore();
             } else {
-              // Collapsed on floor
+              // Collapsed flat on the isometric ground
               sCtx.save();
-              sCtx.translate(32, 82);
-              sCtx.rotate(-1.5 * (fx >= 0 ? 1 : -1));
-              sCtx.scale(1.1, 0.45);
-              sCtx.translate(-32, -82 + 20);
+              sCtx.translate(32, 82 + 16);
+              sCtx.rotate(-1.48 * (fx >= 0 ? 1 : -1));
+              sCtx.scale(1.18, 0.44);
+              sCtx.translate(-32, -82);
               sCtx.drawImage(baseFrame, 0, 0);
               sCtx.restore();
             }
@@ -308,7 +362,8 @@ async function main() {
       dirMapping: DIR_MAPPING,
       dirAngles: DIR_ANGLES,
       targetH: item.targetH,
-      isZombie: item.isZombie
+      isZombie: item.isZombie,
+      archetype: item.archetype
     });
 
     const sheetPath = path.join(charDir, `char_${item.key}.png`);

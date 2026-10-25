@@ -523,10 +523,12 @@ export function buildCharacterAssets(scene: Phaser.Scene): void {
       const base = dir * COLS;
       const frames = (from: number, length: number) =>
         Array.from({ length }, (_, i) => ({ key: CHARACTER_ATLAS, frame: `${style.id}:${base + from + i}` }));
+      const walkFps = style.zombie ? (style.id === 'z1' ? 11 : style.id === 'z2' ? 5 : 7) : 9;
+      const attackFps = style.id === 'z1' ? 14 : style.id === 'z2' ? 8 : 12;
       scene.anims.create({
         key: `${key}-walk-${dir}`,
         frames: frames(0, 6),
-        frameRate: style.zombie ? 6 : 9,
+        frameRate: walkFps,
         repeat: -1,
       });
       scene.anims.create({
@@ -538,13 +540,13 @@ export function buildCharacterAssets(scene: Phaser.Scene): void {
       scene.anims.create({
         key: `${key}-attack-${dir}`,
         frames: frames(6, 3),
-        frameRate: 13,
+        frameRate: attackFps,
         repeat: 0,
       });
       scene.anims.create({
         key: `${key}-death-${dir}`,
         frames: frames(9, 3),
-        frameRate: 5,
+        frameRate: 6,
         repeat: 0,
       });
     }

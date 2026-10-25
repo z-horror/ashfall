@@ -15,6 +15,11 @@ export class AudioEngine {
   private uiGain: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private ambientStarted = false;
+  private samplesLoaded = false;
+  private pistolBuffers: AudioBuffer[] = [];
+  private rifleBuffers: AudioBuffer[] = [];
+  private shotgunBuffers: AudioBuffer[] = [];
+  private emptyBuffer: AudioBuffer | null = null;
 
   settings: AudioSettings = {
     master: 0.7,
@@ -78,6 +83,7 @@ export class AudioEngine {
 
       this.noise = this.makeNoiseBuffer(3);
       this.startAmbient();
+      void this.loadWeaponSamples();
     } catch {
       this.ctx = null;
     }
@@ -132,6 +138,38 @@ export class AudioEngine {
       data[i] = last;
     }
     return buffer;
+  }
+
+  private async loadSample(url: string): Promise<AudioBuffer | null> {
+    if (!this.ctx) return null;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const arrayBuffer = await res.arrayBuffer();
+      return await this.ctx.decodeAudioData(arrayBuffer);
+    } catch {
+      return null;
+    }
+  }
+
+  private async loadWeaponSamples(): Promise<void> {
+    if (this.samplesLoaded || !this.ctx) return;
+    this.samplesLoaded = true;
+    const pistolUrls = [
+      'assets/audio/sfx_pistol_1.ogg',
+      'assets/audio/sfx_pistol_2.ogg',
+      'assets/audio/sfx_pistol_3.ogg',
+    ];
+    for (const url of pistolUrls) {
+      const b = await this.loadSample(url);
+      if (b) this.pistolBuffers.push(b);
+    }
+    const r = await this.loadSample('assets/audio/sfx_rifle.ogg');
+    if (r) this.rifleBuffers.push(r);
+    const s = await this.loadSample('assets/audio/sfx_shotgun.ogg');
+    if (s) this.shotgunBuffers.push(s);
+    const e = await this.loadSample('assets/audio/sfx_empty.ogg');
+    if (e) this.emptyBuffer = e;
   }
 
   private startAmbient(): void {
@@ -334,13 +372,33 @@ export class AudioEngine {
     }
   }
 
-  shot(vol = 1): void {
+  shot(vol = 1, weaponKey = 'pistol'): void {
     if (!this.ctx || !this.sfxGain || this.settings.muted) return;
     const ctx = this.ctx;
+
+    // 1. Play real recorded firearm sample if loaded
+    let buffers = this.pistolBuffers;
+    if (weaponKey === 'rifle' && this.rifleBuffers.length > 0) buffers = this.rifleBuffers;
+    else if (weaponKey === 'shotgun' && this.shotgunBuffers.length > 0) buffers = this.shotgunBuffers;
+
+    if (buffers.length > 0) {
+      const buf = buffers[Math.floor(Math.random() * buffers.length)];
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      // Slight pitch variation (0.96 to 1.04) for realistic gunfire variation
+      src.playbackRate.value = 0.96 + Math.random() * 0.08;
+      const gain = ctx.createGain();
+      gain.gain.value = Math.min(1.0, 0.75 * vol);
+      src.connect(gain);
+      gain.connect(this.sfxGain);
+      src.start();
+      return;
+    }
+
+    // Fallback: Punchy transient crack + blast (if buffer not yet loaded)
     const t = this.now();
     const buffer = this.noise;
 
-    // 1. Supersonic muzzle crack
     if (buffer) {
       const crack = ctx.createBufferSource();
       crack.buffer = buffer;
@@ -357,7 +415,6 @@ export class AudioEngine {
       crack.stop(t + 0.07);
     }
 
-    // 2. Low blast boom
     const boom = ctx.createOscillator();
     boom.type = 'sine';
     boom.frequency.setValueAtTime(140, t);
@@ -369,23 +426,6 @@ export class AudioEngine {
     boomGain.connect(this.sfxGain);
     boom.start(t);
     boom.stop(t + 0.24);
-
-    // 3. Environmental room echo tail
-    if (buffer) {
-      const tail = ctx.createBufferSource();
-      tail.buffer = buffer;
-      const tailFilter = ctx.createBiquadFilter();
-      tailFilter.type = 'lowpass';
-      tailFilter.frequency.value = 650;
-      const tailGain = ctx.createGain();
-      tailGain.gain.setValueAtTime(0.18 * vol, t + 0.02);
-      tailGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
-      tail.connect(tailFilter);
-      tailFilter.connect(tailGain);
-      tailGain.connect(this.sfxGain);
-      tail.start(t + 0.02);
-      tail.stop(t + 0.34);
-    }
   }
 
   growl(vol = 1): void {
@@ -445,7 +485,17 @@ export class AudioEngine {
   }
 
   empty(): void {
-    if (!this.sfxGain) return;
+    if (!this.sfxGain || this.settings.muted) return;
+    if (this.ctx && this.emptyBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.emptyBuffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0.55;
+      src.connect(gain);
+      gain.connect(this.sfxGain);
+      src.start();
+      return;
+    }
     this.tone(this.sfxGain, 1200, 0.08, 0.015, 'triangle', 400);
     this.burst(this.sfxGain, 2600, 3.5, 0.02, 0.035, 'bandpass');
   }

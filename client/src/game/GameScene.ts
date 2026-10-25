@@ -8,6 +8,7 @@ import {
   TILE,
   chunkOf,
   moveCircle,
+  raycast,
   type ContainerView,
   type EventView,
   type GroundItemSnapshot,
@@ -112,6 +113,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image('prop_crate', 'assets/props/prop_crate.png');
     this.load.image('prop_med', 'assets/props/prop_med.png');
     this.load.image('prop_barrel', 'assets/props/prop_barrel.png');
+    this.load.image('prop_sofa', 'assets/props/prop_sofa.png');
 
     this.load.image('prop_tree_0', 'assets/props/prop_tree_0.png');
     this.load.image('prop_tree_1', 'assets/props/prop_tree_1.png');
@@ -345,7 +347,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.flashAttack();
     this.selfView?.playAttack();
     if (isGun) {
-      this.audio.shot(1);
+      this.audio.shot(1, this.equippedKey ?? 'pistol');
       this.spawnTracer(this.predicted.x, this.predicted.y, this.attackAim, 14);
     } else {
       this.audio.swing(1);
@@ -377,8 +379,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.selfView.setLocal(true);
     this.selfView.setWeapon(this.equippedKey);
-    this.cameras.main.startFollow(this.selfView.sprite, false, 0.24, 0.24);
-    this.cameras.main.roundPixels = false;
+    this.cameras.main.startFollow(this.selfView.sprite, true, 0.8, 0.8);
+    this.cameras.main.roundPixels = true;
     this.cameras.main.setFollowOffset(0, 24);
     this.cameras.main.setZoom(1.34);
   }

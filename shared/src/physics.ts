@@ -140,3 +140,37 @@ export function inAttackArc(
   const angle = Math.atan2(ty - ay, tx - ax);
   return Math.abs(normalizeAngle(angle - aim)) <= arc / 2;
 }
+
+export interface RaycastHit {
+  hit: boolean;
+  x: number;
+  y: number;
+  distance: number;
+}
+
+/**
+ * Casts a ray along `aim` angle through grid up to `maxDist`.
+ * Stops at first blocked cell (wall, closed door).
+ */
+export function raycast(
+  grid: CollisionGrid,
+  x0: number,
+  y0: number,
+  aim: number,
+  maxDist: number,
+  step = 0.12,
+): RaycastHit {
+  const cos = Math.cos(aim);
+  const sin = Math.sin(aim);
+  const steps = Math.max(1, Math.ceil(maxDist / step));
+  for (let i = 1; i <= steps; i++) {
+    const curDist = Math.min(i * step, maxDist);
+    const cx = x0 + cos * curDist;
+    const cy = y0 + sin * curDist;
+    if (isBlocked(grid, cx, cy)) {
+      return { hit: true, x: cx, y: cy, distance: curDist };
+    }
+  }
+  return { hit: false, x: x0 + cos * maxDist, y: y0 + sin * maxDist, distance: maxDist };
+}
+

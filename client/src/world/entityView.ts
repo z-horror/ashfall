@@ -166,8 +166,9 @@ export class CharacterView {
     } else if (s.state === 'attack' || s.state === 'chase') {
       this.facingDir = screenDirectionFromAngle(s.aim);
       this.moveDir = null;
-    } else if (!s.moving) {
+    } else {
       this.moveDir = null;
+      this.facingDir = screenDirectionFromAngle(s.aim);
     }
     this.tx = s.x;
     this.ty = s.y;
@@ -193,13 +194,46 @@ export class CharacterView {
     if (moving && (mx !== 0 || my !== 0)) {
       this.moveDir = directionFromDelta(mx, my);
       this.facingDir = this.moveDir;
-    } else if (!moving) {
+    } else {
       this.moveDir = null;
+      this.facingDir = screenDirectionFromAngle(aim);
     }
+  }
+
+  private dying = false;
+
+  playDeath(onComplete?: () => void): void {
+    if (this.dead || this.dying) {
+      onComplete?.();
+      return;
+    }
+    this.dying = true;
+    this.hpBg.setVisible(false);
+    this.hpFill.setVisible(false);
+    this.label?.setVisible(false);
+    this.weaponSprite?.setVisible(false);
+
+    const dir = this.facingDir;
+    const key = `${this.sheet}-death-${dir}`;
+    this.sprite.play(key, true);
+    this.lastAnim = key;
+
+    let completed = false;
+    const done = () => {
+      if (completed) return;
+      completed = true;
+      this.dying = false;
+      this.setDead();
+      onComplete?.();
+    };
+
+    this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, done);
+    this.scene.time.delayedCall(560, done);
   }
 
   setDead(): void {
     this.dead = true;
+    this.dying = false;
     this.sprite.setVisible(false);
     this.shadow.setVisible(false);
     this.weaponSprite?.setVisible(false);
@@ -210,6 +244,7 @@ export class CharacterView {
 
   revive(): void {
     this.dead = false;
+    this.dying = false;
     this.sprite.setVisible(true);
     this.shadow.setVisible(true);
     this.label?.setVisible(true);
@@ -236,12 +271,12 @@ export class CharacterView {
   }
 
   update(dt: number, now: number): void {
-    if (this.dead) return;
+    if (this.dead || this.dying) return;
     if (!this.local) {
-      const k = 1 - Math.exp(-dt * 16);
+      const k = 1 - Math.exp(-dt * 20);
       const dx = this.tx - this.x;
       const dy = this.ty - this.y;
-      if (Math.hypot(dx, dy) > 2.2) {
+      if (Math.hypot(dx, dy) > 2.5) {
         this.x = this.tx;
         this.y = this.ty;
       } else {
@@ -283,7 +318,8 @@ export class CharacterView {
       dir = this.moveDir;
       this.facingDir = dir;
     } else {
-      dir = this.facingDir;
+      dir = screenDirectionFromAngle(this.aim);
+      this.facingDir = dir;
     }
 
     let key: string;
@@ -299,11 +335,11 @@ export class CharacterView {
       this.lastAnim = key;
     }
     if (this.moving && !attacking) {
-      this.sprite.anims.timeScale = this.sprinting ? 1.5 : this.kind === 'zombie' ? 0.9 : 1;
+      this.sprite.anims.timeScale = this.sprinting ? 1.5 : this.kind === 'zombie' ? 0.95 : 1;
     }
 
     if (this.weaponSprite && this.weaponKey) {
-      if (this.dead) {
+      if (this.dead || this.dying) {
         this.weaponSprite.setVisible(false);
       } else {
         this.weaponSprite.setVisible(true);
@@ -331,12 +367,26 @@ export class CharacterView {
             (Math.cos(this.aim) - Math.sin(this.aim)) * 32,
           );
           const screenDeg = Phaser.Math.RadToDeg(screenAim);
-          const swingArc = (progress - 0.5) * 80;
-          wAngle = screenDeg + swingArc;
-          const reach = 12 + Math.sin(progress * Math.PI) * 8;
-          wx = p.x + Math.cos(screenAim) * reach;
-          wy = p.y - 28 + Math.sin(screenAim) * reach;
-          wDepth = depth + 0.54;
+
+          if (this.weaponKey === 'pistol') {
+            // Gun recoil: sharp kick up and back in first 35%, then smooth recovery
+            const kick = progress < 0.35
+              ? (progress / 0.35)
+              : Math.max(0, 1 - (progress - 0.35) / 0.65);
+            wAngle = screenDeg - kick * 28;
+            const reach = 14 - kick * 6;
+            wx = p.x + Math.cos(screenAim) * reach;
+            wy = p.y - 28 + Math.sin(screenAim) * reach - kick * 4;
+            wDepth = depth + 0.54;
+          } else {
+            // Melee swing: sweeping arc across the target
+            const swingArc = (progress - 0.5) * 85;
+            wAngle = screenDeg + swingArc;
+            const reach = 12 + Math.sin(progress * Math.PI) * 10;
+            wx = p.x + Math.cos(screenAim) * reach;
+            wy = p.y - 28 + Math.sin(screenAim) * reach;
+            wDepth = depth + 0.54;
+          }
         }
 
         this.weaponSprite.setPosition(wx, wy);
