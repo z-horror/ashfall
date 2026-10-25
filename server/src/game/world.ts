@@ -687,19 +687,28 @@ export class World {
       }
     }
 
-    // Trees and lamps on sidewalks.
+    // Lamps on sidewalks.
     for (let y = 2; y < WORLD_TILES - 2; y++) {
       for (let x = 2; x < WORLD_TILES - 2; x++) {
         const i = this.idx(x, y);
         if (this.tiles[i] !== TILE.SIDEWALK) continue;
         if (this.buildingOcc[i] || this.propOcc[i] || this.clearTiles.has(i)) continue;
         const nearBuilding = this.nearBuilding(x, y, 2);
-        if (!nearBuilding && rng.chance(0.032)) {
-          this.placeExterior('tree', x, y, 1, 1, { variant: rng.int(0, 2), blocking: true });
-        } else if (rng.chance(0.006)) {
+        if (!nearBuilding && rng.chance(0.012)) {
           this.placeExterior('lamp', x, y, 1, 1, { variant: rng.int(0, 1), blocking: true });
-        } else if (rng.chance(0.008)) {
-          this.placeExterior('sign', x, y, 1, 1, { variant: rng.int(0, 2), blocking: true });
+        }
+      }
+    }
+
+    // Trees on natural grass and dirt (parks, yards, wastelands). Never on concrete sidewalks!
+    for (let y = 2; y < WORLD_TILES - 2; y++) {
+      for (let x = 2; x < WORLD_TILES - 2; x++) {
+        const i = this.idx(x, y);
+        if (this.tiles[i] !== TILE.GRASS && this.tiles[i] !== TILE.DIRT) continue;
+        if (this.buildingOcc[i] || this.propOcc[i] || this.clearTiles.has(i)) continue;
+        const nearBuilding = this.nearBuilding(x, y, 2);
+        if (!nearBuilding && rng.chance(0.024)) {
+          this.placeExterior('tree', x, y, 1, 1, { variant: rng.int(0, 2), blocking: true });
         }
       }
     }

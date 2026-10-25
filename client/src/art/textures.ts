@@ -136,127 +136,133 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
   };
 
   if (kind === 'asphalt') {
+    // Project Zomboid style: dark weathered aggregate asphalt
     const bases = [
-      '#34383b', '#2f3336', '#363a3d', '#313538', '#35393c',
-      '#2c3033', '#33373a', '#303437', '#35383b', '#2e3235',
+      '#202325', '#1c1f21', '#232628', '#1e2123', '#222527',
+      '#1a1d1f', '#212426', '#1d2022', '#242729', '#1f2224',
     ];
     fillDiamond(bases[variant % bases.length]);
-    speckle(ctx, 0, 0, 64, 32, 130, ['#24282a', '#41464a', '#4a4f50', '#1e2224'], rnd, 1.5);
-    // cracks
-    const cracks = variant % 3 === 0 ? 3 : variant % 2 === 0 ? 1 : 0;
-    for (let c = 0; c < cracks; c++) {
-      let x = rnd() * 64;
-      let y = rnd() * 32;
-      ctx.strokeStyle = rgba('#121415', 0.45);
-      ctx.lineWidth = 0.5 + rnd() * 0.5;
+    // Fine crushed stone and bitumen aggregate texture
+    speckle(ctx, 0, 0, 64, 32, 160, ['#141618', '#2d3134', '#383c40', '#181a1c', '#282b2e'], rnd, 1.4);
+
+    // Weathered organic cracks with branching
+    const crackCount = variant % 3 === 0 ? 3 : variant % 2 === 0 ? 1 : 0;
+    for (let c = 0; c < crackCount; c++) {
+      let x = 10 + rnd() * 44;
+      let y = 6 + rnd() * 20;
+      ctx.strokeStyle = 'rgba(10,11,12,0.6)';
+      ctx.lineWidth = 0.7;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      for (let i = 0; i < 4; i++) {
-        x += (rnd() - 0.5) * 12;
-        y += (rnd() - 0.35) * 6;
+      const segments = 3 + Math.floor(rnd() * 3);
+      for (let s = 0; s < segments; s++) {
+        x += (rnd() - 0.5) * 14;
+        y += (rnd() - 0.3) * 7;
         ctx.lineTo(x, y);
       }
       ctx.stroke();
-    }
-    // subtle variations across road tiles
-    if (variant === 3) {
-      ctx.fillStyle = 'rgba(20,22,24,0.22)';
-      ctx.beginPath();
-      ctx.ellipse(32, 16, 12, 5, 0.2, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (variant === 5) {
-      ctx.fillStyle = 'rgba(15,17,19,0.18)';
-      ctx.beginPath();
-      ctx.ellipse(28, 17, 16, 4, -0.4, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (variant === 7) {
-      ctx.strokeStyle = 'rgba(16,18,20,0.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(14, 25);
-      ctx.lineTo(48, 8);
-      ctx.stroke();
-    } else if (variant === 8) {
-      ctx.strokeStyle = 'rgba(195,182,132,0.22)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(22, 21);
-      ctx.lineTo(42, 11);
-      ctx.stroke();
-    } else if (variant === 9) {
-      ctx.fillStyle = '#222527';
-      ctx.beginPath();
-      ctx.ellipse(32, 16, 8.5, 4.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#43484c';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      for (let i = -5; i <= 5; i += 2.5) {
-        line(ctx, 24, 16 + i * 0.5, 40, 16 + i * 0.5, 'rgba(95,100,104,0.35)', 0.55);
+
+      // Weeds sprouting in cracks (Project Zomboid overgrown nature)
+      if (rnd() < 0.45) {
+        ctx.fillStyle = 'rgba(46,55,37,0.7)';
+        ctx.beginPath();
+        ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
+
+    // Road surface blemishes: oil stains, bitumen tar patches, tire wear
+    if (variant === 3 || variant === 6) {
+      // Dark fluid / engine oil leak in center
+      ctx.fillStyle = 'rgba(10,11,12,0.38)';
+      ctx.beginPath();
+      ctx.ellipse(32 + (rnd() - 0.5) * 8, 16 + (rnd() - 0.5) * 4, 10 + rnd() * 6, 4 + rnd() * 2.5, rnd() * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (variant === 5) {
+      // Dark bitumen patch (road repair)
+      ctx.fillStyle = 'rgba(14,16,18,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(26, 17, 14, 5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (variant === 8) {
+      // Faded weathered road marking
+      ctx.strokeStyle = 'rgba(175,160,110,0.28)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(20, 22);
+      ctx.lineTo(44, 10);
+      ctx.stroke();
+    }
   } else if (kind === 'sidewalk') {
-    const bases = ['#6a6a60', '#65655b', '#707066', '#616158'];
+    // Project Zomboid style: weathered concrete sidewalk slabs with dark expansion seams
+    const bases = ['#54564e', '#4f5149', '#585a52', '#4c4e46'];
     fillDiamond(bases[variant % bases.length]);
-    speckle(ctx, 0, 0, 64, 32, 90, ['#57574f', '#7a7a6e', '#5e5e55'], rnd, 1.2);
-    ctx.strokeStyle = 'rgba(30,30,27,0.2)';
-    ctx.lineWidth = 0.6;
-    // slab seams aligned with tile edges
+    speckle(ctx, 0, 0, 64, 32, 110, ['#3f413a', '#62645c', '#464841', '#6b6d65'], rnd, 1.3);
+
+    // Deep expansion joints along slab edges
+    ctx.strokeStyle = 'rgba(22,23,20,0.45)';
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     ctx.moveTo(32, 1);
     ctx.lineTo(0, 17);
     ctx.moveTo(63, 17);
     ctx.lineTo(32, 33);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(225,220,200,0.06)';
+
+    // Subtle concrete edge bevel highlight
+    ctx.strokeStyle = 'rgba(190,195,180,0.12)';
     ctx.beginPath();
-    ctx.moveTo(32, 3);
+    ctx.moveTo(32, 2.5);
     ctx.lineTo(2, 17.5);
     ctx.stroke();
-    for (let i = 0; i < 2; i++) {
-      ctx.strokeStyle = 'rgba(32,32,28,0.25)';
-      ctx.lineWidth = 0.6;
-      ctx.beginPath();
-      const x = 8 + rnd() * 48;
-      const y = 8 + rnd() * 16;
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + (rnd() - 0.5) * 12, y + (rnd() - 0.5) * 6);
-      ctx.stroke();
-    }
-    if (rnd() < 0.25) {
-      ctx.fillStyle = 'rgba(75,83,55,0.35)';
-      ctx.beginPath();
-      ctx.ellipse(14 + rnd() * 34, 12 + rnd() * 10, 4, 1.6, 0.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (kind === 'grass') {
-    const bases = ['#3c4632', '#37412e', '#424b36', '#39442f', '#3f4834'];
-    fillDiamond(bases[variant % bases.length]);
-    speckle(ctx, 0, 0, 64, 32, 80, ['#2b3425', '#4c573d', '#56603f', '#4a4a33'], rnd, 1.5);
-    const blades = 26 + Math.floor(rnd() * 25);
-    for (let i = 0; i < blades; i++) {
-      const x = rnd() * 64;
-      const y = rnd() * 32;
-      ctx.strokeStyle = rnd() < 0.55 ? 'rgba(94,108,72,0.5)' : 'rgba(58,71,44,0.6)';
-      ctx.lineWidth = 0.6;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + (rnd() - 0.5) * 2, y - 1.5 - rnd() * 2.5);
-      ctx.stroke();
-    }
-    if (rnd() < 0.4) {
-      ctx.fillStyle = 'rgba(82,72,48,0.35)';
-      ctx.beginPath();
-      ctx.ellipse(18 + rnd() * 28, 10 + rnd() * 12, 6, 2, 0.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (rnd() < 0.2) {
-      ctx.fillStyle = 'rgba(124,104,52,0.5)';
-      for (let i = 0; i < 5; i++) {
+
+    // Sprouting moss and weeds along seams
+    if (rnd() < 0.6) {
+      ctx.fillStyle = 'rgba(44,54,34,0.6)';
+      for (let i = 0; i < 4; i++) {
+        const t = rnd();
+        const mx = 32 * (1 - t) + 2 * t;
+        const my = 1 * (1 - t) + 17 * t;
         ctx.beginPath();
-        ctx.ellipse(18 + rnd() * 28, 12 + rnd() * 10, 1.2, 0.5, rnd() * 3, 0, Math.PI * 2);
+        ctx.ellipse(mx + (rnd() - 0.5) * 2, my + (rnd() - 0.5) * 1.5, 1.8, 0.9, rnd() * 2, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+  } else if (kind === 'grass') {
+    // Project Zomboid style: deep, muted, overgrown turf with weeds and soil patches
+    const bases = ['#2d3623', '#28311f', '#323b27', '#2a3321', '#2f3825'];
+    fillDiamond(bases[variant % bases.length]);
+    speckle(ctx, 0, 0, 64, 32, 110, ['#1e2417', '#3c472f', '#445135', '#353e2a'], rnd, 1.5);
+
+    // Patches of exposed damp soil (removes checkerboard look)
+    if (variant === 1 || variant === 4) {
+      ctx.fillStyle = 'rgba(32,27,19,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(24 + rnd() * 16, 12 + rnd() * 8, 8 + rnd() * 6, 3.5 + rnd() * 2, rnd() * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Natural wild grass blade clusters
+    const bladeCount = 35 + Math.floor(rnd() * 30);
+    for (let i = 0; i < bladeCount; i++) {
+      const x = rnd() * 64;
+      const y = rnd() * 32;
+      const dark = rnd() < 0.6;
+      ctx.strokeStyle = dark ? 'rgba(38,47,30,0.65)' : 'rgba(56,68,44,0.55)';
+      ctx.lineWidth = 0.65;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      const angle = (rnd() - 0.5) * 3;
+      ctx.lineTo(x + angle, y - 2 - rnd() * 3);
+      ctx.stroke();
+    }
+
+    // Weed rosettes / plantain / dried leaves
+    if (rnd() < 0.5) {
+      ctx.fillStyle = rnd() < 0.5 ? 'rgba(42,52,32,0.6)' : 'rgba(68,58,38,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(14 + rnd() * 36, 8 + rnd() * 16, 2.8 + rnd() * 2, 1.4 + rnd(), rnd() * 3, 0, Math.PI * 2);
+      ctx.fill();
     }
   } else if (kind === 'dirt') {
     const bases = ['#4b4335', '#473f32', '#514838', '#443d31'];
@@ -1612,49 +1618,77 @@ function makeLamp(): HTMLCanvasElement {
 function makeSign(variant: number): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(74, 132);
   const rnd = mulberry(992 + variant);
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath();
   ctx.ellipse(37, 122, 12, 4.2, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#4a504a';
-  ctx.fillRect(35, 42, 4, 80);
-  ctx.fillStyle = '#3a403b';
+  // Weathered metal pole
+  ctx.fillStyle = '#424845';
+  ctx.fillRect(35, 38, 4, 84);
+  ctx.fillStyle = '#2e3330';
+  ctx.fillRect(37, 38, 2, 84);
+  ctx.fillStyle = '#555b57';
   ctx.fillRect(30, 118, 14, 4);
-  // sign plate
-  const plateColors = ['#5e2a24', '#24413d', '#4f4528'];
-  ctx.fillStyle = plateColors[variant % 3];
-  ctx.fillRect(8, 10, 58, 40);
-  ctx.strokeStyle = 'rgba(210,200,170,0.3)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(10, 12, 54, 36);
-  ctx.fillStyle = 'rgba(210,200,170,0.55)';
+
   if (variant === 0) {
-    // one way arrow
+    // Blue rectangular One-Way / Street direction sign
+    ctx.fillStyle = '#244158';
+    ctx.fillRect(10, 14, 54, 32);
+    ctx.strokeStyle = '#cdd6de';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(12, 16, 50, 28);
+    // White arrow
+    ctx.fillStyle = '#e4ebf0';
     ctx.beginPath();
-    ctx.moveTo(24, 24);
-    ctx.lineTo(50, 24);
-    ctx.lineTo(50, 20);
-    ctx.lineTo(58, 30);
-    ctx.lineTo(50, 40);
-    ctx.lineTo(50, 36);
-    ctx.lineTo(24, 36);
+    ctx.moveTo(22, 30);
+    ctx.lineTo(42, 30);
+    ctx.lineTo(42, 25);
+    ctx.lineTo(50, 30);
+    ctx.lineTo(42, 35);
+    ctx.lineTo(42, 30);
     ctx.closePath();
     ctx.fill();
   } else if (variant === 1) {
-    ctx.font = 'bold 22px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('STOP', 37, 37);
-  } else {
-    // biohazard-ish trefoil
-    ctx.translate(37, 30);
-    for (let i = 0; i < 3; i++) {
-      ctx.rotate((Math.PI * 2) / 3);
-      ctx.beginPath();
-      ctx.arc(0, -6, 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Weathered Octagonal Red STOP sign
+    const cx = 37, cy = 30, r = 20;
+    ctx.fillStyle = '#8b201a';
     ctx.beginPath();
-    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4 + Math.PI / 8;
+      const px = cx + r * Math.cos(a);
+      const py = cy + r * Math.sin(a);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#e8dcd5';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Letters
+    ctx.fillStyle = '#f2ece8';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('STOP', cx, cy + 1);
+  } else {
+    // Yellow diamond warning sign (Road hazard / caution)
+    const cx = 37, cy = 30, size = 18;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#c9961a';
+    ctx.fillRect(-size, -size, size * 2, size * 2);
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-size + 2, -size + 2, size * 2 - 4, size * 2 - 4);
+    ctx.restore();
+
+    // Exclamation mark
+    ctx.fillStyle = '#1e1c18';
+    ctx.beginPath();
+    ctx.fillRect(35, 19, 4, 14);
+    ctx.arc(37, 39, 2.5, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.fillStyle = 'rgba(30,30,26,0.35)';
@@ -1808,87 +1842,123 @@ function makeBed(): HTMLCanvasElement {
   ctx.ellipse(52, 63, 39, 10, 0, 0, Math.PI * 2);
   ctx.fill();
   isoBox(ctx, 52, 61, 37, 18, 10, { top: '#4a3c2e', left: '#3e3226', right: '#2f271e', outline: 'rgba(18,15,12,0.5)' });
-  // mattress
-  ctx.save();
-  ctx.translate(0, -9);
-  roundRect(ctx, 18, 17, 68, 35, 7);
-  ctx.fillStyle = '#8b8674';
-  ctx.fill();
-  roundRect(ctx, 20, 19, 64, 31, 6);
-  ctx.fillStyle = '#9a957f';
-  ctx.fill();
-  // pillow
-  roundRect(ctx, 22, 21, 18, 20, 5);
-  ctx.fillStyle = '#b1ab94';
-  ctx.fill();
-  // blanket
-  roundRect(ctx, 45, 22, 37, 25, 4);
-  ctx.fillStyle = '#5b5f50';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(40,42,36,0.5)';
-  ctx.lineWidth = 1;
-  for (let x = 50; x < 82; x += 6) {
-    ctx.beginPath();
-    ctx.moveTo(x, 24);
-    ctx.lineTo(x, 46);
-    ctx.stroke();
-  }
-  ctx.restore();
+  // Realistic isometric mattress resting directly on the bed frame
+  isoBox(ctx, 52, 51, 35, 17, 6, { top: '#8a8570', left: '#736f5c', right: '#5c5948', outline: 'rgba(25,23,18,0.4)' });
+  // Blanket on mattress
+  isoBox(ctx, 60, 50, 22, 16, 7, { top: '#4a5342', left: '#3d4436', right: '#2f3429', outline: 'rgba(20,24,18,0.4)' });
+  // Pillow on mattress
+  isoBox(ctx, 42, 47, 10, 13, 5, { top: '#a8a28e', left: '#8d8876', right: '#706c5d', outline: 'rgba(30,28,22,0.3)' });
   speckle(ctx, 22, 24, 60, 30, 18, ['rgba(50,45,35,0.3)'], rnd, 1.1);
   return canvas;
 }
 
 function makeSofa(): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(102, 82);
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath();
-  ctx.ellipse(51, 66, 38, 10, 0, 0, Math.PI * 2);
+  ctx.ellipse(51, 66, 38, 12, 0, 0, Math.PI * 2);
   ctx.fill();
-  isoBox(ctx, 51, 64, 35, 17, 12, { top: '#4d4034', left: '#40342a', right: '#30271f', outline: 'rgba(18,15,12,0.5)' });
-  ctx.save();
-  ctx.translate(0, -12);
-  roundRect(ctx, 18, 20, 66, 32, 8);
-  ctx.fillStyle = '#5c4a3d';
-  ctx.fill();
-  roundRect(ctx, 20, 22, 30, 28, 6);
-  ctx.fillStyle = '#6a5546';
-  ctx.fill();
-  roundRect(ctx, 52, 22, 30, 28, 6);
-  ctx.fillStyle = '#655142';
-  ctx.fill();
-  // backrest
-  roundRect(ctx, 18, 10, 66, 14, 6);
-  ctx.fillStyle = '#554336';
-  ctx.fill();
-  ctx.restore();
+
+  const pal = {
+    baseTop: '#3b2f24', baseLeft: '#2c2218', baseRight: '#1e1710',
+    backTop: '#584635', backLeft: '#463729', backRight: '#35291e',
+    seatTop: '#634f3c', seatLeft: '#524030', seatRight: '#3e3023',
+    seatTopB: '#5c4937', seatLeftB: '#4d3c2c', seatRightB: '#392c1f',
+    armTop: '#544232', armLeft: '#443527', armRight: '#33271c',
+    armTopB: '#4c3a2b', armLeftB: '#3d2e21', armRightB: '#2c2016',
+    crease: 'rgba(25,18,12,0.5)', outline: 'rgba(18,13,8,0.45)'
+  };
+
+  // 1. Base frame / lower plinth
+  isoBox(ctx, 51, 64, 32, 16, 8, { top: pal.baseTop, left: pal.baseLeft, right: pal.baseRight, outline: pal.outline });
+
+  // 2. Backrest: running along the back (top-left) edge
+  isoBox(ctx, 44, 53, 31, 7, 20, { top: pal.backTop, left: pal.backLeft, right: pal.backRight, outline: pal.outline });
+  // Backrest vertical tufting seams
+  ctx.fillStyle = pal.crease;
+  ctx.fillRect(36, 32, 1.2, 14);
+  ctx.fillRect(52, 36, 1.2, 14);
+
+  // 3. Seat cushions: resting on base in front of backrest
+  // Cushion 1 (left)
+  isoBox(ctx, 44, 61, 14, 11, 6, { top: pal.seatTop, left: pal.seatLeft, right: pal.seatRight, outline: pal.outline });
+  // Cushion 2 (right)
+  isoBox(ctx, 58, 54, 14, 11, 6, { top: pal.seatTopB, left: pal.seatLeftB, right: pal.seatRightB, outline: pal.outline });
+
+  // Cushion center seam / piping
+  ctx.strokeStyle = pal.crease;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(51, 52); ctx.lineTo(51, 64);
+  ctx.stroke();
+
+  // 4. Armrests on left and right ends
+  // Left armrest
+  isoBox(ctx, 31, 65, 5, 15, 13, { top: pal.armTop, left: pal.armLeft, right: pal.armRight, outline: pal.outline });
+  // Right armrest
+  isoBox(ctx, 70, 46, 5, 14, 13, { top: pal.armTopB, left: pal.armLeftB, right: pal.armRightB, outline: pal.outline });
+
+  // Subtle wear highlights / grime
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(40, 52, 6, 2);
+  ctx.fillRect(56, 46, 6, 2);
   return canvas;
 }
 
 function makeTable(): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(90, 72);
-  ctx.fillStyle = 'rgba(0,0,0,0.26)';
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
   ctx.beginPath();
-  ctx.ellipse(45, 56, 32, 9, 0, 0, Math.PI * 2);
+  ctx.ellipse(45, 55, 28, 9, 0, 0, Math.PI * 2);
   ctx.fill();
-  isoBox(ctx, 45, 54, 30, 15, 16, { top: '#5a4936', left: '#4a3b2c', right: '#382c21', outline: 'rgba(20,16,12,0.5)' });
-  // legs
-  ctx.strokeStyle = '#342a20';
-  ctx.lineWidth = 2.5;
+
+  // 4 Wooden legs
+  ctx.fillStyle = '#2f241a';
+  ctx.fillRect(44, 43, 2.5, 9);
+  ctx.fillRect(23, 49, 2.5, 10);
+  ctx.fillRect(65, 49, 2.5, 10);
+  ctx.fillStyle = '#443425';
+  ctx.fillRect(44, 55, 2.5, 10);
+
+  // Elevated tabletop slab
+  isoBox(ctx, 45, 44, 25, 12, 3, {
+    top: '#634f3b',
+    left: '#4e3d2c',
+    right: '#3a2d1f',
+    outline: 'rgba(22,16,10,0.5)'
+  });
+
+  // Tabletop wood planks/grain
+  ctx.strokeStyle = 'rgba(35,26,16,0.35)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(22, 47);
-  ctx.lineTo(22, 60);
-  ctx.moveTo(68, 47);
-  ctx.lineTo(68, 60);
+  ctx.moveTo(33, 41); ctx.lineTo(57, 47);
+  ctx.moveTo(25, 43); ctx.lineTo(49, 49);
   ctx.stroke();
-  // items on table
-  ctx.fillStyle = '#8c815f';
+
+  // Folded newspaper / magazine on table
+  ctx.fillStyle = '#b8b29a';
   ctx.beginPath();
-  ctx.ellipse(42, 34, 10, 4.5, 0, 0, Math.PI * 2);
+  ctx.moveTo(40, 39); ctx.lineTo(48, 37); ctx.lineTo(52, 42); ctx.lineTo(44, 44);
+  ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#b3a987';
+  ctx.fillStyle = 'rgba(40,40,35,0.6)';
+  ctx.fillRect(43, 39, 5, 1);
+  ctx.fillRect(44, 41, 4, 0.8);
+
+  // Ceramic mug
+  ctx.fillStyle = '#8f887b';
   ctx.beginPath();
-  ctx.ellipse(42, 33, 7, 3, 0, 0, Math.PI * 2);
+  ctx.ellipse(36, 42, 2.5, 1.5, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillRect(34.5, 39, 3, 3);
+  ctx.fillStyle = '#2b2319';
+  ctx.beginPath();
+  ctx.ellipse(36, 39, 1.8, 1, 0, 0, Math.PI * 2);
+  ctx.fill();
+
   return canvas;
 }
 

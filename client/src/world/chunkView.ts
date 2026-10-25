@@ -256,24 +256,6 @@ export class ChunkView {
           visual.roofs.push(img);
         }
       }
-      // rooftop clutter - only instantiate in the chunk that owns (rx, ry)
-      const seed = b.x * 31 + b.y * 17 + b.w * 7 + b.h;
-      const count = 1 + (seed % 3);
-      for (let i = 0; i < count; i++) {
-        const rx = b.x + 2 + ((seed + i * 13) % Math.max(1, b.w - 4));
-        const ry = b.y + 2 + ((seed + i * 7) % Math.max(1, b.h - 3));
-        if (rx < b.x || ry < b.y || rx >= b.x + b.w - 1 || ry >= b.y + b.h - 1) continue;
-        if (Math.floor(rx / CHUNK) !== cx || Math.floor(ry / CHUNK) !== cy) continue;
-        const type = ['prop_vent', 'prop_ac', 'prop_tank'][(seed + i) % 3];
-        const key = type === 'prop_vent' ? 'prop_vent' : type === 'prop_ac' ? 'prop_ac' : 'prop_tank';
-        const anchor = propAnchor(key);
-        const p = iso(rx + 0.5, ry + 0.5);
-        const img = artImage(this.scene, p.x, p.y - WALL_HEIGHT, key)
-          .setOrigin(anchor.ox, anchor.oy)
-          .setDepth(visual.maxDepth + 0.96);
-        this.sprites.push(img);
-        visual.roofs.push(img);
-      }
       // Only generate signs for commercial shops (style === 1) that have a recognized shop type
       const isShop = b.style === 1;
       const lower = b.name.toLowerCase();
