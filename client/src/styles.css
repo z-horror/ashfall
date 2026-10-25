@@ -1437,3 +1437,13 @@ body {
   .panel { width: 94vw; }
   .inv-columns { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 24px 20px 20px;
+    margin: 12px auto;
+  }
+  .brand-main {
+    font-size: 42px;
+  }
+}

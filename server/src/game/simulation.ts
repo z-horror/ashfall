@@ -381,6 +381,24 @@ export class Simulation {
     p.openContainerId = null;
   }
 
+  kickUser(userId: number, reason = 'Аккаунт заблокирован'): boolean {
+    let found = false;
+    for (const p of this.players.values()) {
+      if (p.userId === userId) {
+        if (p.conn) {
+          p.conn.send({ t: 'error', code: 'BANNED', message: reason });
+          p.conn.close(4003, 'banned');
+          p.conn = null;
+        }
+        p.offlineAt = Date.now();
+        p.input = { mx: 0, my: 0, sprint: false, seq: 0 };
+        p.openContainerId = null;
+        found = true;
+      }
+    }
+    return found;
+  }
+
   private sendWelcome(p: SimPlayer): void {
     this.send(p, {
       t: 'welcome',

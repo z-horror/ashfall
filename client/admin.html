@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0d0c" />
+    <title>ASHFALL — Панель Администратора</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230b0d0c'/%3E%3Cpath d='M12 50 32 10l20 40-20-9z' fill='%23b6482f'/%3E%3C/svg%3E" />
+    <style>
+      :root {
+        --bg-dark: #0a0d0c;
+        --bg-card: #141816;
+        --bg-card-subtle: #1a201d;
+        --bg-hover: #222b27;
+        --border: #28332e;
+        --border-active: #3a4c44;
+        --primary: #b6482f;
+        --primary-hover: #d25537;
+        --text: #e2e8f0;
+        --text-sub: #94a3b8;
+        --success: #34d399;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background-color: var(--bg-dark);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.5;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        background: var(--bg-card);
+        border-bottom: 1px solid var(--border);
+        padding: 14px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand-title {
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        font-size: 1.15rem;
+        color: #fff;
+      }
+      .brand-badge {
+        background: var(--primary);
+        color: #fff;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        border-radius: 3px;
+        text-transform: uppercase;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .btn {
+        background: var(--bg-card-subtle);
+        color: var(--text);
+        border: 1px solid var(--border);
+        padding: 8px 14px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s;
+        text-decoration: none;
+      }
+      .btn:hover { background: var(--bg-hover); border-color: var(--border-active); color: #fff; }
+      .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+      .btn-primary:hover { background: var(--primary-hover); }
+      .btn-danger { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+      .btn-danger:hover { background: rgba(239, 68, 68, 0.3); border-color: var(--danger); color: #fff; }
+      .btn-success { background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.4); color: #6ee7b7; }
+      .btn-success:hover { background: rgba(52, 211, 153, 0.3); border-color: var(--success); color: #fff; }
+      .btn-copy { font-family: var(--mono); font-size: 0.75rem; padding: 4px 8px; }
+
+      .container {
+        width: 100%;
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px;
+        flex: 1;
+      }
+
+      /* Login Screen */
+      #login-screen {
+        max-width: 440px;
+        margin: 60px auto;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 32px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      }
+      .login-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .login-sub {
+        color: var(--text-sub);
+        font-size: 0.85rem;
+        margin-bottom: 24px;
+      }
+      .field {
+        margin-bottom: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .field label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--text-sub);
+        letter-spacing: 0.05em;
+      }
+      .input {
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        color: #fff;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        border-radius: 4px;
+        outline: none;
+      }
+      .input:focus { border-color: var(--primary); }
+
+      /* Dashboard */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 16px 20px;
+      }
+      .stat-label {
+        font-size: 0.75rem;
+        color: var(--text-sub);
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+      }
+      .stat-value {
+        font-size: 1.6rem;
+        font-weight: 800;
+        margin-top: 4px;
+        color: #fff;
+      }
+
+      /* Tabs */
+      .tabs {
+        display: flex;
+        gap: 8px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 20px;
+      }
+      .tab-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-sub);
+        padding: 10px 18px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.15s;
+      }
+      .tab-btn:hover { color: #fff; }
+      .tab-btn.active {
+        color: #fff;
+        border-bottom-color: var(--primary);
+      }
+
+      /* Cards & Tables */
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+      .card-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th {
+        text-align: left;
+        padding: 10px 14px;
+        background: var(--bg-card-subtle);
+        color: var(--text-sub);
+        font-weight: 600;
+        border-bottom: 1px solid var(--border);
+      }
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      tr:hover td { background: var(--bg-hover); }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .badge-active { background: rgba(52, 211, 153, 0.2); color: var(--success); }
+      .badge-used { background: rgba(148, 163, 184, 0.2); color: var(--text-sub); }
+      .badge-revoked { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+      .badge-expired { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+      .badge-code { font-family: var(--mono); font-size: 0.9rem; font-weight: 700; color: #fff; }
+
+      .form-inline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-end;
+      }
+      .form-inline .field { margin-bottom: 0; flex: 1; min-width: 160px; }
+
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: #1e293b;
+        color: #fff;
+        padding: 12px 20px;
+        border-radius: 4px;
+        border-left: 4px solid var(--primary);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        font-size: 0.85rem;
+        z-index: 9999;
+        transition: opacity 0.3s;
+      }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="brand-title">ASHFALL</span>
+        <span class="brand-badge">ADMIN</span>
+      </div>
+      <div class="header-right">
+        <a href="/" class="btn">🎮 В игру</a>
+        <button id="btn-logout" class="btn btn-danger hidden">Выйти</button>
+      </div>
+    </header>
+
+    <div class="container">
+      <!-- Login View -->
+      <div id="login-view">
+        <div id="login-screen">
+          <h2 class="login-title">Вход администратора</h2>
+          <p class="login-sub">Введите пароль из конфигурации <code>.env</code> (ADMIN_PASSWORD)</p>
+          <form id="admin-login-form">
+            <div class="field">
+              <label for="admin-pwd">Пароль</label>
+              <input id="admin-pwd" class="input" type="password" required autocomplete="current-password" placeholder="••••••••••••" />
+            </div>
+            <div id="login-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 12px;" class="hidden"></div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Войти в панель</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Dashboard View -->
+      <div id="dashboard-view" class="hidden">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Игроков онлайн</div>
+            <div id="stat-online" class="stat-value">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Всего аккаунтов</div>
+            <div id="stat-users" class="stat-value">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Активных инвайтов</div>
+            <div id="stat-invites" class="stat-value">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Аптайм сервера</div>
+            <div id="stat-uptime" class="stat-value">0m</div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button id="tab-invites" class="tab-btn active" type="button">🎟 Инвайт-коды</button>
+          <button id="tab-users" class="tab-btn" type="button">👥 Игроки и Бан</button>
+          <button id="tab-stats" class="tab-btn" type="button">📡 Телеметрия</button>
+        </div>
+
+        <!-- Tab 1: Invites -->
+        <div id="panel-invites">
+          <div class="card">
+            <div class="card-title">Создать инвайт-код для закрытого теста</div>
+            <form id="create-invite-form" class="form-inline">
+              <div class="field" style="flex: 2;">
+                <label for="inv-note">Примечание (для кого)</label>
+                <input id="inv-note" class="input" placeholder="Discord @ivan, стример, друг" />
+              </div>
+              <div class="field">
+                <label for="inv-uses">Количество использований</label>
+                <input id="inv-uses" class="input" type="number" min="1" max="1000" value="1" />
+              </div>
+              <div class="field">
+                <label for="inv-days">Срок действия (дней)</label>
+                <input id="inv-days" class="input" type="number" min="1" max="365" value="30" />
+              </div>
+              <button type="submit" class="btn btn-primary">⚡ Сгенерировать</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span>Список инвайт-кодов (<span id="invites-count">0</span>)</span>
+              <button id="btn-refresh-invites" class="btn" type="button">🔄 Обновить</button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Код</th>
+                    <th>Примечание</th>
+                    <th>Лимит</th>
+                    <th>Статус</th>
+                    <th>Создан</th>
+                    <th>Использования</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="invites-table-body">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-sub);">Загрузка инвайт-кодов...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Users -->
+        <div id="panel-users" class="hidden">
+          <div class="card">
+            <div class="card-title">
+              <span>Зарегистрированные игроки (<span id="users-count">0</span>)</span>
+              <div style="display: flex; gap: 8px;">
+                <input id="user-search" class="input" style="padding: 6px 12px; font-size: 0.85rem;" placeholder="Поиск по позывному..." />
+                <button id="btn-refresh-users" class="btn" type="button">🔄 Обновить</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Позывной</th>
+                    <th>Инвайт</th>
+                    <th>Персонаж</th>
+                    <th>Регистрация</th>
+                    <th>Статус</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="users-table-body">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-sub);">Загрузка игроков...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Stats -->
+        <div id="panel-stats" class="hidden">
+          <div class="card">
+            <div class="card-title">
+              <span>Состояние мира и сервера</span>
+              <button id="btn-refresh-stats" class="btn" type="button">🔄 Обновить</button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+              <div class="field">
+                <label>World Seed</label>
+                <div id="stat-seed" style="font-family: var(--mono); color: #fff;">—</div>
+              </div>
+              <div class="field">
+                <label>Зомби в мире</label>
+                <div id="stat-zombies" style="color: #fff; font-weight: 700;">—</div>
+              </div>
+              <div class="field">
+                <label>Активных чанков</label>
+                <div id="stat-chunks" style="color: #fff; font-weight: 700;">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script type="module" src="/src/admin.ts"></script>
+  </body>
+</html>

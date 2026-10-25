@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { randomBytes } from 'node:crypto';
 import { ITEMS } from '@ashfall/shared';
 import { config } from '../config.js';
 import { pool, query, withTransaction } from './db.js';
@@ -7,6 +8,12 @@ export interface UserRow {
   id: number;
   username: string;
   password_hash: string;
+  is_admin?: boolean;
+  is_banned?: boolean;
+  banned_at?: string | null;
+  ban_reason?: string | null;
+  registered_with_invite?: string | null;
+  created_at?: string;
 }
 
 export interface CharacterRow {
@@ -87,15 +94,15 @@ export async function createSession(userId: number, tokenHash: string, expiresAt
   ]);
 }
 
-export async function getSession(tokenHash: string): Promise<{ userId: number; username: string; expiresAt: Date } | null> {
-  const res = await query<{ user_id: number; username: string; expires_at: Date }>(
-    `SELECT s.user_id, u.username, s.expires_at FROM sessions s
+export async function getSession(tokenHash: string): Promise<{ userId: number; username: string; isBanned: boolean; isAdmin: boolean; expiresAt: Date } | null> {
+  const res = await query<{ user_id: number; username: string; is_banned: boolean; is_admin: boolean; expires_at: Date }>(
+    `SELECT s.user_id, u.username, coalesce(u.is_banned, false) AS is_banned, coalesce(u.is_admin, false) AS is_admin, s.expires_at FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [tokenHash],
   );
   const row = res.rows[0];
-  return row ? { userId: row.user_id, username: row.username, expiresAt: row.expires_at } : null;
+  return row ? { userId: row.user_id, username: row.username, isBanned: row.is_banned, isAdmin: row.is_admin, expiresAt: row.expires_at } : null;
 }
 
 export async function cleanupSessions(): Promise<void> {
@@ -535,6 +542,182 @@ export async function incrementKills(characterId: number): Promise<void> {
 export async function countCharacters(): Promise<number> {
   const res = await pool.query<{ n: string }>('SELECT count(*)::text AS n FROM characters');
   return Number(res.rows[0]?.n ?? 0);
+}
+
+
+export async function deleteUser(userId: number): Promise<void> {
+  await query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
+export async function validateAndConsumeInvite(
+  code: string,
+  userId: number,
+  ip: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const cleanCode = code.trim().toUpperCase();
+  if (!cleanCode) return { ok: false, reason: 'Инвайт-код не указан' };
+
+  return await withTransaction(async (client) => {
+    const res = await client.query<{
+      id: number;
+      max_uses: number;
+      uses_count: number;
+      status: string;
+      expires_at: Date | null;
+    }>(
+      `SELECT id, max_uses, uses_count, status, expires_at 
+       FROM invite_codes 
+       WHERE upper(code) = upper($1) 
+       FOR UPDATE`,
+      [cleanCode],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      return { ok: false, reason: 'Инвайт-код не найден' };
+    }
+    if (row.status !== 'active') {
+      return { ok: false, reason: `Инвайт-код недействителен (статус: ${row.status})` };
+    }
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+      await client.query(`UPDATE invite_codes SET status = 'expired' WHERE id = $1`, [row.id]);
+      return { ok: false, reason: 'Срок действия инвайт-кода истёк' };
+    }
+    if (row.max_uses > 0 && row.uses_count >= row.max_uses) {
+      await client.query(`UPDATE invite_codes SET status = 'used' WHERE id = $1`, [row.id]);
+      return { ok: false, reason: 'Лимит использований инвайт-кода исчерпан' };
+    }
+
+    const nextUses = row.uses_count + 1;
+    const nextStatus = row.max_uses > 0 && nextUses >= row.max_uses ? 'used' : 'active';
+    await client.query(
+      `UPDATE invite_codes SET uses_count = $1, status = $2 WHERE id = $3`,
+      [nextUses, nextStatus, row.id],
+    );
+    await client.query(
+      `INSERT INTO invite_uses(invite_id, user_id, ip_address) VALUES ($1, $2, $3)`,
+      [row.id, userId, ip],
+    );
+    await client.query(
+      `UPDATE users SET registered_with_invite = $1 WHERE id = $2`,
+      [cleanCode, userId],
+    );
+    return { ok: true };
+  });
+}
+
+export async function createInviteCode(
+  createdBy: number | null = null,
+  note = '',
+  maxUses = 1,
+  expiresDays = 30,
+): Promise<{ id: number; code: string; note: string | null; max_uses: number; expires_at: Date }> {
+  const rand = randomBytes(4).toString('hex').toUpperCase();
+  const code = `ASH-${rand.slice(0, 4)}-${rand.slice(4, 8)}`;
+  const expiresAt = new Date(Date.now() + Math.max(1, expiresDays) * 86400_000);
+  const res = await query<{ id: number; code: string; note: string | null; max_uses: number; expires_at: Date }>(
+    `INSERT INTO invite_codes(code, created_by, max_uses, note, expires_at, status)
+     VALUES ($1, $2, $3, $4, $5, 'active')
+     RETURNING id, code, note, max_uses, expires_at`,
+    [code, createdBy, Math.max(0, maxUses), note.trim() || null, expiresAt],
+  );
+  return res.rows[0];
+}
+
+export async function revokeInviteCode(code: string): Promise<boolean> {
+  const res = await query(
+    `UPDATE invite_codes SET status = 'revoked', revoked_at = now() WHERE upper(code) = upper($1) AND status = 'active'`,
+    [code.trim()],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+export interface AdminInviteRow {
+  id: number;
+  code: string;
+  note: string | null;
+  max_uses: number;
+  uses_count: number;
+  status: string;
+  expires_at: string | null;
+  created_at: string;
+  revoked_at: string | null;
+  uses: Array<{ username: string; used_at: string; ip_address: string | null }>;
+}
+
+export async function listInviteCodes(): Promise<AdminInviteRow[]> {
+  const invites = await query<{
+    id: number;
+    code: string;
+    note: string | null;
+    max_uses: number;
+    uses_count: number;
+    status: string;
+    expires_at: string | null;
+    created_at: string;
+    revoked_at: string | null;
+  }>(`SELECT id, code, note, max_uses, uses_count, status, expires_at, created_at, revoked_at 
+      FROM invite_codes 
+      ORDER BY id DESC`);
+
+  const usesRes = await query<{
+    invite_id: number;
+    username: string;
+    used_at: string;
+    ip_address: string | null;
+  }>(`SELECT iu.invite_id, u.username, iu.used_at, iu.ip_address 
+      FROM invite_uses iu 
+      JOIN users u ON u.id = iu.user_id 
+      ORDER BY iu.used_at DESC`);
+
+  const usesByInvite = new Map<number, Array<{ username: string; used_at: string; ip_address: string | null }>>();
+  for (const u of usesRes.rows) {
+    let arr = usesByInvite.get(u.invite_id);
+    if (!arr) {
+      arr = [];
+      usesByInvite.set(u.invite_id, arr);
+    }
+    arr.push({ username: u.username, used_at: u.used_at, ip_address: u.ip_address });
+  }
+
+  return invites.rows.map((inv) => ({
+    ...inv,
+    uses: usesByInvite.get(inv.id) ?? [],
+  }));
+}
+
+export interface AdminUserRow {
+  id: number;
+  username: string;
+  is_admin: boolean;
+  is_banned: boolean;
+  banned_at: string | null;
+  ban_reason: string | null;
+  registered_with_invite: string | null;
+  created_at: string;
+  character_name: string | null;
+  character_hp: number | null;
+  character_status: string | null;
+}
+
+export async function listUsers(): Promise<AdminUserRow[]> {
+  const res = await query<AdminUserRow>(`
+    SELECT u.id, u.username, coalesce(u.is_admin, false) AS is_admin, 
+           coalesce(u.is_banned, false) AS is_banned, u.banned_at, u.ban_reason, 
+           u.registered_with_invite, u.created_at,
+           c.name AS character_name, c.hp AS character_hp, c.status AS character_status
+    FROM users u
+    LEFT JOIN characters c ON c.user_id = u.id
+    ORDER BY u.id DESC
+  `);
+  return res.rows;
+}
+
+export async function setUserBan(userId: number, banned: boolean, reason = ''): Promise<boolean> {
+  const res = await query(
+    `UPDATE users SET is_banned = $1, banned_at = (CASE WHEN $1 THEN now() ELSE NULL END), ban_reason = (CASE WHEN $1 THEN $2 ELSE NULL END) WHERE id = $3`,
+    [banned, reason.trim() || null, userId],
+  );
+  return (res.rowCount ?? 0) > 0;
 }
 
 export { withTransaction };

@@ -46,4 +46,7 @@ export const config = {
   adminUsers: (process.env.ADMIN_USERS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   saveIntervalMs: 8000,
   disconnectGraceMs: 25000,
+  requireInvites: (process.env.REQUIRE_INVITES ?? 'false') === 'true',
+  allowGuestLogin: (process.env.ALLOW_GUEST_LOGIN ?? 'true') !== 'false',
+  adminPassword: process.env.ADMIN_PASSWORD ?? '',
 };

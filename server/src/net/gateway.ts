@@ -130,6 +130,11 @@ export class Gateway {
         ws.close(4004, 'auth failed');
         return;
       }
+      if (session.isBanned) {
+        error(ws, 'BANNED', 'Ваш аккаунт заблокирован.');
+        ws.close(4003, 'banned');
+        return;
+      }
       clearTimeout(state.authTimer);
       try {
         const playerId = await this.sim.join(session.userId, session.username, {

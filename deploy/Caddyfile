@@ -1,0 +1,22 @@
+{
+    admin off
+}
+
+{$APP_DOMAIN:localhost} {
+    encode gzip zstd
+
+    # WebSocket gateway (simulation real-time state)
+    @ws {
+        path /ws*
+    }
+    reverse_proxy @ws server:3000
+
+    # Backend API (auth, world metadata, admin endpoints)
+    @api {
+        path /api/*
+    }
+    reverse_proxy @api server:3000
+
+    # Frontend client & admin UI
+    reverse_proxy client:80
+}

@@ -26,8 +26,8 @@ async function post(path: string, body: unknown): Promise<AuthResult> {
   return { token: data.token, user: data.user };
 }
 
-export function register(username: string, password: string): Promise<AuthResult> {
-  return post('/api/auth/register', { username, password });
+export function register(username: string, password: string, inviteCode = ''): Promise<AuthResult> {
+  return post('/api/auth/register', { username, password, inviteCode });
 }
 
 export function login(username: string, password: string): Promise<AuthResult> {

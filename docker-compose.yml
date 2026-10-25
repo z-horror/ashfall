@@ -1,21 +1,29 @@
 name: ashfall
 
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ashfall}
-      POSTGRES_USER: ${POSTGRES_USER:-ashfall}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ashfall}
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:5433:5432"
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
     volumes:
-      - ashfall_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ashfall} -d ${POSTGRES_DB:-ashfall}"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ashfall_caddy_data:/data
+      - ashfall_caddy_config:/config
+    depends_on:
+      - client
+      - server
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
 
   server:
     build:
@@ -31,22 +39,30 @@ services:
       AOI_RADIUS: ${AOI_RADIUS:-28}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
       MIGRATE_ON_START: "true"
+      REQUIRE_INVITES: ${REQUIRE_INVITES:-true}
+      ALLOW_GUEST_LOGIN: ${ALLOW_GUEST_LOGIN:-false}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:3000:3000"
     restart: unless-stopped
 
-  client:
-    build:
-      context: .
-      dockerfile: client/Dockerfile
-    depends_on:
-      - server
-    ports:
-      - "8080:80"
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ashfall}
+      POSTGRES_USER: ${POSTGRES_USER:-ashfall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ashfall}
+    volumes:
+      - ashfall_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ashfall} -d ${POSTGRES_DB:-ashfall}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
 volumes:
   ashfall_pgdata:
+  ashfall_caddy_data:
+  ashfall_caddy_config:

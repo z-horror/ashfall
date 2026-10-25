@@ -12,6 +12,7 @@ const loadingText = document.getElementById('loading-text') as HTMLElement;
 const authError = document.getElementById('auth-error') as HTMLElement;
 const usernameInput = document.getElementById('auth-username') as HTMLInputElement;
 const passwordInput = document.getElementById('auth-password') as HTMLInputElement;
+const inviteInput = document.getElementById('auth-invite') as HTMLInputElement | null;
 const submitBtn = document.getElementById('auth-submit') as HTMLButtonElement;
 const registerBtn = document.getElementById('auth-register') as HTMLButtonElement;
 const guestBtn = document.getElementById('auth-guest') as HTMLButtonElement;
@@ -193,11 +194,12 @@ form.addEventListener('submit', (ev) => {
 registerBtn.addEventListener('click', () => {
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
+  const inviteCode = inviteInput?.value.trim() ?? '';
   if (!username || !password) {
     showError('Придумайте позывной и пароль (от 6 символов).');
     return;
   }
-  void enterWith(api.register(username, password));
+  void enterWith(api.register(username, password, inviteCode));
 });
 
 guestBtn.addEventListener('click', () => {

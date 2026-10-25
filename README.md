@@ -17,14 +17,31 @@
 - **Данные:** PostgreSQL 16, миграции, аккаунты (scrypt), сессии (хеш токена), персонажи, предметы, контейнеры, двери, состояние пропсов, зомби, события, чанки.
 - **Инфраструктура:** Docker Compose (Postgres + server + nginx/client), CI (typecheck/test/build), скрипты разработки, smoke/visual-скрипт Playwright.
 
-## Быстрый запуск (Docker)
+## Развёртывание на VPS в одну команду
+
+Для автоматической установки на чистый VPS с **Ubuntu 22.04 / 24.04 LTS** выполните:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/z-horror/ashfall/main/deploy/install.sh -o install.sh && sudo bash install.sh
+```
+
+Установщик автоматически:
+- Проверит порты и выделит swap при необходимости;
+- Установит Docker и Compose;
+- Настроит безопасные пароли в `.env` и HTTPS-проксирование через Caddy (Let's Encrypt);
+- Накатит миграции базы данных и создаст первый инвайт-код;
+- Добавит утилиту управления `ashfall` в `/usr/local/bin` и настроит ежедневный бэкап.
+
+Подробная документация: [**Руководство по развёртыванию и администрированию**](docs/DEPLOYMENT.md).
+
+## Локальный запуск (Docker)
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
-# клиент:  http://localhost:8080
-# health:  http://localhost:8080/api/health
-# БД:      127.0.0.1:5433 (ashfall/ashfall)
+# Клиент и игра:     http://localhost
+# Панель админа:    http://localhost/admin
+# Проверка сервера: http://localhost/api/health
 ```
 
 Первый запуск применяет миграции автоматически (`MIGRATE_ON_START=true`) и генерирует мир по `WORLD_SEED`.

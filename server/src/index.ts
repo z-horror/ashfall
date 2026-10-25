@@ -1,7 +1,20 @@
 import { createServer } from 'node:http';
 import { PROTOCOL_VERSION } from '@ashfall/shared';
 import { config } from './config.js';
-import { handleGuest, handleLogin, handleMe, handleRegister } from './auth.js';
+import {
+  handleGuest,
+  handleLogin,
+  handleMe,
+  handleRegister,
+  handleAdminLogin,
+  handleAdminMe,
+  handleAdminListUsers,
+  handleAdminSetBan,
+  handleAdminListInvites,
+  handleAdminCreateInvite,
+  handleAdminRevokeInvite,
+  verifyAdminToken,
+} from './auth.js';
 import { closeDatabase, pool, waitForDatabase } from './persistence/db.js';
 import { runMigrations } from './persistence/migrate.js';
 import { World } from './game/world.js';
@@ -84,6 +97,35 @@ async function main(): Promise<void> {
       }
       if ((path === '/api/me' || path === '/me') && req.method === 'GET') {
         return await handleMe(req, res);
+      }
+      if (path === '/api/admin/login' && req.method === 'POST') {
+        return await handleAdminLogin(req, res);
+      }
+      if (path === '/api/admin/me' && req.method === 'GET') {
+        return await handleAdminMe(req, res);
+      }
+      if (path === '/api/admin/users' && req.method === 'GET') {
+        return await handleAdminListUsers(req, res);
+      }
+      if (path === '/api/admin/users/ban' && req.method === 'POST') {
+        return await handleAdminSetBan(req, res, (userId, reason) => sim.kickUser(userId, reason));
+      }
+      if (path === '/api/admin/invites' && req.method === 'GET') {
+        return await handleAdminListInvites(req, res);
+      }
+      if (path === '/api/admin/invites' && req.method === 'POST') {
+        return await handleAdminCreateInvite(req, res);
+      }
+      if (path === '/api/admin/invites/revoke' && req.method === 'POST') {
+        return await handleAdminRevokeInvite(req, res);
+      }
+      if (path === '/api/admin/stats' && req.method === 'GET') {
+        if (!verifyAdminToken(req)) return json(res, 401, { error: 'Unauthorized' });
+        return json(res, 200, {
+          uptime: Math.round(process.uptime()),
+          seed: world.seed,
+          ...sim.stats(),
+        });
       }
       console.warn(`[http] 404 Not Found: ${req.method} ${url.pathname}`);
       return json(res, 404, { error: 'Not found' });
