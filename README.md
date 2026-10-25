@@ -4,8 +4,8 @@
 
 > **Статус: рабочий прототип, не готовая игра.** Вертикальный срез играбелен, но визуальное качество и часть систем ещё не доведены. Честный список того, что проверено и что сломано — в [`docs/STATUS.md`](docs/STATUS.md). Инструкции для продолжения работы другой моделью/разработчиком — в [`docs/HANDOFF_GEMINI.md`](docs/HANDOFF_GEMINI.md).
 
-![Мир](docs/screenshots/01-world.png)
-![Инвентарь](docs/screenshots/03-inventory.png)
+![Исследование города](docs/screenshots/01-world.png)
+![Выживание и бой](docs/screenshots/02-combat.png)
 
 ## Что уже реализовано
 
