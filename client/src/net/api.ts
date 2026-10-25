@@ -1,4 +1,12 @@
-const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
+const envBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
+export const API_BASE = envBase || (
+  typeof window !== 'undefined' &&
+  window.location.port !== '5173' &&
+  window.location.port !== '3100' &&
+  window.location.protocol !== 'https:'
+    ? 'http://127.0.0.1:3100'
+    : ''
+);
 
 export interface AuthResult {
   token: string;
@@ -6,7 +14,7 @@ export interface AuthResult {
 }
 
 async function post(path: string, body: unknown): Promise<AuthResult> {
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),

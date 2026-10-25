@@ -34,6 +34,14 @@ export class NetClient {
   private url(): string {
     const fromEnv = import.meta.env.VITE_WS_URL as string | undefined;
     if (fromEnv) return fromEnv;
+    if (
+      typeof window !== 'undefined' &&
+      window.location.port !== '5173' &&
+      window.location.port !== '3100' &&
+      window.location.protocol !== 'https:'
+    ) {
+      return 'ws://127.0.0.1:3100/ws';
+    }
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     return `${proto}://${location.host}/ws`;
   }

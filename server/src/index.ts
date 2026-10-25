@@ -39,8 +39,16 @@ async function main(): Promise<void> {
       return;
     }
 
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    console.log(`[http] ${req.method} ${url.pathname} (origin: ${origin ?? 'none'})`);
+
     try {
-      if (url.pathname === '/api/health' && req.method === 'GET') {
+      if (path === '/' && req.method === 'GET') {
+        res.writeHead(302, { Location: 'http://localhost:5173/' });
+        res.end();
+        return;
+      }
+      if ((path === '/api/health' || path === '/health') && req.method === 'GET') {
         let db = true;
         try {
           await pool.query('SELECT 1');
@@ -56,7 +64,7 @@ async function main(): Promise<void> {
           ...sim.stats(),
         });
       }
-      if (url.pathname === '/api/world' && req.method === 'GET') {
+      if ((path === '/api/world' || path === '/world') && req.method === 'GET') {
         return json(res, 200, {
           seed: world.seed,
           size: 128,
@@ -65,18 +73,19 @@ async function main(): Promise<void> {
           title: 'ASHFALL: Greywater District',
         });
       }
-      if (url.pathname === '/api/auth/register' && req.method === 'POST') {
+      if ((path === '/api/auth/register' || path === '/auth/register') && req.method === 'POST') {
         return await handleRegister(req, res, world.spawn);
       }
-      if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+      if ((path === '/api/auth/login' || path === '/auth/login') && req.method === 'POST') {
         return await handleLogin(req, res);
       }
-      if (url.pathname === '/api/auth/guest' && req.method === 'POST') {
+      if ((path === '/api/auth/guest' || path === '/auth/guest') && req.method === 'POST') {
         return await handleGuest(req, res, world.spawn);
       }
-      if (url.pathname === '/api/me' && req.method === 'GET') {
+      if ((path === '/api/me' || path === '/me') && req.method === 'GET') {
         return await handleMe(req, res);
       }
+      console.warn(`[http] 404 Not Found: ${req.method} ${url.pathname}`);
       return json(res, 404, { error: 'Not found' });
     } catch (err) {
       console.error('[http] error', err);

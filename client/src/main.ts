@@ -151,7 +151,7 @@ document.addEventListener('ashfall:loaded', () => {
 
 async function validateSession(token: string): Promise<boolean> {
   try {
-    const res = await fetch(`${(import.meta.env.VITE_API_BASE as string | undefined) ?? ''}/api/me`, {
+    const res = await fetch(`${api.API_BASE}/api/me`, {
       headers: { authorization: `Bearer ${token}` },
     });
     return res.ok;
