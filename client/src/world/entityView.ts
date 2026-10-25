@@ -17,6 +17,7 @@ export class CharacterView {
   readonly kind: 'player' | 'zombie';
   readonly sprite: Phaser.GameObjects.Sprite;
   readonly shadow: Phaser.GameObjects.Image;
+  weaponSprite?: Phaser.GameObjects.Image;
   readonly label?: Phaser.GameObjects.Text;
   readonly hpBg: Phaser.GameObjects.Rectangle;
   readonly hpFill: Phaser.GameObjects.Rectangle;
@@ -24,6 +25,7 @@ export class CharacterView {
   readonly name: string;
   private scene: Phaser.Scene;
   private sheet: string;
+  private weaponKey: string | null = null;
   x: number;
   y: number;
   aim: number;
@@ -81,14 +83,18 @@ export class CharacterView {
     const p = iso(this.x, this.y);
     this.shadow = artImage(scene, p.x, p.y + 2, 'fx_shadow').setAlpha(0.66);
     this.shadow.setScale(opts.kind === 'zombie' && this.type === 2 ? 0.8 : 0.62);
-    this.sprite = scene.add.sprite(p.x, p.y, CHARACTER_ATLAS, initialFrame(this.sheet));
+    this.sprite = scene.add.sprite(p.x, p.y, CHARACTER_ATLAS, initialFrame(this.sheet, this.facingDir));
     this.sprite.setOrigin(0.5, 0.932);
     if (this.type === 2) this.sprite.setScale(1.12);
     this.hpBg = scene.add.rectangle(p.x, p.y - 72, 32, 4, 0x0a0c0a, 0.75).setOrigin(0.5, 0.5);
     this.hpFill = scene.add.rectangle(p.x - 15, p.y - 72, 30, 2, 0x9d3328, 0.95).setOrigin(0, 0.5);
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
+
     if (opts.kind === 'player') {
+      if (scene.textures.exists('weapon_bat')) {
+        this.weaponSprite = scene.add.image(p.x, p.y, 'weapon_bat').setOrigin(0.2, 0.5).setVisible(false);
+      }
       this.label = scene.add
         .text(p.x, p.y - 82, this.name, {
           fontFamily: '"Consolas", "SFMono-Regular", monospace',
@@ -109,6 +115,23 @@ export class CharacterView {
     this.local = local;
   }
 
+  setWeapon(key: string | null): void {
+    this.weaponKey = key;
+    if (this.kind !== 'player') return;
+    if (!this.weaponSprite && this.scene && key && this.scene.textures.exists(`weapon_${key}`)) {
+      const p = iso(this.x, this.y);
+      this.weaponSprite = this.scene.add.image(p.x, p.y, `weapon_${key}`).setOrigin(0.2, 0.5).setVisible(!this.dead);
+    }
+    if (this.weaponSprite) {
+      if (key && this.scene.textures.exists(`weapon_${key}`)) {
+        this.weaponSprite.setTexture(`weapon_${key}`);
+        this.weaponSprite.setVisible(!this.dead);
+      } else {
+        this.weaponSprite.setVisible(false);
+      }
+    }
+  }
+
   applyPlayer(s: PlayerSnapshot): void {
     const dx = s.x - this.tx;
     const dy = s.y - this.ty;
@@ -125,6 +148,7 @@ export class CharacterView {
     this.maxHp = s.maxHp;
     this.moving = s.moving;
     this.sprinting = s.sprinting;
+    this.setWeapon(s.weapon);
     if (s.actionAt && s.actionAt !== this.lastActionAt) {
       this.lastActionAt = s.actionAt;
       this.playAttack();
@@ -178,6 +202,7 @@ export class CharacterView {
     this.dead = true;
     this.sprite.setVisible(false);
     this.shadow.setVisible(false);
+    this.weaponSprite?.setVisible(false);
     this.label?.setVisible(false);
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
@@ -188,6 +213,9 @@ export class CharacterView {
     this.sprite.setVisible(true);
     this.shadow.setVisible(true);
     this.label?.setVisible(true);
+    if (this.weaponKey && this.weaponSprite) {
+      this.weaponSprite.setVisible(true);
+    }
   }
 
   playAttack(): void {
@@ -273,11 +301,55 @@ export class CharacterView {
     if (this.moving && !attacking) {
       this.sprite.anims.timeScale = this.sprinting ? 1.5 : this.kind === 'zombie' ? 0.9 : 1;
     }
+
+    if (this.weaponSprite && this.weaponKey) {
+      if (this.dead) {
+        this.weaponSprite.setVisible(false);
+      } else {
+        this.weaponSprite.setVisible(true);
+        const HAND_OFFSETS: Array<{ x: number; y: number; behind: boolean; angle: number }> = [
+          { x: 9, y: -28, behind: false, angle: 15 },
+          { x: 10, y: -26, behind: false, angle: 30 },
+          { x: 7, y: -24, behind: false, angle: 45 },
+          { x: -7, y: -24, behind: false, angle: -45 },
+          { x: -9, y: -26, behind: false, angle: -60 },
+          { x: -9, y: -28, behind: true, angle: -75 },
+          { x: -6, y: -30, behind: true, angle: -90 },
+          { x: 7, y: -30, behind: true, angle: 0 },
+        ];
+
+        const h = HAND_OFFSETS[dir] ?? HAND_OFFSETS[2];
+        let wx = p.x + h.x;
+        let wy = p.y + h.y;
+        let wAngle = h.angle;
+        let wDepth = depth + (h.behind ? 0.46 : 0.52);
+
+        if (attacking) {
+          const progress = Math.max(0, Math.min(1, 1 - (this.attackUntil - now) / 330));
+          const screenAim = Math.atan2(
+            (Math.cos(this.aim) + Math.sin(this.aim)) * 16,
+            (Math.cos(this.aim) - Math.sin(this.aim)) * 32,
+          );
+          const screenDeg = Phaser.Math.RadToDeg(screenAim);
+          const swingArc = (progress - 0.5) * 80;
+          wAngle = screenDeg + swingArc;
+          const reach = 12 + Math.sin(progress * Math.PI) * 8;
+          wx = p.x + Math.cos(screenAim) * reach;
+          wy = p.y - 28 + Math.sin(screenAim) * reach;
+          wDepth = depth + 0.54;
+        }
+
+        this.weaponSprite.setPosition(wx, wy);
+        this.weaponSprite.setAngle(wAngle);
+        this.weaponSprite.setDepth(wDepth);
+      }
+    }
   }
 
   destroy(): void {
     this.sprite.destroy();
     this.shadow.destroy();
+    this.weaponSprite?.destroy();
     this.label?.destroy();
     this.hpBg.destroy();
     this.hpFill.destroy();

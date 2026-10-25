@@ -121,6 +121,19 @@ export class GameScene extends Phaser.Scene {
     this.load.image('sign_market', 'assets/signs/sign_market.png');
     this.load.image('sign_cafe', 'assets/signs/sign_cafe.png');
     this.load.image('sign_gun', 'assets/signs/sign_gun.png');
+
+    // Pre-rendered isometric character sheets & corpses
+    const charKeys = ['p0', 'p1', 'p2', 'p3', 'z0', 'z1', 'z2'];
+    for (const c of charKeys) {
+      this.load.image(`sheet_${c}`, `assets/characters/char_${c}.png`);
+      this.load.image(`corpse_${c}`, `assets/characters/corpse_${c}.png`);
+    }
+
+    // Pre-rendered weapons for hands
+    const weaponKeys = ['bat', 'spiked_bat', 'knife', 'crowbar', 'axe', 'pistol'];
+    for (const w of weaponKeys) {
+      this.load.image(`weapon_${w}`, `assets/weapons/weapon_${w}.png`);
+    }
   }
 
   create(): void {
@@ -363,6 +376,7 @@ export class GameScene extends Phaser.Scene {
       name: s.name,
     });
     this.selfView.setLocal(true);
+    this.selfView.setWeapon(this.equippedKey);
     this.cameras.main.startFollow(this.selfView.sprite, false, 0.24, 0.24);
     this.cameras.main.roundPixels = false;
     this.cameras.main.setFollowOffset(0, 24);
@@ -524,6 +538,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setInventory(inv, container);
     const equipped = inv.items.find((i) => i.equipped);
     this.equippedKey = equipped?.key ?? null;
+    this.selfView?.setWeapon(this.equippedKey);
     const def = this.equippedKey ? ITEMS[this.equippedKey] : null;
     this.lastAttackInterval = Math.max(220, Math.round((def?.cooldown ?? 0.52) * 1000));
     this.hud.setPrompt(null);

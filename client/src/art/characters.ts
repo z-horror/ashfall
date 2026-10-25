@@ -468,21 +468,30 @@ export function buildCharacterAssets(scene: Phaser.Scene): void {
     const style = all[index];
     const ox = (index % ATLAS_COLS) * SHEET_W;
     const oy = Math.floor(index / ATLAS_COLS) * SHEET_H;
-    for (let dir = 0; dir < DIRS; dir++) {
-      for (let frame = 0; frame < COLS; frame++) {
-        atlasCtx.save();
-        atlasCtx.translate(ox + frame * FRAME_W, oy + dir * FRAME_H);
-        drawCharacter(atlasCtx, style, DIR_ANGLES[dir], frame);
-        atlasCtx.restore();
+
+    const sheetKey = `sheet_${style.id}`;
+    if (scene.textures.exists(sheetKey)) {
+      const srcImg = scene.textures.get(sheetKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+      atlasCtx.drawImage(srcImg, ox, oy);
+    } else {
+      for (let dir = 0; dir < DIRS; dir++) {
+        for (let frame = 0; frame < COLS; frame++) {
+          atlasCtx.save();
+          atlasCtx.translate(ox + frame * FRAME_W, oy + dir * FRAME_H);
+          drawCharacter(atlasCtx, style, DIR_ANGLES[dir], frame);
+          atlasCtx.restore();
+        }
       }
     }
 
-    const corpse = makeCanvas(110, 70);
-    const c = corpse.ctx;
-    c.translate(55, 42);
-    c.scale(1.7, 1.7);
-    drawCorpseShape(c, style, 1);
-    scene.textures.addCanvas(`corpse_${style.id}`, corpse.canvas);
+    if (!scene.textures.exists(`corpse_${style.id}`)) {
+      const corpse = makeCanvas(110, 70);
+      const c = corpse.ctx;
+      c.translate(55, 42);
+      c.scale(1.7, 1.7);
+      drawCorpseShape(c, style, 1);
+      scene.textures.addCanvas(`corpse_${style.id}`, corpse.canvas);
+    }
   }
 
   const tex = scene.textures.addCanvas(CHARACTER_ATLAS, atlas);
@@ -546,20 +555,17 @@ export function playerSheetFor(variant: number): string {
   return `char_${PLAYER_STYLES[variant % PLAYER_STYLES.length].id}`;
 }
 
-export function initialFrame(sheet: string): string {
-  return `${sheet.replace('char_', '')}:0`;
+export function initialFrame(sheet: string, dir = 0): string {
+  return `${sheet.replace('char_', '')}:${dir * COLS}`;
 }
 
-export function zombieSheetFor(type: number, id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  const v = type === 2 ? 2 : (h + type) % 2;
-  return `char_${ZOMBIE_STYLES[v].id}`;
+export function zombieSheetFor(type: number, id?: string): string {
+  const t = Math.max(0, Math.min(2, Math.floor(type || 0)));
+  return `char_${ZOMBIE_STYLES[t].id}`;
 }
 
-export function corpseFor(kind: 'player' | 'zombie', typeOrVariant: number, id: string): string {
+export function corpseFor(kind: 'player' | 'zombie', typeOrVariant: number, id?: string): string {
   if (kind === 'player') return `corpse_p${typeOrVariant % 4}`;
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return `corpse_z${typeOrVariant === 2 ? 2 : h % 2}`;
+  const t = Math.max(0, Math.min(2, Math.floor(typeOrVariant || 0)));
+  return `corpse_z${t}`;
 }
