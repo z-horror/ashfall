@@ -3,6 +3,19 @@ export interface Vec2 {
   y: number;
 }
 
+export interface StairDef {
+  x: number;
+  y: number;
+  dir: 'up' | 'down';
+  targetLevel: number;
+}
+
+export interface FloorLevelDef {
+  level: number;
+  walls?: Array<{ x: number; y: number; mat: number }>;
+  floors?: Array<{ x: number; y: number; tile: number }>;
+}
+
 export interface BuildingDef {
   id: string;
   x: number;
@@ -13,6 +26,9 @@ export interface BuildingDef {
   name: string;
   roof: boolean;
   doorTiles: Array<{ x: number; y: number }>;
+  floorsCount?: number;
+  stairs?: StairDef[];
+  levels?: FloorLevelDef[];
 }
 
 export interface PropDef {

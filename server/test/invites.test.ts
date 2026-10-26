@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pool, withTransaction } from '../src/persistence/db.js';
+import { pool, withTransaction, waitForDatabase } from '../src/persistence/db.js';
 import * as repo from '../src/persistence/repo.js';
 import { hashPassword, verifyPassword } from '../src/auth.js';
 
 test('Invites & Admin: code generation, consumption, and status lifecycle', async () => {
+  await waitForDatabase();
   // 1. Create invite code
   const inv = await repo.createInviteCode(null, 'test invite', 1, 7);
   assert.match(inv.code, /^ASH-[0-9A-F]{4}-[0-9A-F]{4}$/);

@@ -32,6 +32,9 @@ export interface BuildingVisual {
   backWalls: Phaser.GameObjects.Image[];
   walls: Phaser.GameObjects.Image[];
   doors: Phaser.GameObjects.Image[];
+  stairs?: Phaser.GameObjects.Image[];
+  upperFloors?: Phaser.GameObjects.Image[];
+  upperWalls?: Phaser.GameObjects.Image[];
   maxDepth: number;
 }
 
@@ -73,6 +76,9 @@ export class ChunkView {
         backWalls: [],
         walls: [],
         doors: [],
+        stairs: [],
+        upperFloors: [],
+        upperWalls: [],
         maxDepth: b.x + b.w - 1 + (b.y + b.h - 1),
       };
       this.visuals.set(b.id, v);
@@ -211,12 +217,15 @@ export class ChunkView {
     const building = this.world.buildingAt(door.x + 0.5, door.y + 0.5);
     const isEast = building ? door.x === building.x + building.w - 1 : false;
     const facing = door.facing ?? (isEast ? 'east' : 'south');
-    const key = `door_${facing}_${open ? 'open' : 'closed'}`;
-    const img = artImage(this.scene, p.x, p.y + TILE_H / 2, key)
+    const fullKey = `door_${facing}_${open ? 'open' : 'closed'}`;
+    const cutKey = `door_${facing}_cut_${open ? 'open' : 'closed'}`;
+    const img = artImage(this.scene, p.x, p.y + TILE_H / 2, fullKey)
       .setOrigin(0.5, 1)
       .setDepth(door.x + door.y + 0.74);
     img.setData('doorId', door.id);
     img.setData('facing', facing);
+    img.setData('fullKey', fullKey);
+    img.setData('cutKey', cutKey);
     this.sprites.push(img);
     this.doorSprites.set(door.id, img);
     if (building) this.visualFor(building).doors.push(img);
@@ -229,7 +238,12 @@ export class ChunkView {
     const building = door ? this.world.buildingAt(door.x + 0.5, door.y + 0.5) : null;
     const isEast = door && building ? door.x === building.x + building.w - 1 : false;
     const facing = door?.facing ?? (isEast ? 'east' : 'south');
-    artSetTexture(img, `door_${facing}_${open ? 'open' : 'closed'}`);
+    const fullKey = `door_${facing}_${open ? 'open' : 'closed'}`;
+    const cutKey = `door_${facing}_cut_${open ? 'open' : 'closed'}`;
+    img.setData('fullKey', fullKey);
+    img.setData('cutKey', cutKey);
+    const isCutaway = img.getData('isCutaway') ?? false;
+    artSetTexture(img, isCutaway ? cutKey : fullKey);
   }
 
   private buildRoofs(): void {

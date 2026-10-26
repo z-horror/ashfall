@@ -145,7 +145,11 @@ export class HUD {
       ev.stopPropagation();
       if (!this.container || this.container.items.length === 0) return;
       for (const it of [...this.container.items]) {
-        this.actions.transfer(it.id, it.qty, 'take');
+        if (this.container.id === '__ground__') {
+          this.actions.pickupItem(it.id);
+        } else {
+          this.actions.transfer(it.id, it.qty, 'take');
+        }
       }
     });
 
@@ -639,9 +643,13 @@ export class HUD {
       this.playerInvCol.classList.remove('hidden');
       this.containerCol.classList.remove('hidden');
       this.craftCol.classList.add('hidden');
-      this.invPanelTitle.textContent = `ОБЫСК: ${this.container.label.toUpperCase()}`;
+      const isGround = this.container.id === '__ground__';
 
-      this.containerTitle.textContent = this.container.label.toUpperCase();
+            this.invPanelTitle.textContent = isGround ? 'ЛУТ НА ЗЕМЛЕ' : `ОБЫСК: ${this.container.label.toUpperCase()}`;
+
+            this.containerTitle.textContent = isGround ? 'ПРЕДМЕТЫ НА ЗЕМЛЕ' : this.container.label.toUpperCase();
+
+            this.btnTakeAll.textContent = isGround ? 'ЗАБРАТЬ ВСЁ' : 'ВЗЯТЬ ВСЁ';
       this.containerList.replaceChildren();
       if (this.container.items.length === 0) {
         const empty = document.createElement('div');
@@ -813,7 +821,10 @@ export class HUD {
     row.addEventListener('dblclick', (ev) => {
       ev.stopPropagation();
       this.selectedId = item.id;
-      if (source === 'container') this.actions.transfer(item.id, item.qty, 'take');
+      if (source === 'container') {
+        if (this.container?.id === '__ground__') this.actions.pickupItem(item.id);
+        else this.actions.transfer(item.id, item.qty, 'take');
+      }
       else this.primaryAction(item, def?.kind);
       this.renderDetail();
     });
@@ -854,7 +865,7 @@ export class HUD {
       const kind = def?.kind;
       if (kind === 'weapon') addBtn(item.equipped ? 'В РУКАХ' : 'ВЗЯТЬ В РУКИ', () => this.actions.equipItem(item.id));
       if (kind && ['food', 'drink', 'med'].includes(kind)) addBtn('ИСПОЛЬЗОВАТЬ', () => this.actions.useItem(item.id));
-      if (this.container) addBtn('ПОЛОЖИТЬ', () => this.actions.transfer(item.id, item.qty, 'put'));
+      if (this.container && this.container.id !== '__ground__') addBtn('ПОЛОЖИТЬ', () => this.actions.transfer(item.id, item.qty, 'put'));
       if (!item.equipped) addBtn('ВЫБРОСИТЬ', () => this.actions.dropItem(item.id, item.qty > 1 ? 1 : item.qty));
 
       const hotbarWrap = document.createElement('div');
@@ -884,7 +895,11 @@ export class HUD {
       actionsWrap.appendChild(hotbarWrap);
     }
     if (inContainer) {
-      addBtn('ВЗЯТЬ', () => this.actions.transfer(item.id, item.qty, 'take'));
+      if (this.container?.id === '__ground__') {
+        addBtn('ПОДОБРАТЬ', () => this.actions.pickupItem(item.id));
+      } else {
+        addBtn('ВЗЯТЬ', () => this.actions.transfer(item.id, item.qty, 'take'));
+      }
     }
     this.detail.append(info, actionsWrap);
   }

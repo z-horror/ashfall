@@ -4,6 +4,8 @@ import {
   type BuildingDef,
   type ChunkData,
   type DoorDef,
+  createGrid,
+  type CollisionGrid,
 } from '@ashfall/shared';
 
 export interface LoadedChunk {
@@ -27,6 +29,7 @@ export class ClientWorld {
   readonly buildings = new Map<string, BuildingDef>();
   readonly containers = new Map<string, ContainerInfo>();
   readonly collision = new Uint8Array(WORLD_TILES * WORLD_TILES);
+  readonly collisionGrid: CollisionGrid = createGrid(WORLD_TILES, WORLD_TILES, 2);
 
   constructor() {
     this.collision.fill(1);
@@ -130,13 +133,12 @@ export class ClientWorld {
   }
 
   rebuildCollision(): void {
+    // 1. Unscaled 1x1 base collision
     this.collision.fill(0);
     for (let i = 0; i < this.collision.length; i++) {
       if (this.wallAt(i % WORLD_TILES, Math.floor(i / WORLD_TILES)) !== 0) this.collision[i] = 1;
     }
     for (const chunk of this.chunks.values()) {
-      const x0 = chunk.data.cx * 32;
-      const y0 = chunk.data.cy * 32;
       for (const p of chunk.data.props) {
         if (!p.blocking) continue;
         for (let y = p.y; y < p.y + p.h; y++) {
@@ -151,7 +153,6 @@ export class ClientWorld {
         this.collision[d.y * WORLD_TILES + d.x] = open ? 0 : 1;
       }
     }
-    // Borders and unknown space are blocked for local prediction.
     for (let x = 0; x < WORLD_TILES; x++) {
       this.collision[x] = 1;
       this.collision[(WORLD_TILES - 1) * WORLD_TILES + x] = 1;
@@ -159,6 +160,99 @@ export class ClientWorld {
     for (let y = 0; y < WORLD_TILES; y++) {
       this.collision[y * WORLD_TILES] = 1;
       this.collision[y * WORLD_TILES + WORLD_TILES - 1] = 1;
+    }
+
+    // 2. Scaled 2x2 sub-tile collision grid
+    const grid = this.collisionGrid;
+    grid.cells.fill(0);
+
+    const blockSubcell = (sx: number, sy: number) => {
+      if (sx >= 0 && sy >= 0 && sx < grid.w && sy < grid.h) {
+        grid.cells[sy * grid.w + sx] = 1;
+      }
+    };
+    const blockTile = (x: number, y: number) => {
+      blockSubcell(x * 2, y * 2);
+      blockSubcell(x * 2 + 1, y * 2);
+      blockSubcell(x * 2, y * 2 + 1);
+      blockSubcell(x * 2 + 1, y * 2 + 1);
+    };
+
+    // Props
+    for (const chunk of this.chunks.values()) {
+      for (const p of chunk.data.props) {
+        if (!p.blocking) continue;
+        for (let y = p.y; y < p.y + p.h; y++) {
+          for (let x = p.x; x < p.x + p.w; x++) {
+            if (x >= 0 && y >= 0 && x < WORLD_TILES && y < WORLD_TILES) blockTile(x, y);
+          }
+        }
+      }
+    }
+
+    // Boundaries
+    for (let x = 0; x < WORLD_TILES; x++) {
+      blockTile(x, 0);
+      blockTile(x, WORLD_TILES - 1);
+    }
+    for (let y = 0; y < WORLD_TILES; y++) {
+      blockTile(0, y);
+      blockTile(WORLD_TILES - 1, y);
+    }
+
+    // Walls & Buildings
+    for (let y = 0; y < WORLD_TILES; y++) {
+      for (let x = 0; x < WORLD_TILES; x++) {
+        const wall = this.wallAt(x, y);
+        if (!wall) continue;
+        const b = this.buildingAt(x + 0.5, y + 0.5);
+        if (!b) {
+          blockTile(x, y);
+          continue;
+        }
+
+        const isSouth = y === b.y + b.h - 1;
+        const isEast = x === b.x + b.w - 1;
+        const isNorth = y === b.y;
+        const isWest = x === b.x;
+
+        if (isSouth && isEast) {
+          blockSubcell(x * 2 + 1, y * 2);
+          blockSubcell(x * 2, y * 2 + 1);
+          blockSubcell(x * 2 + 1, y * 2 + 1);
+        } else if (isSouth) {
+          blockSubcell(x * 2, y * 2 + 1);
+          blockSubcell(x * 2 + 1, y * 2 + 1);
+        } else if (isEast) {
+          blockSubcell(x * 2 + 1, y * 2);
+          blockSubcell(x * 2 + 1, y * 2 + 1);
+        } else if (isNorth) {
+          blockTile(x, y);
+        } else if (isWest) {
+          blockTile(x, y);
+        } else {
+          blockTile(x, y);
+        }
+      }
+    }
+
+    // Doors
+    for (const chunk of this.chunks.values()) {
+      for (const d of chunk.data.doors) {
+        const open = this.doorOpen.get(d.id) ?? d.open;
+        const b = this.buildingAt(d.x + 0.5, d.y + 0.5);
+        const isEast = b ? d.x === b.x + b.w - 1 : false;
+        const facing = d.facing ?? (isEast ? 'east' : 'south');
+        const val = open ? 0 : 1;
+
+        if (facing === 'south') {
+          grid.cells[(d.y * 2 + 1) * grid.w + (d.x * 2)] = val;
+          grid.cells[(d.y * 2 + 1) * grid.w + (d.x * 2 + 1)] = val;
+        } else {
+          grid.cells[(d.y * 2) * grid.w + (d.x * 2 + 1)] = val;
+          grid.cells[(d.y * 2 + 1) * grid.w + (d.x * 2 + 1)] = val;
+        }
+      }
     }
   }
 

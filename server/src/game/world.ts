@@ -16,6 +16,8 @@ import {
   type ChunkData,
   type DoorDef,
   type PropDef,
+  createGrid,
+  type CollisionGrid,
 } from '@ashfall/shared';
 import { encodeRLE } from '@ashfall/shared';
 
@@ -109,7 +111,9 @@ export class World {
   readonly doorAt = new Map<number, string>();
   readonly spawn = { x: 48.5, y: 48.5 };
   readonly collision = new Uint8Array(WORLD_TILES * WORLD_TILES);
+  readonly collisionGrid: CollisionGrid = createGrid(WORLD_TILES, WORLD_TILES, 2);
   private readonly baseCollision = new Uint8Array(WORLD_TILES * WORLD_TILES);
+  private readonly baseCollisionGrid: CollisionGrid = createGrid(WORLD_TILES, WORLD_TILES, 2);
   private readonly buildingOcc = new Uint8Array(WORLD_TILES * WORLD_TILES);
   private readonly propOcc = new Uint8Array(WORLD_TILES * WORLD_TILES);
   private readonly clearTiles = new Set<number>();
@@ -123,6 +127,7 @@ export class World {
     this.rng = new Rng(seed);
     this.generate();
     this.baseCollision.set(this.collision);
+    this.baseCollisionGrid.cells.set(this.collisionGrid.cells);
   }
 
   idx(x: number, y: number): number {
@@ -494,7 +499,39 @@ export class World {
       }
     }
 
-    const def: BuildingDef = { id, x: bx, y: by, w, h, style, name, roof: true, doorTiles };
+    const isShowcase = bx === 58 && by === 55;
+    const def: BuildingDef = {
+      id,
+      x: bx,
+      y: by,
+      w,
+      h,
+      style,
+      name: isShowcase ? 'Дом на Набережной (2 этажа)' : name,
+      roof: true,
+      doorTiles,
+      ...(isShowcase ? {
+        floorsCount: 2,
+        stairs: [
+          { x: 59, y: 56, dir: 'up', targetLevel: 1 },
+          { x: 59, y: 56, dir: 'down', targetLevel: 0 },
+        ],
+        levels: [{
+          level: 1,
+          walls: [],
+          floors: [],
+        }],
+      } : {}),
+    };
+    if (isShowcase && def.levels) {
+      for (let ly: number = by; ly < by + h; ly++) {
+        for (let lx: number = bx; lx < bx + w; lx++) {
+          const isPerimeter = lx === bx || ly === by || lx === bx + w - 1 || ly === by + h - 1;
+          if (isPerimeter) def.levels[0].walls?.push({ x: lx, y: ly, mat: wallMat });
+          else def.levels[0].floors?.push({ x: lx, y: ly, tile: floor });
+        }
+      }
+    }
     this.buildings.push(def);
     for (let y = by; y < by + h; y++) {
       for (let x = bx; x < bx + w; x++) {
@@ -774,6 +811,7 @@ export class World {
   }
 
   private rebuildCollision(): void {
+    // 1. Unscaled 1x1 collision for backward compatibility
     this.collision.fill(0);
     for (let i = 0; i < this.walls.length; i++) {
       if (this.walls[i] !== WALL.NONE) this.collision[i] = 1;
@@ -790,6 +828,101 @@ export class World {
       if (!door.open) this.collision[this.idx(door.x, door.y)] = 1;
     }
     this.baseCollision.set(this.collision);
+
+    // 2. Scaled 2x2 sub-tile collision grid
+    const grid = this.collisionGrid;
+    grid.cells.fill(0);
+
+    const blockSubcell = (sx: number, sy: number) => {
+      if (sx >= 0 && sy >= 0 && sx < grid.w && sy < grid.h) {
+        grid.cells[sy * grid.w + sx] = 1;
+      }
+    };
+    const blockTile = (x: number, y: number) => {
+      blockSubcell(x * 2, y * 2);
+      blockSubcell(x * 2 + 1, y * 2);
+      blockSubcell(x * 2, y * 2 + 1);
+      blockSubcell(x * 2 + 1, y * 2 + 1);
+    };
+
+    // Props
+    for (const p of this.props) {
+      if (!p.blocking || p.destroyed) continue;
+      for (let y = p.y; y < p.y + p.h; y++) {
+        for (let x = p.x; x < p.x + p.w; x++) {
+          if (this.inside(x, y)) blockTile(x, y);
+        }
+      }
+    }
+
+    // World boundary
+    for (let x = 0; x < WORLD_TILES; x++) {
+      blockTile(x, 0);
+      blockTile(x, WORLD_TILES - 1);
+    }
+    for (let y = 0; y < WORLD_TILES; y++) {
+      blockTile(0, y);
+      blockTile(WORLD_TILES - 1, y);
+    }
+
+    // Walls and Buildings
+    for (let y = 0; y < WORLD_TILES; y++) {
+      for (let x = 0; x < WORLD_TILES; x++) {
+        const wall = this.walls[this.idx(x, y)];
+        if (wall === WALL.NONE) continue;
+        const b = this.buildingAt(x + 0.5, y + 0.5);
+        if (!b) {
+          blockTile(x, y);
+          continue;
+        }
+
+        const isSouth = y === b.y + b.h - 1;
+        const isEast = x === b.x + b.w - 1;
+        const isNorth = y === b.y;
+        const isWest = x === b.x;
+
+        if (wall === WALL.INTERIOR) {
+          blockTile(x, y);
+        } else if (isSouth && isEast) {
+          // SE corner: outer corner of building
+          blockSubcell(x * 2 + 1, y * 2);
+          blockSubcell(x * 2, y * 2 + 1);
+          blockSubcell(x * 2 + 1, y * 2 + 1);
+        } else if (isSouth) {
+          // South wall: northern half inside room is open floor; southern edge is wall
+          blockSubcell(x * 2, y * 2 + 1);
+          blockSubcell(x * 2 + 1, y * 2 + 1);
+        } else if (isEast) {
+          // East wall: western half inside room is open floor; eastern edge is wall
+          blockSubcell(x * 2 + 1, y * 2);
+          blockSubcell(x * 2 + 1, y * 2 + 1);
+        } else if (isNorth) {
+          blockTile(x, y);
+        } else if (isWest) {
+          blockTile(x, y);
+        } else {
+          blockTile(x, y);
+        }
+      }
+    }
+
+    // Doors
+    for (const door of this.doors.values()) {
+      const b = this.buildingAt(door.x + 0.5, door.y + 0.5);
+      const isEast = b ? door.x === b.x + b.w - 1 : door.facing === 'east';
+      const facing = door.facing ?? (isEast ? 'east' : 'south');
+      const val = door.open ? 0 : 1;
+
+      if (facing === 'south') {
+        grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2)] = val;
+        grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2 + 1)] = val;
+      } else {
+        grid.cells[(door.y * 2) * grid.w + (door.x * 2 + 1)] = val;
+        grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2 + 1)] = val;
+      }
+    }
+
+    this.baseCollisionGrid.cells.set(grid.cells);
   }
 
   applyPersistedState(
@@ -803,6 +936,18 @@ export class World {
       door.locked = state.locked;
       door.hp = state.hp;
       this.collision[this.idx(door.x, door.y)] = door.open ? 0 : 1;
+      const b = this.buildingAt(door.x + 0.5, door.y + 0.5);
+      const isEast = b ? door.x === b.x + b.w - 1 : door.facing === 'east';
+      const facing = door.facing ?? (isEast ? 'east' : 'south');
+      const val = door.open ? 0 : 1;
+      const grid = this.collisionGrid;
+      if (facing === 'south') {
+        grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2)] = val;
+        grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2 + 1)] = val;
+      } else {
+        grid.cells[(door.y * 2) * grid.w + (door.x * 2 + 1)] = val;
+        grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2 + 1)] = val;
+      }
     }
     for (const [id, state] of props) {
       const prop = this.props.find((p) => p.id === id);
@@ -817,6 +962,19 @@ export class World {
     if (!door || door.locked) return null;
     door.open = open;
     this.collision[this.idx(door.x, door.y)] = open ? 0 : 1;
+
+    const b = this.buildingAt(door.x + 0.5, door.y + 0.5);
+    const isEast = b ? door.x === b.x + b.w - 1 : door.facing === 'east';
+    const facing = door.facing ?? (isEast ? 'east' : 'south');
+    const val = open ? 0 : 1;
+    const grid = this.collisionGrid;
+    if (facing === 'south') {
+      grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2)] = val;
+      grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2 + 1)] = val;
+    } else {
+      grid.cells[(door.y * 2) * grid.w + (door.x * 2 + 1)] = val;
+      grid.cells[(door.y * 2 + 1) * grid.w + (door.x * 2 + 1)] = val;
+    }
     return door;
   }
 

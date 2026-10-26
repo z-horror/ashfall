@@ -317,7 +317,106 @@ export class AudioEngine {
     src.stop(t + 0.14);
   }
 
+  private lastShotTime = 0;
+
+  hitFlesh(vol = 1): void {
+    if (!this.ctx || !this.sfxGain || this.settings.muted) return;
+    const ctx = this.ctx;
+    const t = this.now();
+    const buffer = this.noise;
+
+    // 1. Visceral bone snap / whip impact
+    if (buffer) {
+      const snap = ctx.createBufferSource();
+      snap.buffer = buffer;
+      const snapFilter = ctx.createBiquadFilter();
+      snapFilter.type = 'highpass';
+      snapFilter.frequency.value = 1400;
+      const snapGain = ctx.createGain();
+      snapGain.gain.setValueAtTime(0.28 * vol, t);
+      snapGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+      snap.connect(snapFilter);
+      snapFilter.connect(snapGain);
+      snapGain.connect(this.sfxGain);
+      snap.start(t);
+      snap.stop(t + 0.05);
+    }
+
+    // 2. Heavy blunt sub-thud
+    const thud = ctx.createOscillator();
+    thud.type = 'triangle';
+    thud.frequency.setValueAtTime(140, t);
+    thud.frequency.exponentialRampToValueAtTime(36, t + 0.11);
+    const thudGain = ctx.createGain();
+    thudGain.gain.setValueAtTime(0.32 * vol, t);
+    thudGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    thud.connect(thudGain);
+    thudGain.connect(this.sfxGain);
+    thud.start(t);
+    thud.stop(t + 0.13);
+
+    // 3. Meaty wet crunch
+    if (buffer) {
+      const crunch = ctx.createBufferSource();
+      crunch.buffer = buffer;
+      const crunchFilter = ctx.createBiquadFilter();
+      crunchFilter.type = 'bandpass';
+      crunchFilter.frequency.value = 420;
+      crunchFilter.Q.value = 2.8;
+      const crunchGain = ctx.createGain();
+      crunchGain.gain.setValueAtTime(0.24 * vol, t + 0.004);
+      crunchGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      crunch.connect(crunchFilter);
+      crunchFilter.connect(crunchGain);
+      crunchGain.connect(this.sfxGain);
+      crunch.start(t);
+      crunch.stop(t + 0.1);
+    }
+  }
+
+  hitHard(vol = 1): void {
+    if (!this.ctx || !this.sfxGain || this.settings.muted) return;
+    const ctx = this.ctx;
+    const t = this.now();
+    const buffer = this.noise;
+
+    // 1. Sharp dry clack / crack
+    if (buffer) {
+      const snap = ctx.createBufferSource();
+      snap.buffer = buffer;
+      const snapFilter = ctx.createBiquadFilter();
+      snapFilter.type = 'bandpass';
+      snapFilter.frequency.value = 2200;
+      snapFilter.Q.value = 3.5;
+      const snapGain = ctx.createGain();
+      snapGain.gain.setValueAtTime(0.30 * vol, t);
+      snapGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+      snap.connect(snapFilter);
+      snapFilter.connect(snapGain);
+      snapGain.connect(this.sfxGain);
+      snap.start(t);
+      snap.stop(t + 0.04);
+    }
+
+    // 2. Solid wood / metal body resonance
+    const ping = ctx.createOscillator();
+    ping.type = 'square';
+    ping.frequency.setValueAtTime(320, t);
+    ping.frequency.exponentialRampToValueAtTime(120, t + 0.06);
+    const pingGain = ctx.createGain();
+    pingGain.gain.setValueAtTime(0.18 * vol, t);
+    pingGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    ping.connect(pingGain);
+    pingGain.connect(this.sfxGain);
+    ping.start(t);
+    ping.stop(t + 0.08);
+  }
+
   hit(vol = 1): void {
+    this.hitFlesh(vol);
+  }
+
+  oldHit(vol = 1): void {
     if (!this.ctx || !this.sfxGain || this.settings.muted) return;
     const ctx = this.ctx;
     const t = this.now();
@@ -374,6 +473,9 @@ export class AudioEngine {
 
   shot(vol = 1, weaponKey = 'pistol'): void {
     if (!this.ctx || !this.sfxGain || this.settings.muted) return;
+    const curTime = this.now();
+    if (curTime - this.lastShotTime < 0.065) return;
+    this.lastShotTime = curTime;
     const ctx = this.ctx;
 
     // 1. Play real recorded firearm sample if loaded

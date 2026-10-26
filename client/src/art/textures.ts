@@ -199,22 +199,15 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
     fillDiamond(bases[variant % bases.length]);
     speckle(ctx, 0, 0, 64, 32, 110, ['#3f413a', '#62645c', '#464841', '#6b6d65'], rnd, 1.3);
 
-    // Deep expansion joints along slab edges
-    ctx.strokeStyle = 'rgba(22,23,20,0.45)';
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.moveTo(32, 1);
-    ctx.lineTo(0, 17);
-    ctx.moveTo(63, 17);
-    ctx.lineTo(32, 33);
-    ctx.stroke();
-
-    // Subtle concrete edge bevel highlight
-    ctx.strokeStyle = 'rgba(190,195,180,0.12)';
-    ctx.beginPath();
-    ctx.moveTo(32, 2.5);
-    ctx.lineTo(2, 17.5);
-    ctx.stroke();
+    // Subtle concrete slab variation without artificial mosaic edge outlines
+    if (variant === 0 || variant === 2) {
+      ctx.strokeStyle = 'rgba(22,23,20,0.25)';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(16, 24);
+      ctx.lineTo(48, 8);
+      ctx.stroke();
+    }
 
     // Sprouting moss and weeds along seams
     if (rnd() < 0.6) {
@@ -2636,17 +2629,76 @@ function makeCrosswalk(alongX: boolean): HTMLCanvasElement {
   return canvas;
 }
 
-function makeDoor(facing: 'south' | 'east' = 'south', open = false, _cutaway = false): HTMLCanvasElement {
+function makeStairs(dir: 'up' | 'down' = 'up'): HTMLCanvasElement {
+  const { canvas, ctx } = makeCanvas(64, 64);
+  const steps = 5;
+  for (let s = 0; s < steps; s++) {
+    const wx = 12 + s * 8;
+    const wy = 44 - s * 7;
+    // Tread (top horizontal wooden board)
+    ctx.fillStyle = s % 2 === 0 ? '#634b32' : '#553f28';
+    ctx.beginPath();
+    ctx.moveTo(wx, wy);
+    ctx.lineTo(wx + 16, wy - 8);
+    ctx.lineTo(wx + 32, wy);
+    ctx.lineTo(wx + 16, wy + 8);
+    ctx.closePath();
+    ctx.fill();
+    // Front riser
+    ctx.fillStyle = '#3a2b1c';
+    ctx.beginPath();
+    ctx.moveTo(wx, wy);
+    ctx.lineTo(wx + 16, wy + 8);
+    ctx.lineTo(wx + 16, wy + 15);
+    ctx.lineTo(wx, wy + 7);
+    ctx.closePath();
+    ctx.fill();
+    // Side riser
+    ctx.fillStyle = '#2b1f14';
+    ctx.beginPath();
+    ctx.moveTo(wx + 16, wy + 8);
+    ctx.lineTo(wx + 32, wy);
+    ctx.lineTo(wx + 32, wy + 7);
+    ctx.lineTo(wx + 16, wy + 15);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Wooden banister
+  ctx.strokeStyle = '#4a3622';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(14, 32);
+  ctx.lineTo(50, -2);
+  ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const bx = 18 + i * 9;
+    const by = 28 - i * 8;
+    ctx.strokeStyle = '#322416';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx, by + 14);
+    ctx.stroke();
+  }
+  return canvas;
+}
+
+function makeDoor(facing: 'south' | 'east' = 'south', open = false, cutaway = false): HTMLCanvasElement {
   const { canvas, ctx } = makeCanvas(64, 88);
   const rnd = mulberry(open ? 402 : 401);
+  const cutH = CUTAWAY_WALL_HEIGHT; // 18px
 
   ctx.save();
   if (facing === 'south') {
-    // Left face frame (facing camera along South-East axis)
     ctx.setTransform(0.5, 0.25, 0, 1, 0, 16);
   } else {
-    // Right face frame (facing camera along South-West axis)
     ctx.setTransform(0.5, -0.25, 0, 1, 32, 32);
+  }
+
+  if (cutaway) {
+    ctx.beginPath();
+    ctx.rect(0, 56 - cutH, 64, cutH);
+    ctx.clip();
   }
 
   // Wall surround
@@ -2716,12 +2768,13 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false, _cutaway = f
 
   // Thin architectural coping strip along top edge of wall
   ctx.save();
+  const copingY = cutaway ? 56 - cutH : 0;
   if (facing === 'south') {
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, copingY);
     ctx.fillStyle = '#2f2c27';
     ctx.fillRect(0, 60, 64, 4);
   } else {
-    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, 0);
+    ctx.setTransform(0.5, 0.25, -0.5, 0.25, 32, copingY);
     ctx.fillStyle = '#282521';
     ctx.fillRect(60, 0, 4, 64);
   }
@@ -2732,15 +2785,29 @@ function makeDoor(facing: 'south' | 'east' = 'south', open = false, _cutaway = f
   ctx.lineWidth = 1;
   ctx.beginPath();
   if (facing === 'south') {
-    ctx.moveTo(0, 16);
-    ctx.lineTo(32, 32);
-    ctx.lineTo(32, 88);
-    ctx.lineTo(0, 72);
+    if (cutaway) {
+      ctx.moveTo(0, 16 + 56 - cutH);
+      ctx.lineTo(32, 32 + 56 - cutH);
+      ctx.lineTo(32, 88);
+      ctx.lineTo(0, 72);
+    } else {
+      ctx.moveTo(0, 16);
+      ctx.lineTo(32, 32);
+      ctx.lineTo(32, 88);
+      ctx.lineTo(0, 72);
+    }
   } else {
-    ctx.moveTo(32, 32);
-    ctx.lineTo(64, 16);
-    ctx.lineTo(64, 72);
-    ctx.lineTo(32, 88);
+    if (cutaway) {
+      ctx.moveTo(32, 32 + 56 - cutH);
+      ctx.lineTo(64, 16 + 56 - cutH);
+      ctx.lineTo(64, 72);
+      ctx.lineTo(32, 88);
+    } else {
+      ctx.moveTo(32, 32);
+      ctx.lineTo(64, 16);
+      ctx.lineTo(64, 72);
+      ctx.lineTo(32, 88);
+    }
   }
   ctx.stroke();
 
@@ -2852,6 +2919,8 @@ export function buildEnvironmentArt(scene: Phaser.Scene): void {
     register(scene, `door_${facing}_cut_closed`, makeDoor(facing, false, true));
     register(scene, `door_${facing}_cut_open`, makeDoor(facing, true, true));
   }
+  register(scene, 'stairs_wood_up', makeStairs('up'));
+  register(scene, 'stairs_wood_down', makeStairs('down'));
   register(scene, 'door_closed', makeDoor('south', false, false));
   register(scene, 'door_open', makeDoor('south', true, false));
   register(scene, 'item_glow', (() => {

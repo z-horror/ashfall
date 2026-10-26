@@ -4,20 +4,24 @@ import { PLAYER_RADIUS, WORLD_TILES } from './constants.js';
  * Collision grid shared by server and client. 1 = blocked.
  * The client reconstructs it from chunk data and applies door state, so its
  * prediction matches the authoritative simulation closely.
+ * When `scale` > 1 (e.g. 2), each tile is subdivided into scale x scale cells,
+ * allowing thin architectural walls and clean door thresholds without artificial 1-tile voids.
  */
 export interface CollisionGrid {
   w: number;
   h: number;
+  scale?: number;
   cells: Uint8Array;
 }
 
-export function createGrid(w = WORLD_TILES, h = WORLD_TILES): CollisionGrid {
-  return { w, h, cells: new Uint8Array(w * h) };
+export function createGrid(w = WORLD_TILES, h = WORLD_TILES, scale = 1): CollisionGrid {
+  return { w: w * scale, h: h * scale, scale, cells: new Uint8Array(w * scale * h * scale) };
 }
 
 export function isBlocked(grid: CollisionGrid, x: number, y: number): boolean {
-  const tx = Math.floor(x);
-  const ty = Math.floor(y);
+  const scale = grid.scale ?? 1;
+  const tx = Math.floor(x * scale);
+  const ty = Math.floor(y * scale);
   if (tx < 0 || ty < 0 || tx >= grid.w || ty >= grid.h) return true;
   return grid.cells[ty * grid.w + tx] === 1;
 }
@@ -173,4 +177,3 @@ export function raycast(
   }
   return { hit: false, x: x0 + cos * maxDist, y: y0 + sin * maxDist, distance: maxDist };
 }
-

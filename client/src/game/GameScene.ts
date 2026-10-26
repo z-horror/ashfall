@@ -69,6 +69,8 @@ export class GameScene extends Phaser.Scene {
   private lastAttackInterval = 520;
   private equippedKey: string | null = null;
   private currentBuilding: string | null = null;
+  private playerFloor = 0;
+  private lastStairAt = 0;
   private openContainerId: string | null = null;
   private lastContainerCheck = 0;
   private deathCause = '';
@@ -291,9 +293,12 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
-    const item = this.nearestItem();
-    if (item) {
-      this.net.action({ t: 'pickup', id: item.id });
+    const nearby = this.nearbyItems();
+    if (nearby.length > 1) {
+      this.openGroundLoot(nearby);
+      return;
+    } else if (nearby.length === 1) {
+      this.net.action({ t: 'pickup', id: nearby[0].id });
       return;
     }
     this.net.action({ t: 'interact' });
@@ -314,6 +319,48 @@ export class GameScene extends Phaser.Scene {
       }
     }
     return best;
+  }
+
+  private nearbyItems(): GroundItemSnapshot[] {
+    const list: GroundItemSnapshot[] = [];
+    for (const it of this.itemSprites.keys()) {
+      const snap = this.currentItems.get(it);
+      if (!snap) continue;
+      const itBuilding = this.world.buildingAt(snap.x, snap.y)?.id ?? null;
+      if (itBuilding !== this.currentBuilding) continue;
+      const d = Math.hypot(snap.x - this.predicted.x, snap.y - this.predicted.y);
+      if (d <= PICKUP_RANGE) {
+        list.push(snap);
+      }
+    }
+    return list;
+  }
+
+  private openGroundLoot(items: GroundItemSnapshot[]): void {
+    const containerView: import('@ashfall/shared').ContainerView = {
+      id: '__ground__',
+      label: 'Земля (Рядом)',
+      type: 'ground',
+      items: items.map((it) => {
+        const def = ITEMS[it.key];
+        return {
+          id: it.id,
+          key: it.key,
+          qty: it.qty,
+          name: def?.name ?? it.key,
+          weight: (def?.weight ?? 0.1) * it.qty,
+          equipped: false,
+          kind: def?.kind ?? 'misc',
+          durability: 100,
+        };
+      }),
+      maxSlots: Math.max(12, items.length + 4),
+    };
+    this.hud.setContainer(containerView);
+    if (!this.hud.isInventoryOpen) {
+      this.hud.openInventory();
+      this.audio.inventory(true);
+    }
   }
 
   private currentItems = new Map<string, GroundItemSnapshot>();
@@ -564,7 +611,7 @@ export class GameScene extends Phaser.Scene {
         let ry = msg.self.y;
         for (const inp of this.pendingInputs) {
           const res = moveCircle(
-            { w: 128, h: 128, cells: this.world.collision },
+            this.world.collisionGrid,
             rx,
             ry,
             inp.mx * inp.speed * inp.dt,
@@ -669,6 +716,14 @@ export class GameScene extends Phaser.Scene {
         this.currentItems.delete(id);
       }
     }
+    if (this.hud.isInventoryOpen && this.hud['container']?.id === '__ground__') {
+      const curNearby = this.nearbyItems();
+      if (curNearby.length > 0) {
+        this.openGroundLoot(curNearby);
+      } else {
+        this.hud.setContainer(null);
+      }
+    }
 
     for (const ev of msg.events) this.handleEvent(ev);
 
@@ -708,7 +763,7 @@ export class GameScene extends Phaser.Scene {
         view?.flashHit();
         this.spawnDamageText(x, y, `-${Math.round(Number(ev.damage) || 0)}`, targetId === this.selfId ? '#e07964' : '#ddd3b6');
         this.spawnBlood(x, y);
-        this.audio.hit(vol);
+        this.audio.hitFlesh(vol);
         if (targetId === this.selfId) {
           this.hud.flashHurt();
           this.cameras.main.shake(90, 0.0035);
@@ -743,9 +798,11 @@ export class GameScene extends Phaser.Scene {
         if (kind === 'zombie') {
           const z = this.zombieViews.get(String(id));
           if (z) {
-            this.spawnCorpse('zombie', Number(ev.type) || 0, String(id), x, y);
-            z.destroy();
-            this.zombieViews.delete(String(id));
+            z.playDeath(() => {
+              this.spawnCorpse('zombie', Number(ev.type) || 0, String(id), x, y);
+              z.destroy();
+              this.zombieViews.delete(String(id));
+            });
           }
         } else if (kind === 'player') {
           const name = String(ev.name ?? 'Выживший');
@@ -753,13 +810,18 @@ export class GameScene extends Phaser.Scene {
             this.deathCause = ev.byName ? `Убит: ${String(ev.byName)}` : `Причина: ${String(ev.source ?? 'заражение')}`;
             this.hud.setDeathCause(this.deathCause);
             this.audio.death();
-            this.selfView?.setDead();
+            this.selfView?.playDeath(() => {
+              this.selfView?.setDead();
+              this.spawnCorpse('player', hashString(String(id)) % 4, String(id), x, y);
+            });
           } else {
             this.hud.addLog(`${name} погиб.`, 'bad');
             const view = this.playerViews.get(id as number);
-            view?.setDead();
+            view?.playDeath(() => {
+              view?.setDead();
+              this.spawnCorpse('player', hashString(String(id)) % 4, String(id), x, y);
+            });
           }
-          this.spawnCorpse('player', hashString(String(id)) % 4, String(id), x, y);
           if (dist < 24) this.audio.hurt(vol);
         }
         break;
@@ -779,7 +841,7 @@ export class GameScene extends Phaser.Scene {
           this.cameras.main.shake(100, 0.004);
           this.hud.flashHurt();
         } else if (dist < 22) {
-          this.audio.hit(vol * 0.5);
+          this.audio.hitFlesh(vol * 0.5);
         }
         break;
       }
@@ -843,7 +905,7 @@ export class GameScene extends Phaser.Scene {
       case 'prop_destroyed': {
         for (const view of this.chunks.values()) view.removeProp(String(ev.id));
         this.spawnDebris(x, y);
-        if (dist < 18) this.audio.hit(vol);
+        if (dist < 18) this.audio.hitHard(vol);
         break;
       }
       case 'loot_drop': {
@@ -897,7 +959,7 @@ export class GameScene extends Phaser.Scene {
     if (alive) {
       const speed = sprint ? PLAYER_SPRINT : PLAYER_SPEED;
       const res = moveCircle(
-        { w: 128, h: 128, cells: this.world.collision },
+        this.world.collisionGrid,
         this.predicted.x,
         this.predicted.y,
         mx * speed * dt,
@@ -961,7 +1023,27 @@ export class GameScene extends Phaser.Scene {
 
     if (now - this.lastPrompt > 180) {
       this.lastPrompt = now;
-      if (!this.hud.isInventoryOpen && alive) this.updatePrompt();
+          // Check 2-story building stairs interaction
+    const curBuildingDef = this.currentBuilding ? this.world.buildings.get(this.currentBuilding) : null;
+    if (curBuildingDef?.stairs && now - this.lastStairAt > 900) {
+      for (const s of curBuildingDef.stairs) {
+        const d = Math.hypot(this.predicted.x - (s.x + 0.5), this.predicted.y - (s.y + 0.5));
+        if (d < 0.65) {
+          this.lastStairAt = now;
+          this.playerFloor = s.targetLevel;
+          this.selfView?.setFloor(this.playerFloor);
+          this.audio.footstep('wood', 0.85);
+          this.hud.toast(this.playerFloor === 1 ? 'Поднялись на 2-й этаж' : 'Спустились на 1-й этаж', 1800);
+          const curVis = this.currentBuilding ? this.buildingVisuals.get(this.currentBuilding) : null;
+          if (curVis && this.currentBuilding) {
+            this.buildingFade.delete(this.currentBuilding);
+            this.setBuildingFade(curVis, true);
+          }
+          break;
+        }
+      }
+    }
+    if (!this.hud.isInventoryOpen && alive) this.updatePrompt();
       else this.hud.setPrompt(null);
       if (this.openContainerId && now - this.lastContainerCheck > 600) {
         this.lastContainerCheck = now;
@@ -1038,9 +1120,12 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
-    const item = this.nearestItem();
-    if (item) {
-      this.hud.setPrompt(`<b>E</b>Подобрать: ${ITEMS[item.key]?.name ?? item.key}`);
+    const nearby = this.nearbyItems();
+    if (nearby.length > 1) {
+      this.hud.setPrompt(`<b>E</b>Осмотреть лут на земле (${nearby.length})`);
+      return;
+    } else if (nearby.length === 1) {
+      this.hud.setPrompt(`<b>E</b>Подобрать: ${ITEMS[nearby[0].key]?.name ?? nearby[0].key}`);
       return;
     }
     this.hud.setPrompt(null);
@@ -1102,12 +1187,26 @@ export class GameScene extends Phaser.Scene {
     // Cutaway doors
     if (visual.doors?.length) {
       for (const d of visual.doors) {
-        const doorId = d.getData('doorId');
-        const facing = d.getData('facing') ?? 'south';
-        const open = doorId ? (this.world.doorOpen.get(doorId) ?? false) : false;
-        const targetKey = `door_${facing}_${open ? 'open' : 'closed'}`;
-        artSetTexture(d, targetKey);
+        d.setData('isCutaway', inside);
+        const targetKey = inside ? d.getData('cutKey') : d.getData('fullKey');
+        if (targetKey) artSetTexture(d, targetKey);
         d.setAlpha(1.0);
+      }
+    }
+
+    // Multi-floor upper level visibility
+    if (visual.upperFloors?.length) {
+      const showUpper = inside && this.playerFloor === 1;
+      for (const f of visual.upperFloors) f.setVisible(showUpper);
+    }
+    if (visual.upperWalls?.length) {
+      const showUpper = !inside || this.playerFloor === 1;
+      for (const w of visual.upperWalls) {
+        w.setVisible(showUpper);
+        if (showUpper && inside) {
+          const cutKey = w.getData('cutKey');
+          if (cutKey) artSetTexture(w, cutKey);
+        }
       }
     }
   }

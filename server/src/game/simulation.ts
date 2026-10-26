@@ -604,7 +604,7 @@ export class Simulation {
       const speed = canSprint ? PLAYER_SPRINT : PLAYER_SPEED;
       if (moving) {
         const res = moveCircle(
-          { w: 128, h: 128, cells: this.world.collision },
+          this.world.collisionGrid,
           p.x,
           p.y,
           mx * speed * dt,
@@ -663,7 +663,7 @@ export class Simulation {
       if (spawnDist < SAFE_ZONE_RADIUS + 1) {
         const away = Math.atan2(z.y - this.world.spawn.y, z.x - this.world.spawn.x) + (Math.random() - 0.5) * 0.4;
         const res = moveCircle(
-          { w: 128, h: 128, cells: this.world.collision },
+          this.world.collisionGrid,
           z.x,
           z.y,
           Math.cos(away) * def.speed * dt,
@@ -681,7 +681,7 @@ export class Simulation {
       if (nearest && nearestDist <= ZOMBIE_AGGRO_RANGE) {
         if (now - z.lastLosAt > 350) {
           z.hasLos = hasLineOfSight(
-            { w: 128, h: 128, cells: this.world.collision },
+            this.world.collisionGrid,
             z.x,
             z.y,
             nearest.x,
@@ -746,7 +746,7 @@ export class Simulation {
       z.moving = moveX !== 0 || moveY !== 0;
       if (z.moving) {
         const res = moveCircle(
-          { w: 128, h: 128, cells: this.world.collision },
+          this.world.collisionGrid,
           z.x,
           z.y,
           moveX * speed * dt,
@@ -858,7 +858,7 @@ export class Simulation {
     for (const other of this.players.values()) {
       if (other.id === p.id || other.status !== 'alive') continue;
       if (!inAttackArc(p.x, p.y, p.aim, other.x, other.y, weapon.range)) continue;
-      if (needsLos && !hasLineOfSight({ w: 128, h: 128, cells: this.world.collision }, p.x, p.y, other.x, other.y)) continue;
+      if (needsLos && !hasLineOfSight(this.world.collisionGrid, p.x, p.y, other.x, other.y)) continue;
       const d = distance(p.x, p.y, other.x, other.y);
       if (d < bestDist) {
         bestDist = d;
@@ -869,7 +869,7 @@ export class Simulation {
     let bestZDist = Infinity;
     for (const z of this.zombies.values()) {
       if (!inAttackArc(p.x, p.y, p.aim, z.x, z.y, weapon.range)) continue;
-      if (needsLos && !hasLineOfSight({ w: 128, h: 128, cells: this.world.collision }, p.x, p.y, z.x, z.y)) continue;
+      if (needsLos && !hasLineOfSight(this.world.collisionGrid, p.x, p.y, z.x, z.y)) continue;
       const d = distance(p.x, p.y, z.x, z.y);
       if (d < bestZDist) {
         bestZDist = d;

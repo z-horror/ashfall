@@ -42,6 +42,7 @@ export class CharacterView {
   private lastAnim = '';
   private local = false;
   private facingDir = 2;
+  private floor = 0;
   private moveDir: number | null = null;
 
   constructor(
@@ -109,6 +110,10 @@ export class CharacterView {
 
   get isDead(): boolean {
     return this.dead;
+  }
+
+  setFloor(floor: number): void {
+    this.floor = floor;
   }
 
   setLocal(local: boolean): void {
@@ -265,8 +270,13 @@ export class CharacterView {
 
   flashHit(): void {
     this.sprite.setTint(0xff7a63);
-    this.scene.time.delayedCall(120, () => {
-      if (this.sprite.active) this.sprite.clearTint();
+    const baseScale = this.type === 2 ? 1.12 : 1.0;
+    this.sprite.setScale(baseScale * 0.94, baseScale * 1.06);
+    this.scene.time.delayedCall(110, () => {
+      if (this.sprite.active) {
+        this.sprite.clearTint();
+        this.sprite.setScale(baseScale, baseScale);
+      }
     });
   }
 
@@ -287,11 +297,12 @@ export class CharacterView {
     }
 
     const p = iso(this.x, this.y);
-    this.sprite.setPosition(p.x, p.y);
-    this.shadow.setPosition(p.x, p.y + 2);
-    this.hpBg.setPosition(p.x, p.y - (this.kind === 'player' ? 72 : 64));
-    this.hpFill.setPosition(p.x - 15, p.y - (this.kind === 'player' ? 72 : 64));
-    this.label?.setPosition(p.x, p.y - 82);
+    const floorY = p.y - this.floor * 56;
+    this.sprite.setPosition(p.x, floorY);
+    this.shadow.setPosition(p.x, floorY + 2);
+    this.hpBg.setPosition(p.x, floorY - (this.kind === 'player' ? 72 : 64));
+    this.hpFill.setPosition(p.x - 15, floorY - (this.kind === 'player' ? 72 : 64));
+    this.label?.setPosition(p.x, floorY - 82);
 
     const depth = this.x + this.y;
     this.shadow.setDepth(depth + 0.4);
