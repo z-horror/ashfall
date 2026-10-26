@@ -527,7 +527,7 @@ export function buildCharacterAssets(scene: Phaser.Scene): void {
       const attackFps = style.id === 'z1' ? 14 : style.id === 'z2' ? 8 : 12;
       scene.anims.create({
         key: `${key}-walk-${dir}`,
-        frames: frames(0, 6),
+        frames: frames(1, 5),
         frameRate: walkFps,
         repeat: -1,
       });
