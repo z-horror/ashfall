@@ -159,7 +159,12 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error('[ashfall] fatal startup error', err);
+  try {
+    await closeDatabase();
+  } catch (closeErr) {
+    console.error('[ashfall] failed to close database during startup failure', (closeErr as Error).message);
+  }
   process.exit(1);
 });

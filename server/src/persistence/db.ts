@@ -6,6 +6,8 @@ import { config } from '../config.js';
 let memDb: IMemoryDb | null = null;
 let activePool: any = null;
 
+const MEMORY_POOL = Symbol('ashfall.memoryPool');
+
 function createMemPool(): any {
   if (!memDb) {
     memDb = newDb();
@@ -19,7 +21,9 @@ function createMemPool(): any {
     });
   }
   const pgMem = memDb.adapters.createPg();
-  return new pgMem.Pool();
+  const memoryPool = new pgMem.Pool();
+  memoryPool[MEMORY_POOL] = true;
+  return memoryPool;
 }
 
 const useMemoryDirectly = config.databaseUrl === 'memory' || config.databaseUrl.startsWith('memory');
@@ -48,6 +52,10 @@ export const pool: pg.Pool = new Proxy({} as pg.Pool, {
     return val;
   },
 });
+
+export function isMemoryPool(db: unknown): boolean {
+  return typeof db === 'object' && db !== null && (db as { [MEMORY_POOL]?: boolean })[MEMORY_POOL] === true;
+}
 
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
