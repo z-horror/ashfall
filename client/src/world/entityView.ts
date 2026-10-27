@@ -133,7 +133,8 @@ export class CharacterView {
     if (this.kind !== 'player') return;
     if (!this.weaponSprite && this.scene && key && this.scene.textures.exists(`weapon_${key}`)) {
       const p = iso(this.x, this.y);
-      this.weaponSprite = this.scene.add.image(p.x, p.y, `weapon_${key}`).setOrigin(0.2, 0.5).setVisible(!this.dead);
+      const floorY = p.y - floorElevationM(this.floor) * PX_PER_METER;
+      this.weaponSprite = this.scene.add.image(p.x, floorY, `weapon_${key}`).setOrigin(0.2, 0.5).setVisible(!this.dead);
     }
     if (this.weaponSprite) {
       if (key && this.scene.textures.exists(`weapon_${key}`)) {
@@ -375,7 +376,7 @@ export class CharacterView {
 
         const h = HAND_OFFSETS[dir] ?? HAND_OFFSETS[2];
         let wx = p.x + h.x;
-        let wy = p.y + h.y;
+        let wy = floorY + h.y;
         let wAngle = h.angle;
         let wDepth = depth + (h.behind ? 0.46 : 0.52);
 
@@ -395,7 +396,7 @@ export class CharacterView {
             wAngle = screenDeg - kick * 28;
             const reach = 14 - kick * 6;
             wx = p.x + Math.cos(screenAim) * reach;
-            wy = p.y - 28 + Math.sin(screenAim) * reach - kick * 4;
+            wy = floorY - 28 + Math.sin(screenAim) * reach - kick * 4;
             wDepth = depth + 0.54;
           } else {
             // Melee swing: sweeping arc across the target
@@ -403,7 +404,7 @@ export class CharacterView {
             wAngle = screenDeg + swingArc;
             const reach = 12 + Math.sin(progress * Math.PI) * 10;
             wx = p.x + Math.cos(screenAim) * reach;
-            wy = p.y - 28 + Math.sin(screenAim) * reach;
+            wy = floorY - 28 + Math.sin(screenAim) * reach;
             wDepth = depth + 0.54;
           }
         }

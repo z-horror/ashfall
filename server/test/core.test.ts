@@ -76,7 +76,7 @@ test('world generation is deterministic and spawn is clear', () => {
   assert.equal(a.props.length, b.props.length);
   assert.deepEqual([...a.tiles.slice(0, 512)], [...b.tiles.slice(0, 512)]);
   assert.equal(a.buildings.length, 1);
-  assert.deepEqual(a.buildings[0].floors.map((floor) => floor.level), [-1, 0]);
+  assert.deepEqual(a.buildings[0].floors.map((floor) => floor.level), [-1, 0, 1]);
   const sx = Math.floor(a.spawn.x);
   const sy = Math.floor(a.spawn.y);
   assert.equal(a.collision[sy * 128 + sx], 0);

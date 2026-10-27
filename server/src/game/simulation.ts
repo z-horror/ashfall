@@ -132,6 +132,7 @@ function hasSight(
   from: { x: number; y: number; floor: number },
   to: { x: number; y: number; floor: number },
   mode: 'sight' | 'shot',
+  ignoreOpeningId?: string,
 ): boolean {
   if (from.floor !== to.floor) return false;
   const floor = world.getFloor(from.floor);
@@ -145,6 +146,7 @@ function hasSight(
     world.objects,
     OBJECT_TEMPLATES,
     world.getObjectStateRecord(),
+    ignoreOpeningId,
   );
 }
 
@@ -1372,7 +1374,7 @@ export class Simulation {
     if (p.status !== 'alive') return;
     const door = this.world.nearestDoor(p.x, p.y, 2.3, p.floor);
     if (door) {
-      if (!hasSight(this.world, p, { x: door.cx ?? door.x + 0.5, y: door.cy ?? door.y + 0.5, floor: door.floor }, 'sight')) {
+      if (!hasSight(this.world, p, { x: door.cx ?? door.x + 0.5, y: door.cy ?? door.y + 0.5, floor: door.floor }, 'sight', door.id)) {
         this.notice(p, 'Дверь за препятствием.');
         return;
       }

@@ -1,5 +1,5 @@
 import { chromium } from 'playwright-core';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const executablePath =
@@ -14,7 +14,9 @@ if (!existsSync(executablePath)) {
 }
 
 const outDir = process.env.BUILDING_TEST_OUT || resolve('screenshots/buildings-v3');
+const brainDir = 'C:\\Users\\User\\.gemini\\antigravity\\brain\\0afeb043-3b9e-4335-9045-0fb99010db79';
 mkdirSync(outDir, { recursive: true });
+if (existsSync(brainDir)) mkdirSync(brainDir, { recursive: true });
 const browser = await chromium.launch({
   executablePath,
   headless: true,
@@ -43,15 +45,40 @@ async function dev(action, args) {
   await page.waitForTimeout(700);
 }
 async function shot(name) {
-  await page.screenshot({ path: resolve(outDir, name), timeout: 60_000, animations: 'disabled' });
+  const p1 = resolve(outDir, name);
+  await page.screenshot({ path: p1, timeout: 60_000, animations: 'disabled' });
+  if (existsSync(brainDir)) {
+    const p2 = resolve(brainDir, name);
+    copyFileSync(p1, p2);
+  }
 }
 
 await dev('godmode', {});
+await dev('teleport', { x: 31.5, y: 41.5, floor: 0 });
+await page.waitForTimeout(1000);
 await shot('01-outside.png');
+
+await dev('teleport', { x: 31.5, y: 39.0, floor: 0 });
+await page.waitForTimeout(500);
+await page.evaluate(() => window.__ashfall.net.action({ t: 'interact' }));
+await page.waitForTimeout(1000);
+await shot('02-outside-door-open.png');
+
 await dev('teleport', { x: 31.5, y: 35.0, floor: 0 });
+await page.waitForTimeout(1000);
 await shot('03-inside-west.png');
+
+await dev('teleport', { x: 37.0, y: 35.0, floor: 0 });
+await page.waitForTimeout(1000);
+await shot('04-inside-east.png');
+
 await dev('teleport', { x: 32.5, y: 32.5, floor: -1 });
+await page.waitForTimeout(1000);
 await shot('05-basement.png');
+
+await dev('teleport', { x: 31.5, y: 30.5, floor: 1 });
+await page.waitForTimeout(1000);
+await shot('06-mansard.png');
 
 const info = await page.evaluate(() => {
   const scene = window.__ashfall?.scene;

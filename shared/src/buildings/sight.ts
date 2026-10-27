@@ -44,6 +44,7 @@ export function hasFloorSight(
   objects: ObjectInstance[],
   templates: Record<string, ObjectTemplate>,
   objectStates: Record<string, ObjectState> = {},
+  ignoreOpeningId?: string,
 ): boolean {
   for (const run of floor.wallRuns) {
     const openings = floor.openings.filter((opening) => opening.wallRunId === run.id);
@@ -51,6 +52,7 @@ export function hasFloorSight(
       if (segmentIntersectsAabb(from.x, from.y, to.x, to.y, wallAabb(run, interval.startM, interval.endM))) return false;
     }
     for (const opening of openings) {
+      if (opening.id === ignoreOpeningId) continue;
       if (opening.kind === 'arch') continue;
       const blocks =
         opening.kind === 'door'

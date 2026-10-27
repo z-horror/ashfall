@@ -56,13 +56,13 @@ test('door interval is measured from the wall-run start in meters', () => {
   const wall = floor.wallRuns.find((run) => run.id === 'w:test:0:south')!;
   const door = floor.openings.find((opening) => opening.id === 'o:test:0:door')!;
   assert.equal(wall.axis, 'h');
-  assert.ok(Math.abs((wall.to - wall.from) * TILE_SIZE_M - 19.2) < 1e-9);
+  assert.ok(Math.abs((wall.to - wall.from) * TILE_SIZE_M - 8.0) < 1e-9);
   const intervals = solidIntervals(wall, [door]);
   assert.equal(intervals.length, 2);
   assert.ok(Math.abs(intervals[0].startM) < 1e-9);
   assert.ok(Math.abs(intervals[0].endM - 5.1) < 1e-9);
   assert.ok(Math.abs(intervals[1].startM - 6.1) < 1e-9);
-  assert.ok(Math.abs(intervals[1].endM - 19.2) < 1e-9);
+  assert.ok(Math.abs(intervals[1].endM - 8.0) < 1e-9);
   const center = openingCenter(wall, door);
   assert.equal(center.x, 31.5);
   assert.equal(center.y, 38.0);
@@ -75,8 +75,8 @@ test('rooms are connected masks, do not overlap, and attach to openings', () => 
   const east = floor.rooms.find((room) => room.id === 'room:test:0:east')!;
   const westGeometry = buildRoomGeometry(west);
   const eastGeometry = buildRoomGeometry(east);
-  assert.equal(westGeometry.cells.length, 60);
-  assert.equal(eastGeometry.cells.length, 60);
+  assert.equal(westGeometry.cells.length, 50);
+  assert.equal(eastGeometry.cells.length, 50);
   assert.equal(roomsOverlap(westGeometry, eastGeometry), false);
   assert.equal(world.roomContains('room:test:0:west', 31.5, 35.0), true);
   assert.equal(world.roomContains('room:test:0:east', 36.5, 35.0), true);
