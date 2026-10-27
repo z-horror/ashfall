@@ -1,0 +1,31 @@
+ALTER TABLE characters ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ground_items ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE world_doors ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE world_props ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE world_zombies ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE world_containers ADD COLUMN floor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE world_containers ADD COLUMN building_id TEXT;
+ALTER TABLE world_containers ADD COLUMN room_id TEXT;
+ALTER TABLE world_containers ADD COLUMN object_id TEXT;
+
+CREATE TABLE world_windows (
+  id          TEXT PRIMARY KEY,
+  floor       INTEGER NOT NULL DEFAULT 0,
+  broken      BOOLEAN NOT NULL DEFAULT false,
+  boarded     BOOLEAN NOT NULL DEFAULT false,
+  hp          DOUBLE PRECISION NOT NULL DEFAULT 100,
+  revision    INTEGER NOT NULL DEFAULT 0,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE world_objects (
+  id          TEXT PRIMARY KEY,
+  floor       INTEGER NOT NULL DEFAULT 0,
+  is_open     BOOLEAN NOT NULL DEFAULT false,
+  broken      BOOLEAN NOT NULL DEFAULT false,
+  destroyed   BOOLEAN NOT NULL DEFAULT false,
+  hp          DOUBLE PRECISION NOT NULL DEFAULT 100,
+  is_on       BOOLEAN NOT NULL DEFAULT false,
+  revision    INTEGER NOT NULL DEFAULT 0,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

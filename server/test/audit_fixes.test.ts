@@ -26,6 +26,7 @@ function makeMockPlayer(id: number, name: string, x = 20, y = 20) {
     name,
     x,
     y,
+    floor: 0,
     aim: 0,
     hp: 100,
     stamina: 100,
@@ -48,6 +49,7 @@ function makeMockPlayer(id: number, name: string, x = 20, y = 20) {
     chunkY: 0,
     lastSubCheck: 0,
     lastChatAt: 0,
+    lastStairAt: 0,
   };
 }
 
@@ -98,7 +100,7 @@ test('P0: closing door on character safely displaces player outside doorway', ()
 
   // South door at (12, 14)
   const southDoor = { id: 'd:12:14', x: 12, y: 14, open: true, locked: false, hp: 100, facing: 'south' as const };
-  world.doors.set(southDoor.id, southDoor);
+  world.doors.set(southDoor.id, { ...southDoor, floor: 0 });
 
   const playerSouth = makeMockPlayer(2001, 'StuckPlayerSouth', 12.5, 14.5);
   sim.players.set(playerSouth.id, playerSouth);
@@ -124,7 +126,7 @@ test('P0: closing door on character safely displaces player outside doorway', ()
 
   // East door at (20, 18)
   const eastDoor = { id: 'd:20:18', x: 20, y: 18, open: true, locked: false, hp: 100, facing: 'east' as const };
-  world.doors.set(eastDoor.id, eastDoor);
+  world.doors.set(eastDoor.id, { ...eastDoor, floor: 0 });
 
   const playerEast = makeMockPlayer(2002, 'StuckPlayerEast', 20.5, 18.5);
   sim.players.set(playerEast.id, playerEast);
@@ -160,18 +162,8 @@ test('P0: all generated doors have explicit supported facings (south or east)', 
       `Door ${door.id} has invalid facing: ${door.facing}`,
     );
 
-    const b = world.buildingAt(door.x + 0.5, door.y + 0.5);
-    if (b) {
-      // Must NOT be on the back walls (North y=by or West x=bx)
-      assert.notEqual(door.x, b.x, `Door ${door.id} must not be on the west back wall`);
-      assert.notEqual(door.y, b.y, `Door ${door.id} must not be on the north back wall`);
-
-      if (door.facing === 'south') {
-        assert.equal(door.y, b.y + b.h - 1, `South door ${door.id} must be on south wall of building`);
-      } else if (door.facing === 'east') {
-        assert.equal(door.x, b.x + b.w - 1, `East door ${door.id} must be on east wall of building`);
-      }
-    }
+    const floor = world.getFloor(door.floor)!;
+    assert.ok(floor.openings.some((opening) => opening.id === door.id && opening.kind === 'door'));
   }
 });
 

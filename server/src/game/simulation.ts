@@ -19,11 +19,14 @@ import {
   ZOMBIE_AGGRO_RANGE,
   ZOMBIE_LOSE_RANGE,
   ZOMBIE_TYPES,
+  WORLD_GEOMETRY_VERSION,
+  INTERIOR_VERSION,
   canCarry,
   chunkOf,
   inAttackArc,
   moveCircle,
-  hasLineOfSight,
+  hasFloorSight,
+  OBJECT_TEMPLATES,
   totalWeight,
   type StackLike,
   type ChunkData,
@@ -50,6 +53,7 @@ interface SimPlayer {
   name: string;
   x: number;
   y: number;
+  floor: number;
   aim: number;
   hp: number;
   stamina: number;
@@ -72,6 +76,7 @@ interface SimPlayer {
   chunkY: number;
   lastSubCheck: number;
   lastChatAt: number;
+  lastStairAt: number;
   godmode?: boolean;
   craftingLock?: boolean;
 }
@@ -81,6 +86,7 @@ interface SimZombie {
   type: number;
   x: number;
   y: number;
+  floor: number;
   aim: number;
   hp: number;
   maxHp: number;
@@ -107,6 +113,7 @@ interface GroundItem {
   qty: number;
   x: number;
   y: number;
+  floor: number;
   durability: number;
 }
 
@@ -118,6 +125,27 @@ function clamp(v: number, lo: number, hi: number): number {
 
 function distance(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(bx - ax, by - ay);
+}
+
+function hasSight(
+  world: import('./world.js').World,
+  from: { x: number; y: number; floor: number },
+  to: { x: number; y: number; floor: number },
+  mode: 'sight' | 'shot',
+): boolean {
+  if (from.floor !== to.floor) return false;
+  const floor = world.getFloor(from.floor);
+  if (!floor) return false;
+  return hasFloorSight(
+    floor,
+    world.getOpeningStates(),
+    from,
+    to,
+    mode,
+    world.objects,
+    OBJECT_TEMPLATES,
+    world.getObjectStateRecord(),
+  );
 }
 
 function itemView(row: repo.ItemRow): ItemView {
@@ -150,8 +178,35 @@ export class Simulation {
     }
     if (!knownSeed) await repo.setMeta('world_seed', this.world.seed);
 
-    const [doorStates, propStates] = await Promise.all([repo.loadDoorStates(), repo.loadPropStates()]);
-    this.world.applyPersistedState(doorStates, propStates);
+    const knownGeometry = await repo.getMeta<number>('world_geometry_version');
+    if (knownSeed && !knownGeometry) {
+      throw new Error(
+        'legacy world has no world_geometry_version. Recreate the world explicitly; automatic reset is disabled.',
+      );
+    }
+    if (knownGeometry && knownGeometry !== WORLD_GEOMETRY_VERSION) {
+      throw new Error(
+        `world_geometry_version mismatch: database has ${knownGeometry}, code expects ${WORLD_GEOMETRY_VERSION}. ` +
+          'Recreate the world explicitly; automatic reset is disabled.',
+      );
+    }
+    if (!knownGeometry) await repo.setMeta('world_geometry_version', WORLD_GEOMETRY_VERSION);
+    const knownInterior = await repo.getMeta<number>('interior_version');
+    if (knownInterior && knownInterior !== INTERIOR_VERSION) {
+      throw new Error(
+        `interior_version mismatch: database has ${knownInterior}, code expects ${INTERIOR_VERSION}. ` +
+          'Recreate the world explicitly; automatic reset is disabled.',
+      );
+    }
+    if (!knownInterior) await repo.setMeta('interior_version', INTERIOR_VERSION);
+
+    const [doorStates, propStates, windowStates, objectStates] = await Promise.all([
+      repo.loadDoorStates(),
+      repo.loadPropStates(),
+      repo.loadWindowStates(),
+      repo.loadObjectStates(),
+    ]);
+    this.world.applyPersistedState(doorStates, propStates, windowStates, objectStates);
 
     for (const g of await repo.loadGroundItems()) {
       this.ground.set(g.id, { ...g });
@@ -168,6 +223,7 @@ export class Simulation {
         type: row.type,
         x: row.x,
         y: row.y,
+        floor: (row as unknown as { floor?: number }).floor ?? 0,
         aim: row.aim,
         hp: row.hp,
         maxHp: def.hp,
@@ -198,6 +254,7 @@ export class Simulation {
           type: spawn.type,
           x: spawn.x,
           y: spawn.y,
+          floor: spawn.floor ?? 0,
           aim: Math.random() * Math.PI * 2,
           hp: spawn.hp,
           maxHp: def.hp,
@@ -225,6 +282,7 @@ export class Simulation {
           type: z.type,
           x: z.x,
           y: z.y,
+          floor: z.floor,
           aim: z.aim,
           hp: z.hp,
           state: z.state,
@@ -312,7 +370,7 @@ export class Simulation {
 
     let x = character.x;
     let y = character.y;
-    if (status === 'alive' && !this.world.isWalkable(x, y)) {
+    if (status === 'alive' && !this.world.isWalkable(x, y, character.floor ?? 0)) {
       x = this.world.spawn.x;
       y = this.world.spawn.y;
     }
@@ -340,6 +398,7 @@ export class Simulation {
       name: character.name,
       x,
       y,
+      floor: character.floor ?? 0,
       aim: character.aim,
       hp: status === 'alive' ? (config.testCombatBuffs ? Math.max(character.hp, 150) : Math.max(1, character.hp)) : 0,
       stamina: character.stamina,
@@ -362,6 +421,7 @@ export class Simulation {
       chunkY: -1,
       lastSubCheck: 0,
       lastChatAt: 0,
+      lastStairAt: 0,
     };
     this.players.set(p.id, p);
     this.sendWelcome(p);
@@ -411,6 +471,7 @@ export class Simulation {
       characterId: p.id,
       x: p.x,
       y: p.y,
+      floor: p.floor,
       aim: p.aim,
       hp: p.hp,
       stamina: p.stamina,
@@ -479,7 +540,7 @@ export class Simulation {
           const chunk: ChunkData = this.world.chunkData(nx, ny);
           this.send(p, { t: 'chunk', chunk });
           p.sentChunks.add(key);
-          void repo.touchChunk(nx, ny, this.world.seed);
+          void repo.touchChunk(nx, ny, this.world.seed, WORLD_GEOMETRY_VERSION);
         }
       }
     }
@@ -505,6 +566,9 @@ export class Simulation {
         break;
       case 'interact':
         if (this.dedupe(p, 'interact', msg.seq)) void this.handleInteract(p);
+        break;
+      case 'use_stairs':
+        if (this.dedupe(p, 'stairs', msg.seq)) void this.handleUseStairs(p, msg.id);
         break;
       case 'open_container':
         if (this.dedupe(p, 'open', msg.seq)) void this.handleOpenContainer(p, msg.id);
@@ -604,7 +668,7 @@ export class Simulation {
       const speed = canSprint ? PLAYER_SPRINT : PLAYER_SPEED;
       if (moving) {
         const res = moveCircle(
-          this.world.collisionGrid,
+          this.world.getCollisionGrid(p.floor),
           p.x,
           p.y,
           mx * speed * dt,
@@ -647,6 +711,7 @@ export class Simulation {
       let nearest: SimPlayer | null = null;
       let nearestDist = Infinity;
       for (const p of targetable) {
+        if (p.floor !== z.floor) continue;
         const d = distance(z.x, z.y, p.x, p.y);
         if (d < nearestDist) {
           nearestDist = d;
@@ -663,7 +728,7 @@ export class Simulation {
       if (spawnDist < SAFE_ZONE_RADIUS + 1) {
         const away = Math.atan2(z.y - this.world.spawn.y, z.x - this.world.spawn.x) + (Math.random() - 0.5) * 0.4;
         const res = moveCircle(
-          this.world.collisionGrid,
+          this.world.getCollisionGrid(z.floor),
           z.x,
           z.y,
           Math.cos(away) * def.speed * dt,
@@ -680,13 +745,7 @@ export class Simulation {
       let target: SimPlayer | null = null;
       if (nearest && nearestDist <= ZOMBIE_AGGRO_RANGE) {
         if (now - z.lastLosAt > 350) {
-          z.hasLos = hasLineOfSight(
-            this.world.collisionGrid,
-            z.x,
-            z.y,
-            nearest.x,
-            nearest.y,
-          );
+          z.hasLos = hasSight(this.world, z, nearest, 'sight');
           z.lastLosAt = now;
         }
         if (z.hasLos) target = nearest;
@@ -746,7 +805,7 @@ export class Simulation {
       z.moving = moveX !== 0 || moveY !== 0;
       if (z.moving) {
         const res = moveCircle(
-          this.world.collisionGrid,
+          this.world.getCollisionGrid(z.floor),
           z.x,
           z.y,
           moveX * speed * dt,
@@ -766,6 +825,7 @@ export class Simulation {
         z.state === 'attack' &&
         target &&
         nearestDist < 1.2 &&
+        hasSight(this.world, z, target, 'sight') &&
         Math.hypot(target.x - this.world.spawn.x, target.y - this.world.spawn.y) > SAFE_ZONE_RADIUS &&
         now - z.attackAt > def.cooldown * 1000
       ) {
@@ -854,11 +914,10 @@ export class Simulation {
 
     let bestPlayer: SimPlayer | null = null;
     let bestDist = Infinity;
-    const needsLos = weapon.range > 3;
     for (const other of this.players.values()) {
-      if (other.id === p.id || other.status !== 'alive') continue;
+      if (other.id === p.id || other.status !== 'alive' || other.floor !== p.floor) continue;
       if (!inAttackArc(p.x, p.y, p.aim, other.x, other.y, weapon.range)) continue;
-      if (needsLos && !hasLineOfSight(this.world.collisionGrid, p.x, p.y, other.x, other.y)) continue;
+      if (!hasSight(this.world, p, other, 'shot')) continue;
       const d = distance(p.x, p.y, other.x, other.y);
       if (d < bestDist) {
         bestDist = d;
@@ -868,8 +927,9 @@ export class Simulation {
     let bestZombie: SimZombie | null = null;
     let bestZDist = Infinity;
     for (const z of this.zombies.values()) {
+      if (z.floor !== p.floor) continue;
       if (!inAttackArc(p.x, p.y, p.aim, z.x, z.y, weapon.range)) continue;
-      if (needsLos && !hasLineOfSight(this.world.collisionGrid, p.x, p.y, z.x, z.y)) continue;
+      if (!hasSight(this.world, p, z, 'shot')) continue;
       const d = distance(p.x, p.y, z.x, z.y);
       if (d < bestZDist) {
         bestZDist = d;
@@ -926,7 +986,7 @@ export class Simulation {
         void repo.savePropState(prop.id, prop.type, prop.x, prop.y, 0, true);
         this.emit({ t: 'prop_destroyed', id: prop.id, type: prop.type, x: prop.x + 0.5, y: prop.y + 0.5 });
         if (prop.type === 'crate' || prop.type === 'barrel') {
-          await this.dropLoot(prop.x + 0.5, prop.y + 0.5, prop.type === 'crate' ? 'scrap' : 'cloth', 1);
+          await this.dropLoot(prop.x + 0.5, prop.y + 0.5, prop.type === 'crate' ? 'scrap' : 'cloth', 1, 0);
         }
       } else {
         void repo.savePropState(prop.id, prop.type, prop.x, prop.y, prop.hp, false);
@@ -944,7 +1004,7 @@ export class Simulation {
       const roll = Math.random();
       const key = roll < 0.32 ? 'bandage' : roll < 0.55 ? 'scrap' : roll < 0.72 ? 'cloth' : roll < 0.86 ? 'ammo_9mm' : 'canned_food';
       const qty = key === 'ammo_9mm' ? 2 + Math.floor(Math.random() * 5) : 1;
-      await this.dropLoot(z.x, z.y, key, qty);
+      await this.dropLoot(z.x, z.y, key, qty, z.floor);
     }
   }
 
@@ -969,7 +1029,7 @@ export class Simulation {
       source,
     });
     try {
-      const dropped = await repo.dropAllCharacterItems(p.id, p.x, p.y);
+      const dropped = await repo.dropAllCharacterItems(p.id, p.x, p.y, p.floor);
       for (const d of dropped) {
         this.ground.set(d.id, {
           id: d.id,
@@ -977,6 +1037,7 @@ export class Simulation {
           qty: d.qty,
           x: d.x,
           y: d.y,
+          floor: p.floor,
           durability: d.durability,
         });
       }
@@ -984,6 +1045,7 @@ export class Simulation {
         id: p.id,
         x: p.x,
         y: p.y,
+        floor: p.floor,
         aim: p.aim,
         hp: 0,
         stamina: p.stamina,
@@ -1009,6 +1071,7 @@ export class Simulation {
     p.hunger = Math.max(60, p.hunger);
     p.thirst = Math.max(55, p.thirst);
     p.deadUntil = null;
+    p.floor = 0;
     p.x = this.world.spawn.x + (Math.random() - 0.5) * 1.5;
     p.y = this.world.spawn.y + (Math.random() - 0.5) * 1.5;
     p.aim = 0;
@@ -1025,6 +1088,7 @@ export class Simulation {
         id: p.id,
         x: p.x,
         y: p.y,
+        floor: p.floor,
         aim: p.aim,
         hp: p.hp,
         stamina: p.stamina,
@@ -1184,7 +1248,8 @@ export class Simulation {
         if (_args && typeof _args.x === 'number' && typeof _args.y === 'number') {
           p.x = _args.x;
           p.y = _args.y;
-          this.notice(p, `Телепортирован в (${p.x.toFixed(1)}, ${p.y.toFixed(1)}).`);
+          if (typeof _args.floor === 'number') p.floor = _args.floor;
+          this.notice(p, `Телепортирован в (${p.x.toFixed(1)}, ${p.y.toFixed(1)}), floor ${p.floor}.`);
         }
         break;
       default:
@@ -1193,7 +1258,7 @@ export class Simulation {
     }
   }
 
-  public resolveDoorClose(door: { id: string; x: number; y: number; facing?: 'south' | 'east' }): void {
+  public resolveDoorClose(door: { id: string; x: number; y: number; floor?: number; facing?: 'south' | 'east' | 'north' | 'west' }): void {
     const minX = door.x - PLAYER_RADIUS;
     const maxX = door.x + 1 + PLAYER_RADIUS;
     const minY = door.y - PLAYER_RADIUS;
@@ -1202,19 +1267,19 @@ export class Simulation {
     for (const p of this.players.values()) {
       if (p.status !== 'alive') continue;
       if (p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) {
-        this.displaceFromDoor(p, door);
+        this.displaceFromDoor(p, door, door.floor ?? 0);
       }
     }
 
     for (const z of this.zombies.values()) {
       if (z.hp <= 0) continue;
       if (z.x >= minX && z.x <= maxX && z.y >= minY && z.y <= maxY) {
-        this.displaceFromDoor(z, door);
+        this.displaceFromDoor(z, door, door.floor ?? z.floor);
       }
     }
   }
 
-  private displaceFromDoor(entity: { x: number; y: number }, door: { x: number; y: number; facing?: 'south' | 'east' }): void {
+  private displaceFromDoor(entity: { x: number; y: number }, door: { x: number; y: number; floor?: number; facing?: 'south' | 'east' | 'north' | 'west' }, floor: number): void {
     const facing = door.facing ?? (door.x % 2 === 0 ? 'south' : 'east');
     let t1: { x: number; y: number };
     let t2: { x: number; y: number };
@@ -1241,19 +1306,60 @@ export class Simulation {
       }
     }
 
-    if (this.world.isWalkable(t1.x, t1.y)) {
+    if (this.world.isWalkable(t1.x, t1.y, floor)) {
       entity.x = t1.x;
       entity.y = t1.y;
-    } else if (this.world.isWalkable(t2.x, t2.y)) {
+    } else if (this.world.isWalkable(t2.x, t2.y, floor)) {
       entity.x = t2.x;
       entity.y = t2.y;
     } else {
-      if (facing === 'south') {
+      if (facing === 'south' || facing === 'north') {
         entity.y = entity.y < door.y + 0.5 ? door.y - 0.45 : door.y + 1.45;
       } else {
         entity.x = entity.x < door.x + 0.5 ? door.x - 0.45 : door.x + 1.45;
       }
     }
+  }
+
+  private async handleUseStairs(p: SimPlayer, stairId: string): Promise<void> {
+    if (p.status !== 'alive') return;
+    const now = Date.now();
+    if (now - p.lastStairAt < 700) return;
+    const stair = this.world.nearestStair(p.x, p.y, p.floor);
+    if (!stair || stair.id !== stairId) {
+      this.notice(p, 'Лестница недоступна.');
+      return;
+    }
+    if (!this.world.getFloor(stair.toLevel)) {
+      this.notice(p, 'Целевой этаж недоступен.');
+      return;
+    }
+    const exitX = stair.exit.x + stair.exit.w / 2;
+    const exitY = stair.exit.y + stair.exit.h / 2;
+    if (!this.world.isWalkable(exitX, exitY, stair.toLevel)) {
+      this.notice(p, 'Выход с лестницы заблокирован.');
+      return;
+    }
+    p.lastStairAt = now;
+    p.floor = stair.toLevel;
+    p.x = exitX;
+    p.y = exitY;
+    p.input = { mx: 0, my: 0, sprint: false, seq: 0 };
+    p.openContainerId = null;
+    await repo.saveCharacter({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      floor: p.floor,
+      aim: p.aim,
+      hp: p.hp,
+      stamina: p.stamina,
+      hunger: p.hunger,
+      thirst: p.thirst,
+      status: p.status,
+      deadUntil: p.deadUntil,
+    });
+    this.emit({ t: 'stair', id: stair.id, fromLevel: stair.fromLevel, toLevel: stair.toLevel, x: p.x, y: p.y, floor: p.floor });
   }
 
   private async handleRespawn(p: SimPlayer): Promise<void> {
@@ -1264,20 +1370,24 @@ export class Simulation {
 
   private async handleInteract(p: SimPlayer): Promise<void> {
     if (p.status !== 'alive') return;
-    const door = this.world.nearestDoor(p.x, p.y, 2.3);
+    const door = this.world.nearestDoor(p.x, p.y, 2.3, p.floor);
     if (door) {
+      if (!hasSight(this.world, p, { x: door.cx ?? door.x + 0.5, y: door.cy ?? door.y + 0.5, floor: door.floor }, 'sight')) {
+        this.notice(p, 'Дверь за препятствием.');
+        return;
+      }
       const open = !door.open;
       const updated = this.world.setDoorOpen(door.id, open);
       if (updated) {
         if (!open) {
           this.resolveDoorClose(door);
         }
-        this.emit({ t: 'door', id: door.id, x: door.x, y: door.y, open });
-        void repo.saveDoorState(door.id, door.x, door.y, open, door.locked, door.hp);
+        this.emit({ t: 'door', id: door.id, x: door.cx ?? door.x + 0.5, y: door.cy ?? door.y + 0.5, floor: door.floor, open });
+        void repo.saveDoorState(door.id, door.x, door.y, open, door.locked, door.hp, door.floor);
       }
       return;
     }
-    const container = this.world.nearestContainer(p.x, p.y, 1.7);
+    const container = this.world.nearestContainer(p.x, p.y, 1.7, p.floor);
     if (container) {
       await this.handleOpenContainer(p, container.id);
       return;
@@ -1288,20 +1398,23 @@ export class Simulation {
   private async handleOpenContainer(p: SimPlayer, id: string): Promise<void> {
     if (p.status !== 'alive') return;
     const spot = this.world.containers.get(id);
-    if (!spot) return;
-    if (distance(p.x, p.y, spot.x + 0.5, spot.y + 0.5) > 2.1) {
+    if (!spot || spot.floor !== p.floor) return;
+    if (distance(p.x, p.y, spot.x, spot.y) > 2.1) {
       this.notice(p, 'Слишком далеко.');
       return;
     }
-    const playerBuilding = this.world.buildingAt(p.x, p.y);
-    const spotBuilding = this.world.buildingAt(spot.x + 0.5, spot.y + 0.5);
-    if ((playerBuilding?.id ?? null) !== (spotBuilding?.id ?? null)) {
-      this.notice(p, 'Препятствие на пути (стена здания).');
+    const playerRoom = this.world.roomAt(p.x, p.y, p.floor);
+    if (!playerRoom || playerRoom.id !== spot.roomId) {
+      this.notice(p, 'Контейнер в другом помещении.');
+      return;
+    }
+    if (!hasSight(this.world, p, { x: spot.x, y: spot.y, floor: spot.floor }, 'sight')) {
+      this.notice(p, 'Контейнер за препятствием.');
       return;
     }
     try {
       await repo.withTransaction(async (client) => {
-        const row = await repo.ensureContainer(client, id, spot.type, spot.x, spot.y);
+        const row = await repo.ensureContainer(client, id, spot.type, spot.x, spot.y, spot.floor, spot.buildingId, spot.roomId, spot.objectId);
         if (!row.generated) {
           for (const item of this.world.rollContainerLoot(spot)) {
             await repo.addContainerItem(client, id, item.key, item.qty);
@@ -1310,6 +1423,11 @@ export class Simulation {
         }
       });
       p.openContainerId = id;
+      const updated = this.world.setObjectState(spot.objectId, { open: true });
+      if (updated) {
+        this.emit({ t: 'object_state', objectId: spot.objectId, floor: spot.floor, open: true, broken: updated.broken, destroyed: updated.destroyed, hp: updated.hp, on: updated.on });
+        void repo.saveObjectState(spot.objectId, spot.floor, updated);
+      }
       await this.sendInventory(p);
     } catch (err) {
       console.error('[sim] open container failed', err);
@@ -1321,14 +1439,19 @@ export class Simulation {
     if (p.status !== 'alive') return;
     const item = this.ground.get(id);
     if (!item) return;
+    if (item.floor !== p.floor) return;
     if (distance(p.x, p.y, item.x, item.y) > PICKUP_RANGE + 0.4) {
       this.notice(p, 'Предмет слишком далеко.');
       return;
     }
-    const playerBuilding = this.world.buildingAt(p.x, p.y);
-    const itemBuilding = this.world.buildingAt(item.x, item.y);
-    if ((playerBuilding?.id ?? null) !== (itemBuilding?.id ?? null)) {
+    const playerRoom = this.world.roomAt(p.x, p.y, p.floor);
+    const itemRoom = this.world.roomAt(item.x, item.y, p.floor);
+    if ((playerRoom?.id ?? null) !== (itemRoom?.id ?? null)) {
       this.notice(p, 'Нельзя достать сквозь стену.');
+      return;
+    }
+    if (!hasSight(this.world, p, { x: item.x, y: item.y, floor: item.floor }, 'sight')) {
+      this.notice(p, 'Предмет за препятствием.');
       return;
     }
     if (!canCarry(p.inventory, item.key, item.qty)) {
@@ -1376,6 +1499,7 @@ export class Simulation {
           p.y + (Math.random() - 0.5) * 0.5,
           taken.durability,
           p.id,
+          p.floor,
         );
         return row;
       });
@@ -1386,10 +1510,11 @@ export class Simulation {
         qty: dropped.qty,
         x: dropped.x,
         y: dropped.y,
+        floor: p.floor,
         durability: dropped.durability,
       });
       await this.refreshInventory(p, true);
-      this.emit({ t: 'drop', playerId: p.id, itemKey: dropped.key, x: dropped.x, y: dropped.y });
+      this.emit({ t: 'drop', playerId: p.id, itemKey: dropped.key, x: dropped.x, y: dropped.y, floor: p.floor });
     } catch (err) {
       console.error('[sim] drop failed', err);
       this.notice(p, 'Не удалось выбросить предмет.');
@@ -1545,13 +1670,13 @@ export class Simulation {
     this.emit({ t: 'chat', name: p.name, playerId: p.id, text: clean });
   }
 
-  private async dropLoot(x: number, y: number, key: string, qty: number): Promise<void> {
+  private async dropLoot(x: number, y: number, key: string, qty: number, floor = 0): Promise<void> {
     try {
       const row = await repo.withTransaction((client) =>
-        repo.insertGroundItem(client, key, qty, x, y, 1, null),
+        repo.insertGroundItem(client, key, qty, x, y, 1, null, floor),
       );
-      this.ground.set(row.id, { id: row.id, key, qty, x, y, durability: 1 });
-      this.emit({ t: 'loot_drop', x, y, itemKey: key });
+      this.ground.set(row.id, { id: row.id, key, qty, x, y, floor, durability: 1 });
+      this.emit({ t: 'loot_drop', x, y, floor, itemKey: key });
     } catch (err) {
       console.error('[sim] drop loot failed', err);
     }
@@ -1563,12 +1688,13 @@ export class Simulation {
     for (const p of this.players.values()) {
       if (!p.conn) continue;
       const players = [...this.players.values()]
-        .filter((o) => o.id !== p.id && o.conn && distance(p.x, p.y, o.x, o.y) <= AOI_RADIUS)
+        .filter((o) => o.id !== p.id && o.conn && o.floor === p.floor && distance(p.x, p.y, o.x, o.y) <= AOI_RADIUS)
         .map((o) => ({
           id: o.id,
           name: o.name,
           x: o.x,
           y: o.y,
+          floor: o.floor,
           aim: o.aim,
           hp: Math.max(0, Math.round(o.hp)),
           maxHp: this.playerMaxHp,
@@ -1581,12 +1707,13 @@ export class Simulation {
         }));
       const zombies: ZombieSnapshot[] = [];
       for (const z of this.zombies.values()) {
-        if (distance(p.x, p.y, z.x, z.y) > AOI_RADIUS) continue;
+        if (z.floor !== p.floor || distance(p.x, p.y, z.x, z.y) > AOI_RADIUS) continue;
         zombies.push({
           id: z.id,
           type: z.type,
           x: z.x,
           y: z.y,
+          floor: z.floor,
           aim: z.aim,
           hp: Math.max(0, Math.round(z.hp)),
           maxHp: z.maxHp,
@@ -1597,8 +1724,8 @@ export class Simulation {
       }
       const items = [];
       for (const g of this.ground.values()) {
-        if (distance(p.x, p.y, g.x, g.y) > AOI_RADIUS) continue;
-        items.push({ id: g.id, key: g.key, qty: g.qty, x: g.x, y: g.y });
+        if (g.floor !== p.floor || distance(p.x, p.y, g.x, g.y) > AOI_RADIUS) continue;
+        items.push({ id: g.id, key: g.key, qty: g.qty, x: g.x, y: g.y, floor: g.floor });
       }
       const localEvents = events.filter((e) => {
         if (typeof e.x !== 'number' || typeof e.y !== 'number') return true;
@@ -1614,6 +1741,7 @@ export class Simulation {
           id: p.id,
           x: p.x,
           y: p.y,
+          floor: p.floor,
           aim: p.aim,
           hp: Math.max(0, p.hp),
           maxHp: this.playerMaxHp,
@@ -1652,6 +1780,7 @@ export class Simulation {
           type: z.type,
           x: z.x,
           y: z.y,
+          floor: z.floor,
           aim: z.aim,
           hp: z.hp,
           state: z.state,
@@ -1670,6 +1799,7 @@ export class Simulation {
         id: p.id,
         x: p.x,
         y: p.y,
+        floor: p.floor,
         aim: p.aim,
         hp: p.hp,
         stamina: p.stamina,

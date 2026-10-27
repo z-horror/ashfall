@@ -75,11 +75,12 @@ test('world generation is deterministic and spawn is clear', () => {
   assert.equal(a.buildings.length, b.buildings.length);
   assert.equal(a.props.length, b.props.length);
   assert.deepEqual([...a.tiles.slice(0, 512)], [...b.tiles.slice(0, 512)]);
-  assert.ok(a.buildings.length > 10);
+  assert.equal(a.buildings.length, 1);
+  assert.deepEqual(a.buildings[0].floors.map((floor) => floor.level), [-1, 0]);
   const sx = Math.floor(a.spawn.x);
   const sy = Math.floor(a.spawn.y);
-  assert.equal(a.tiles[sy * 128 + sx], TILE.ASPHALT);
   assert.equal(a.collision[sy * 128 + sx], 0);
+  assert.equal(a.isWalkable(a.spawn.x, a.spawn.y, 0), true);
 });
 
 test('chunk payload is decodable and contains the spawn chunk', () => {
@@ -88,16 +89,20 @@ test('chunk payload is decodable and contains the spawn chunk', () => {
   assert.equal(chunk.cx, 1);
   assert.equal(chunk.cy, 1);
   assert.equal(decodeRLE(chunk.tiles, 1024).length, 1024);
-  assert.equal(decodeRLE(chunk.walls, 1024).length, 1024);
   assert.ok(chunk.buildings.length > 0);
+  assert.ok(chunk.openingStates.length > 0);
 });
 
-test('a different seed produces a different city', () => {
+test('test building has deterministic rooms, openings and floors', () => {
   const a = new World('seed-a');
   const b = new World('seed-b');
-  const aNames = a.buildings.map((x) => x.name).join('|');
-  const bNames = b.buildings.map((x) => x.name).join('|');
-  assert.notEqual(aNames, bNames);
+  const aFloor = a.getFloor(0)!;
+  const bFloor = b.getFloor(0)!;
+  assert.deepEqual(aFloor.rooms.map((room) => room.id), bFloor.rooms.map((room) => room.id));
+  assert.deepEqual(aFloor.openings.map((opening) => opening.id), bFloor.openings.map((opening) => opening.id));
+  assert.ok(aFloor.openings.some((opening) => opening.kind === 'door'));
+  assert.ok(aFloor.openings.some((opening) => opening.kind === 'window'));
+  assert.ok(aFloor.stairs.length > 0);
 });
 
 test('craft recipes have valid items and positive ingredient counts', () => {
@@ -113,11 +118,11 @@ test('craft recipes have valid items and positive ingredient counts', () => {
   }
 });
 
-test('all building doors have passable interior thresholds', () => {
+test('all generated doors reference real floor openings', () => {
   const world = new World('test-doors');
   assert.ok(world.doors.size > 0);
   for (const door of world.doors.values()) {
-    const idx = world.idx(door.x, door.y);
-    assert.equal(world.walls[idx], 0, `Doorway tile (${door.x}, ${door.y}) must not have a wall`);
+    const floor = world.getFloor(door.floor)!;
+    assert.ok(floor.openings.some((opening) => opening.id === door.id && opening.kind === 'door'));
   }
 });

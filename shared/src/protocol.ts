@@ -11,6 +11,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('input'), seq, mx: unit, my: unit, aim: angle, sprint: z.boolean() }),
   z.object({ t: z.literal('attack'), seq, aim: angle.optional() }),
   z.object({ t: z.literal('interact'), seq }),
+  z.object({ t: z.literal('use_stairs'), seq, id }),
   z.object({ t: z.literal('open_container'), seq, id }),
   z.object({ t: z.literal('close_container'), seq }),
   z.object({ t: z.literal('pickup'), seq, id }),

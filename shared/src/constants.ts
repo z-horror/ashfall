@@ -1,4 +1,6 @@
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+export const WORLD_GEOMETRY_VERSION = 3;
+export const INTERIOR_VERSION = 1;
 
 export const ROAD_CENTERS = [16, 48, 80, 112] as const;
 export const ROAD_HALF = 3;

@@ -23,11 +23,14 @@ import type { HUD } from '../ui/hud.js';
 import { Minimap } from '../ui/minimap.js';
 import type { AudioEngine } from '../audio.js';
 import { ClientWorld } from '../world/clientWorld.js';
-import { ChunkView, type BuildingVisual } from '../world/chunkView.js';
+import { ChunkView } from '../world/chunkView.js';
+import { BuildingView } from '../world/buildingView.js';
+import { BuildingDebugOverlay } from './debug/BuildingDebugOverlay.js';
 import { CharacterView, ItemSprite, weaponName } from '../world/entityView.js';
 import { aimFromScreenDelta, iso } from './iso.js';
-import { ENV_ATLAS, artImage, artSetTexture, buildEnvironmentArt } from '../art/textures.js';
+import { ENV_ATLAS, artImage, buildEnvironmentArt } from '../art/textures.js';
 import { buildCharacterAssets, corpseFor } from '../art/characters.js';
+import { loadGeneratedAssets } from '../art/generatedAssets.js';
 import { hashString } from '../art/util.js';
 
 interface SceneDeps {
@@ -46,7 +49,7 @@ export class GameScene extends Phaser.Scene {
   private minimap: Minimap | null = null;
 
   private chunks = new Map<string, ChunkView>();
-  private buildingVisuals = new Map<string, BuildingVisual>();
+  private buildingViews = new Map<string, BuildingView>();
   private selfView: CharacterView | null = null;
   private playerViews = new Map<number, CharacterView>();
   private zombieViews = new Map<string, CharacterView>();
@@ -70,17 +73,17 @@ export class GameScene extends Phaser.Scene {
   private equippedKey: string | null = null;
   private currentBuilding: string | null = null;
   private playerFloor = 0;
-  private lastStairAt = 0;
   private openContainerId: string | null = null;
   private lastContainerCheck = 0;
   private deathCause = '';
   private dust: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private light: Phaser.GameObjects.Image | null = null;
+  private debugOverlay: BuildingDebugOverlay | null = null;
+  private debugNext = 0;
   private aimWorld = { x: 0, y: 0 };
   private readyPromise: Promise<void>;
   private readyResolve!: () => void;
   private booted = false;
-  private buildingFade = new Map<string, boolean>();
   private lastOnline = 0;
   private spawnPoint = { x: 48.5, y: 48.5 };
   private safeZoneDrawn = false;
@@ -100,6 +103,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
+    loadGeneratedAssets(this);
     // Pre-rendered Fallout 2 CRPG isometric sprites
     this.load.image('prop_car_h_0', 'assets/cars/car_highwayman.png');
     this.load.image('prop_car_h_1', 'assets/cars/car_highwayman.png');
@@ -150,6 +154,10 @@ export class GameScene extends Phaser.Scene {
     console.time('[ashfall] character art');
     buildCharacterAssets(this);
     console.timeEnd('[ashfall] character art');
+
+    if (new URLSearchParams(window.location.search).has('debugBuildings')) {
+      this.debugOverlay = new BuildingDebugOverlay(this);
+    }
 
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
 
@@ -235,6 +243,11 @@ export class GameScene extends Phaser.Scene {
       this.hud.toggleDevPanel();
       return;
     }
+    if (ev.code === 'F2' && !ev.repeat) {
+      if (!this.debugOverlay) this.debugOverlay = new BuildingDebugOverlay(this);
+      else this.debugOverlay.toggle();
+      return;
+    }
     if (ev.code === 'KeyI' && !ev.repeat) {
       this.hud.toggleInventory();
       this.audio.inventory(this.hud.isInventoryOpen);
@@ -280,18 +293,21 @@ export class GameScene extends Phaser.Scene {
   private interact(): void {
     if (!this.selfSnapshot || this.selfSnapshot.status !== 'alive' || this.hud.blocksInput) return;
     const { x, y } = this.predicted;
-    const door = this.world.nearestDoor(x, y, 2.2);
+    const floor = this.playerFloor;
+    const stair = this.world.nearestStair(x, y, floor);
+    if (stair) {
+      this.net.action({ t: 'use_stairs', id: stair.id });
+      return;
+    }
+    const door = this.world.nearestDoor(x, y, 2.2, floor);
     if (door) {
       this.net.action({ t: 'interact' });
       return;
     }
-    const container = this.world.nearestContainer(x, y, 1.95);
+    const container = this.world.nearestContainer(x, y, 1.95, floor);
     if (container) {
-      const cBuilding = this.world.buildingAt(container.x + 0.5, container.y + 0.5)?.id ?? null;
-      if (cBuilding === this.currentBuilding) {
-        this.net.action({ t: 'open_container', id: container.id });
-        return;
-      }
+      this.net.action({ t: 'open_container', id: container.id });
+      return;
     }
     const nearby = this.nearbyItems();
     if (nearby.length > 1) {
@@ -310,7 +326,8 @@ export class GameScene extends Phaser.Scene {
     for (const it of this.itemSprites.keys()) {
       const snap = this.currentItems.get(it);
       if (!snap) continue;
-      const itBuilding = this.world.buildingAt(snap.x, snap.y)?.id ?? null;
+      if (snap.floor !== this.playerFloor) continue;
+      const itBuilding = this.world.buildingAt(snap.x, snap.y, this.playerFloor)?.id ?? null;
       if (itBuilding !== this.currentBuilding) continue;
       const d = Math.hypot(snap.x - this.predicted.x, snap.y - this.predicted.y);
       if (d < bestD) {
@@ -326,7 +343,8 @@ export class GameScene extends Phaser.Scene {
     for (const it of this.itemSprites.keys()) {
       const snap = this.currentItems.get(it);
       if (!snap) continue;
-      const itBuilding = this.world.buildingAt(snap.x, snap.y)?.id ?? null;
+      if (snap.floor !== this.playerFloor) continue;
+      const itBuilding = this.world.buildingAt(snap.x, snap.y, this.playerFloor)?.id ?? null;
       if (itBuilding !== this.currentBuilding) continue;
       const d = Math.hypot(snap.x - this.predicted.x, snap.y - this.predicted.y);
       if (d <= PICKUP_RANGE) {
@@ -412,6 +430,7 @@ export class GameScene extends Phaser.Scene {
     hp: number;
     maxHp: number;
     name: string;
+    floor?: number;
   }): void {
     if (this.selfView) return;
     this.selfView = new CharacterView(this, {
@@ -419,6 +438,7 @@ export class GameScene extends Phaser.Scene {
       kind: 'player',
       x: s.x,
       y: s.y,
+      floor: s.floor ?? 0,
       aim: s.aim,
       hp: s.hp,
       maxHp: s.maxHp,
@@ -444,6 +464,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.selfId = msg.id;
     this.selfName = msg.name;
+    this.playerFloor = msg.floor;
     this.hud.setName(msg.name);
     this.hud.setVisible(true);
     document.dispatchEvent(new Event('ashfall:loaded'));
@@ -458,9 +479,15 @@ export class GameScene extends Phaser.Scene {
         hp: msg.hp,
         maxHp: 100,
         name: msg.name,
+        floor: msg.floor,
       });
       const p = iso(msg.x, msg.y);
       this.cameras.main.centerOn(p.x, p.y);
+      if (new URLSearchParams(window.location.search).has('buildingTest')) {
+        const target = iso(34, 31);
+        this.cameras.main.stopFollow();
+        this.cameras.main.centerOn(target.x, target.y - 30);
+      }
     } else if (Math.hypot(this.predicted.x - msg.x, this.predicted.y - msg.y) > 3) {
       this.predicted = { x: msg.x, y: msg.y };
     }
@@ -502,18 +529,16 @@ export class GameScene extends Phaser.Scene {
       view.destroy();
       this.chunks.delete(key);
     }
-    this.buildingVisuals.clear();
-    this.buildingFade.clear();
+    for (const view of this.buildingViews.values()) view.destroy();
+    this.buildingViews.clear();
     for (const v of this.playerViews.values()) v.destroy();
     this.playerViews.clear();
     for (const v of this.zombieViews.values()) v.destroy();
     this.zombieViews.clear();
     for (const i of this.itemSprites.values()) i.destroy();
     this.itemSprites.clear();
-    this.world.chunks.clear();
-    this.world.doors.clear();
-    this.world.buildings.clear();
-    this.world.containers.clear();
+    this.world = new ClientWorld();
+    this.currentBuilding = null;
   }
 
   handleServerMessage(msg: ServerMessage): void {
@@ -557,14 +582,11 @@ export class GameScene extends Phaser.Scene {
       this.chunks.delete(key);
     }
     this.world.loadChunk(chunk);
-    const view = new ChunkView(this, this.world, chunk, this.buildingVisuals);
+    const view = new ChunkView(this, this.world, chunk);
     this.chunks.set(key, view);
     this.minimap?.addChunk(chunk);
+    this.syncBuildingViews();
     console.log(`[ashfall] chunk ${key} built in ${(performance.now() - t0).toFixed(0)}ms`);
-    if (this.currentBuilding) {
-      const visual = this.buildingVisuals.get(this.currentBuilding);
-      if (visual) this.setBuildingFade(visual, true, false);
-    }
   }
 
   private unloadChunk(cx: number, cy: number): void {
@@ -575,6 +597,47 @@ export class GameScene extends Phaser.Scene {
       this.chunks.delete(key);
     }
     this.world.unloadChunk(cx, cy);
+    this.syncBuildingViews();
+  }
+
+  private syncBuildingViews(): void {
+    const buildingIds = new Set(this.world.buildings.keys());
+    for (const [id, view] of [...this.buildingViews]) {
+      if (!buildingIds.has(id)) {
+        view.destroy();
+        this.buildingViews.delete(id);
+      }
+    }
+    for (const building of this.world.buildings.values()) {
+      const objects = [...this.world.objects.values()].filter((object) => object.buildingId === building.id);
+      const states = Object.fromEntries(this.world.objectStates);
+      const doorStates = [...this.world.doors.values()].map((door) => ({
+        openingId: door.id,
+        open: door.open,
+        locked: door.locked,
+        hp: door.hp,
+        revision: 0,
+      }));
+      const windowStates = [...this.world.windows.values()];
+      let view = this.buildingViews.get(building.id);
+      if (!view) {
+        view = new BuildingView(this, building, objects, states, doorStates, windowStates);
+        this.buildingViews.set(building.id, view);
+      } else {
+        for (const door of doorStates) view.setDoor(door.openingId, door);
+        for (const window of windowStates) view.setWindow(window.openingId, window);
+        for (const state of Object.values(states)) view.setObjectState(state.objectId, state);
+      }
+    }
+    this.updateBuildingVisibility();
+  }
+
+  private updateBuildingVisibility(): void {
+    for (const view of this.buildingViews.values()) {
+      const inside = view.building.id === this.currentBuilding;
+      view.updateLocal(this.predicted.x, this.predicted.y, this.playerFloor, inside);
+    }
+    for (const chunk of this.chunks.values()) chunk.setGroundVisible(this.playerFloor >= 0);
   }
 
   private applyInventory(inv: InventoryView, container: ContainerView | null): void {
@@ -597,6 +660,8 @@ export class GameScene extends Phaser.Scene {
     const prevStatus = this.selfSnapshot?.status;
     this.selfSnapshot = msg.self;
     this.lastOnline = msg.online;
+    this.playerFloor = msg.self.floor;
+    this.selfView?.setFloor(msg.self.floor);
 
     if (msg.self.status === 'alive') {
       if (prevStatus === 'dead' || !this.selfView) {
@@ -611,7 +676,7 @@ export class GameScene extends Phaser.Scene {
         let ry = msg.self.y;
         for (const inp of this.pendingInputs) {
           const res = moveCircle(
-            this.world.collisionGrid,
+            this.world.getCollisionGrid(msg.self.floor),
             rx,
             ry,
             inp.mx * inp.speed * inp.dt,
@@ -639,6 +704,7 @@ export class GameScene extends Phaser.Scene {
         hp: msg.self.hp,
         maxHp: msg.self.maxHp,
         name: this.selfName,
+        floor: msg.self.floor,
       });
       this.selfView?.revive();
     }
@@ -660,9 +726,11 @@ export class GameScene extends Phaser.Scene {
           hp: p.hp,
           maxHp: p.maxHp,
           name: p.name,
+          floor: p.floor,
         });
         this.playerViews.set(p.id, view);
       }
+      view.setFloor(p.floor);
       view.applyPlayer(p);
     }
     for (const [id, view] of [...this.playerViews]) {
@@ -686,9 +754,11 @@ export class GameScene extends Phaser.Scene {
           aim: z.aim,
           hp: z.hp,
           maxHp: z.maxHp,
+          floor: z.floor,
         });
         this.zombieViews.set(z.id, view);
       }
+      view.setFloor(z.floor);
       view.applyZombie(z);
     }
     for (const [id, view] of [...this.zombieViews]) {
@@ -726,6 +796,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const ev of msg.events) this.handleEvent(ev);
+    this.updateBuildingVisibility();
 
     this.hud.updateSelf(msg.self, msg.online);
 
@@ -853,27 +924,39 @@ export class GameScene extends Phaser.Scene {
         const id = String(ev.id);
         const open = !!ev.open;
         this.world.setDoor(id, open);
-        for (const view of this.chunks.values()) view.updateDoor(id, open);
-        if (!open) {
-          const door = this.world.doors.get(id);
-          if (door) {
-            const minX = door.x - PLAYER_RADIUS;
-            const maxX = door.x + 1 + PLAYER_RADIUS;
-            const minY = door.y - PLAYER_RADIUS;
-            const maxY = door.y + 1 + PLAYER_RADIUS;
-            if (this.predicted.x >= minX && this.predicted.x <= maxX && this.predicted.y >= minY && this.predicted.y <= maxY) {
-              const building = this.world.buildingAt(door.x + 0.5, door.y + 0.5);
-              const isEast = door.facing === 'east' || (building ? door.x === building.x + building.w - 1 : false);
-              if (isEast) {
-                this.predicted.x = this.predicted.x < door.x + 0.5 ? door.x - 0.45 : door.x + 1.45;
-              } else {
-                this.predicted.y = this.predicted.y < door.y + 0.5 ? door.y - 0.45 : door.y + 1.45;
-              }
-              this.pendingInputs = [];
-            }
+        const door = this.world.doors.get(id);
+        if (door) {
+          for (const view of this.buildingViews.values()) {
+            view.setDoor(id, { openingId: id, open, locked: door.locked, hp: door.hp, revision: 0 });
           }
         }
         if (dist < 16) this.audio.door(open, vol);
+        break;
+      }
+      case 'window': {
+        const id = String(ev.id);
+        this.world.setWindowState(id, { broken: !!ev.broken, boarded: !!ev.boarded });
+        const window = this.world.windows.get(id);
+        if (window) for (const view of this.buildingViews.values()) view.setWindow(id, window);
+        break;
+      }
+      case 'object_state': {
+        const id = String(ev.objectId ?? ev.id);
+        this.world.setObjectState(id, {
+          open: !!ev.open,
+          broken: !!ev.broken,
+          destroyed: !!ev.destroyed,
+          hp: Number(ev.hp ?? 100),
+          on: !!ev.on,
+        });
+        const state = this.world.objectStates.get(id);
+        if (state) for (const view of this.buildingViews.values()) view.setObjectState(id, state);
+        break;
+      }
+      case 'stair': {
+        this.playerFloor = Number(ev.floor ?? ev.toLevel ?? 0);
+        this.selfView?.setFloor(this.playerFloor);
+        this.updateBuildingVisibility();
         break;
       }
       case 'pickup': {
@@ -959,7 +1042,7 @@ export class GameScene extends Phaser.Scene {
     if (alive) {
       const speed = sprint ? PLAYER_SPRINT : PLAYER_SPEED;
       const res = moveCircle(
-        this.world.collisionGrid,
+        this.world.getCollisionGrid(this.playerFloor),
         this.predicted.x,
         this.predicted.y,
         mx * speed * dt,
@@ -1002,18 +1085,8 @@ export class GameScene extends Phaser.Scene {
     if (this.pointerDown && alive && !blocked) this.doAttack();
 
     const bInside = this.getInsideBuilding(this.predicted.x, this.predicted.y);
-    const insideId = bInside?.id ?? null;
-    if (insideId !== this.currentBuilding) {
-      if (this.currentBuilding) {
-        const old = this.buildingVisuals.get(this.currentBuilding);
-        if (old) this.setBuildingFade(old, false);
-      }
-      this.currentBuilding = insideId;
-      if (insideId) {
-        const vis = this.buildingVisuals.get(insideId);
-        if (vis) this.setBuildingFade(vis, true);
-      }
-    }
+    this.currentBuilding = bInside?.id ?? null;
+    this.updateBuildingVisibility();
 
     if (this.light) {
       const p = iso(this.predicted.x, this.predicted.y);
@@ -1023,27 +1096,7 @@ export class GameScene extends Phaser.Scene {
 
     if (now - this.lastPrompt > 180) {
       this.lastPrompt = now;
-          // Check 2-story building stairs interaction
-    const curBuildingDef = this.currentBuilding ? this.world.buildings.get(this.currentBuilding) : null;
-    if (curBuildingDef?.stairs && now - this.lastStairAt > 900) {
-      for (const s of curBuildingDef.stairs) {
-        const d = Math.hypot(this.predicted.x - (s.x + 0.5), this.predicted.y - (s.y + 0.5));
-        if (d < 0.65) {
-          this.lastStairAt = now;
-          this.playerFloor = s.targetLevel;
-          this.selfView?.setFloor(this.playerFloor);
-          this.audio.footstep('wood', 0.85);
-          this.hud.toast(this.playerFloor === 1 ? 'Поднялись на 2-й этаж' : 'Спустились на 1-й этаж', 1800);
-          const curVis = this.currentBuilding ? this.buildingVisuals.get(this.currentBuilding) : null;
-          if (curVis && this.currentBuilding) {
-            this.buildingFade.delete(this.currentBuilding);
-            this.setBuildingFade(curVis, true);
-          }
-          break;
-        }
-      }
-    }
-    if (!this.hud.isInventoryOpen && alive) this.updatePrompt();
+      if (!this.hud.isInventoryOpen && alive) this.updatePrompt();
       else this.hud.setPrompt(null);
       if (this.openContainerId && now - this.lastContainerCheck > 600) {
         this.lastContainerCheck = now;
@@ -1064,6 +1117,7 @@ export class GameScene extends Phaser.Scene {
           name: v.name,
           x: v.x,
           y: v.y,
+          floor: this.playerFloor,
           aim: v.aim,
           hp: 100,
           maxHp: 100,
@@ -1078,6 +1132,7 @@ export class GameScene extends Phaser.Scene {
           type: v.type,
           x: v.x,
           y: v.y,
+          floor: this.playerFloor,
           aim: v.aim,
           hp: 100,
           maxHp: 100,
@@ -1086,6 +1141,11 @@ export class GameScene extends Phaser.Scene {
         })),
         [...this.currentItems.values()],
       );
+    }
+
+    if (this.debugOverlay && now > this.debugNext) {
+      this.debugNext = now + 150;
+      this.debugOverlay.update(this.world, this.playerFloor);
     }
 
     this.hud.updateSelf(this.selfSnapshot, this.lastOnline);
@@ -1106,15 +1166,20 @@ export class GameScene extends Phaser.Scene {
     }
     const x = this.predicted.x;
     const y = this.predicted.y;
-    const door = this.world.nearestDoor(x, y, 2.2);
+    const stair = this.world.nearestStair(x, y, this.playerFloor);
+    if (stair) {
+      this.hud.setPrompt(`<b>E</b>${stair.direction === 'down' ? 'Спуститься в подвал' : 'Подняться наверх'}`);
+      return;
+    }
+    const door = this.world.nearestDoor(x, y, 2.2, this.playerFloor);
     if (door) {
       const open = this.world.doorOpen.get(door.id) ?? door.open;
       this.hud.setPrompt(`<b>E</b>${open ? 'Закрыть дверь' : 'Открыть дверь'}`);
       return;
     }
-    const container = this.world.nearestContainer(x, y, 1.95);
+    const container = this.world.nearestContainer(x, y, 1.95, this.playerFloor);
     if (container) {
-      const cBuilding = this.world.buildingAt(container.x + 0.5, container.y + 0.5)?.id ?? null;
+      const cBuilding = this.world.buildingAt(container.x, container.y, this.playerFloor)?.id ?? null;
       if (cBuilding === this.currentBuilding) {
         this.hud.setPrompt(`<b>E</b>Обыскать: ${container.label}`);
         return;
@@ -1131,84 +1196,8 @@ export class GameScene extends Phaser.Scene {
     this.hud.setPrompt(null);
   }
 
-  private getInsideBuilding(px: number, py: number): import('@ashfall/shared').BuildingDef | null {
-    const b = this.world.buildingAt(px, py);
-    if (!b) return null;
-    // Strictly inside the interior room (inside perimeter walls):
-    if (px > b.x + 0.2 && px < b.x + b.w - 1.2 && py > b.y + 0.2 && py < b.y + b.h - 1.2) {
-      return b;
-    }
-    // If standing on the doorway tile: only inside if door is open AND player has crossed towards room interior!
-    const d = this.world.nearestDoor(px, py, 1.0);
-    if (d && this.world.doorOpen.get(d.id)) {
-      const isInsideThreshold = d.facing === 'east' ? px < d.x + 0.45 : py < d.y + 0.45;
-      if (isInsideThreshold) return b;
-    }
-    return null;
-  }
-
-  private setBuildingFade(visual: BuildingVisual, inside: boolean, animate = true): void {
-    if (this.buildingFade.get(visual.id) === inside) return;
-    this.buildingFade.set(visual.id, inside);
-    const roofAlpha = inside ? 0 : 1;
-    const signAlpha = inside ? 0 : 1;
-
-    if (animate && visual.roofs.length) {
-      this.tweens.killTweensOf(visual.roofs);
-      this.tweens.add({ targets: visual.roofs, alpha: roofAlpha, duration: 160, ease: 'Sine.easeOut' });
-    } else {
-      for (const r of visual.roofs) r.setAlpha(roofAlpha);
-    }
-
-    // Classic Cutaway (Вариант Б): front walls switch to 18px waist-height cutaway textures at 100% alpha!
-    if (visual.frontWalls?.length) {
-      for (const w of visual.frontWalls) {
-        if (w.getData('isSign')) {
-          if (animate) {
-            this.tweens.killTweensOf(w);
-            this.tweens.add({ targets: w, alpha: signAlpha, duration: 140, ease: 'Sine.easeOut' });
-          } else {
-            w.setAlpha(signAlpha);
-          }
-          continue;
-        }
-        const targetKey = inside ? w.getData('cutKey') : w.getData('fullKey');
-        if (targetKey) {
-          artSetTexture(w, targetKey);
-        }
-        w.setAlpha(1.0);
-      }
-    }
-
-    if (visual.backWalls?.length) {
-      for (const w of visual.backWalls) w.setAlpha(1.0);
-    }
-
-    // Cutaway doors
-    if (visual.doors?.length) {
-      for (const d of visual.doors) {
-        d.setData('isCutaway', inside);
-        const targetKey = inside ? d.getData('cutKey') : d.getData('fullKey');
-        if (targetKey) artSetTexture(d, targetKey);
-        d.setAlpha(1.0);
-      }
-    }
-
-    // Multi-floor upper level visibility
-    if (visual.upperFloors?.length) {
-      const showUpper = inside && this.playerFloor === 1;
-      for (const f of visual.upperFloors) f.setVisible(showUpper);
-    }
-    if (visual.upperWalls?.length) {
-      const showUpper = !inside || this.playerFloor === 1;
-      for (const w of visual.upperWalls) {
-        w.setVisible(showUpper);
-        if (showUpper && inside) {
-          const cutKey = w.getData('cutKey');
-          if (cutKey) artSetTexture(w, cutKey);
-        }
-      }
-    }
+  private getInsideBuilding(px: number, py: number): import('@ashfall/shared').BuildingSpec | null {
+    return this.world.buildingAt(px, py, this.playerFloor);
   }
 
   private spawnDamageText(wx: number, wy: number, text: string, color: string): void {

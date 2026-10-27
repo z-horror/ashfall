@@ -22,6 +22,7 @@ export interface CharacterRow {
   name: string;
   x: number;
   y: number;
+  floor: number;
   aim: number;
   hp: number;
   stamina: number;
@@ -48,6 +49,7 @@ export interface GroundRow {
   qty: number;
   x: number;
   y: number;
+  floor: number;
   durability: number;
 }
 
@@ -56,6 +58,10 @@ export interface ContainerRow {
   type: string;
   x: number;
   y: number;
+  floor: number;
+  building_id: string | null;
+  room_id: string | null;
+  object_id: string | null;
   generated: boolean;
   opened: boolean;
 }
@@ -167,6 +173,7 @@ export async function saveCharacter(c: {
   id: number;
   x: number;
   y: number;
+  floor?: number;
   aim: number;
   hp: number;
   stamina: number;
@@ -177,7 +184,7 @@ export async function saveCharacter(c: {
 }): Promise<void> {
   await query(
     `UPDATE characters SET x=$2, y=$3, aim=$4, hp=$5, stamina=$6, hunger=$7, thirst=$8,
-       status=$9, dead_until=$10, updated_at=now() WHERE id=$1`,
+       status=$9, dead_until=$10, floor=$11, updated_at=now() WHERE id=$1`,
     [
       c.id,
       c.x,
@@ -189,6 +196,7 @@ export async function saveCharacter(c: {
       c.thirst,
       c.status,
       c.deadUntil ? new Date(c.deadUntil) : null,
+      c.floor ?? 0,
     ],
   );
 }
@@ -323,10 +331,10 @@ export async function unequipAll(characterId: number): Promise<void> {
 }
 
 export async function loadGroundItems(): Promise<GroundRow[]> {
-  const res = await query<{ id: string; item_key: string; qty: number; x: number; y: number; durability: number }>(
-    'SELECT id, item_key, qty, x, y, durability FROM ground_items',
+  const res = await query<{ id: string; item_key: string; qty: number; x: number; y: number; floor: number; durability: number }>(
+    'SELECT id, item_key, qty, x, y, floor, durability FROM ground_items',
   );
-  return res.rows.map((r) => ({ id: r.id, key: r.item_key, qty: r.qty, x: r.x, y: r.y, durability: r.durability }));
+  return res.rows.map((r) => ({ id: r.id, key: r.item_key, qty: r.qty, x: r.x, y: r.y, floor: r.floor ?? 0, durability: r.durability }));
 }
 
 export async function insertGroundItem(
@@ -337,21 +345,22 @@ export async function insertGroundItem(
   y: number,
   durability: number,
   droppedBy: number | null,
+  floor = 0,
 ): Promise<GroundRow> {
   const res = await client.query<{ id: string }>(
-    'INSERT INTO ground_items(item_key, qty, x, y, durability, dropped_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [key, qty, x, y, durability, droppedBy],
+    'INSERT INTO ground_items(item_key, qty, x, y, durability, dropped_by, floor) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+    [key, qty, x, y, durability, droppedBy, floor],
   );
-  return { id: res.rows[0].id, key, qty, x, y, durability };
+  return { id: res.rows[0].id, key, qty, x, y, floor, durability };
 }
 
 export async function deleteGroundItem(client: pg.PoolClient, id: string): Promise<GroundRow | null> {
-  const res = await client.query<{ id: string; item_key: string; qty: number; x: number; y: number; durability: number }>(
-    'DELETE FROM ground_items WHERE id = $1 RETURNING id, item_key, qty, x, y, durability',
+  const res = await client.query<{ id: string; item_key: string; qty: number; x: number; y: number; floor: number; durability: number }>(
+    'DELETE FROM ground_items WHERE id = $1 RETURNING id, item_key, qty, x, y, floor, durability',
     [id],
   );
   const row = res.rows[0];
-  return row ? { id: row.id, key: row.item_key, qty: row.qty, x: row.x, y: row.y, durability: row.durability } : null;
+  return row ? { id: row.id, key: row.item_key, qty: row.qty, x: row.x, y: row.y, floor: row.floor ?? 0, durability: row.durability } : null;
 }
 
 export interface DroppedRow {
@@ -363,7 +372,7 @@ export interface DroppedRow {
   durability: number;
 }
 
-export async function dropAllCharacterItems(characterId: number, x: number, y: number): Promise<DroppedRow[]> {
+export async function dropAllCharacterItems(characterId: number, x: number, y: number, floor = 0): Promise<DroppedRow[]> {
   return withTransaction(async (client) => {
     const res = await client.query<{ id: string; item_key: string; qty: number; durability: number }>(
       'SELECT id, item_key, qty, durability FROM character_items WHERE character_id = $1 FOR UPDATE',
@@ -374,8 +383,8 @@ export async function dropAllCharacterItems(characterId: number, x: number, y: n
       const ox = x + (Math.random() - 0.5) * 0.7;
       const oy = y + (Math.random() - 0.5) * 0.7;
       const inserted = await client.query<{ id: string }>(
-        'INSERT INTO ground_items(item_key, qty, x, y, durability, dropped_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-        [row.item_key, row.qty, ox, oy, row.durability, characterId],
+        'INSERT INTO ground_items(item_key, qty, x, y, durability, dropped_by, floor) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+        [row.item_key, row.qty, ox, oy, row.durability, characterId, floor],
       );
       out.push({
         id: inserted.rows[0].id,
@@ -401,18 +410,38 @@ export async function ensureContainer(
   type: string,
   x: number,
   y: number,
+  floor = 0,
+  buildingId: string | null = null,
+  roomId: string | null = null,
+  objectId: string | null = null,
 ): Promise<ContainerRow> {
   await client.query(
-    `INSERT INTO world_containers(id, container_type, x, y) VALUES ($1,$2,$3,$4)
+    `INSERT INTO world_containers(id, container_type, x, y, floor, building_id, room_id, object_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (id) DO NOTHING`,
-    [id, type, x, y],
+    [id, type, Math.floor(x), Math.floor(y), floor, buildingId, roomId, objectId],
   );
-  const res = await client.query<{ id: string; container_type: string; x: number; y: number; generated: boolean; opened: boolean }>(
-    'SELECT id, container_type, x, y, generated, opened FROM world_containers WHERE id = $1 FOR UPDATE',
+  const res = await client.query<{
+    id: string; container_type: string; x: number; y: number; floor: number;
+    building_id: string | null; room_id: string | null; object_id: string | null;
+    generated: boolean; opened: boolean;
+  }>(
+    'SELECT id, container_type, x, y, floor, building_id, room_id, object_id, generated, opened FROM world_containers WHERE id = $1 FOR UPDATE',
     [id],
   );
   const r = res.rows[0];
-  return { id: r.id, type: r.container_type, x: r.x, y: r.y, generated: r.generated, opened: r.opened };
+  return {
+    id: r.id,
+    type: r.container_type,
+    x: r.x,
+    y: r.y,
+    floor: r.floor ?? 0,
+    building_id: r.building_id,
+    room_id: r.room_id,
+    object_id: r.object_id,
+    generated: r.generated,
+    opened: r.opened,
+  };
 }
 
 export async function setContainerGenerated(client: pg.PoolClient, id: string): Promise<void> {
@@ -427,20 +456,20 @@ export async function loadContainerItems(containerId: string): Promise<ItemRow[]
   return res.rows.map((r) => ({ id: r.id, key: r.item_key, qty: r.qty, durability: r.durability, equipped: false }));
 }
 
-export async function loadDoorStates(): Promise<Map<string, { open: boolean; locked: boolean; hp: number }>> {
-  const res = await query<{ id: string; is_open: boolean; locked: boolean; hp: number }>(
-    'SELECT id, is_open, locked, hp FROM world_doors',
+export async function loadDoorStates(): Promise<Map<string, { open: boolean; locked: boolean; hp: number; floor: number }>> {
+  const res = await query<{ id: string; is_open: boolean; locked: boolean; hp: number; floor: number }>(
+    'SELECT id, is_open, locked, hp, floor FROM world_doors',
   );
-  const map = new Map<string, { open: boolean; locked: boolean; hp: number }>();
-  for (const r of res.rows) map.set(r.id, { open: r.is_open, locked: r.locked, hp: r.hp });
+  const map = new Map<string, { open: boolean; locked: boolean; hp: number; floor: number }>();
+  for (const r of res.rows) map.set(r.id, { open: r.is_open, locked: r.locked, hp: r.hp, floor: r.floor ?? 0 });
   return map;
 }
 
-export async function saveDoorState(id: string, x: number, y: number, open: boolean, locked: boolean, hp: number): Promise<void> {
+export async function saveDoorState(id: string, x: number, y: number, open: boolean, locked: boolean, hp: number, floor = 0): Promise<void> {
   await query(
-    `INSERT INTO world_doors(id, x, y, is_open, locked, hp) VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (id) DO UPDATE SET is_open=$4, locked=$5, hp=$6, updated_at=now()`,
-    [id, x, y, open, locked, hp],
+    `INSERT INTO world_doors(id, x, y, is_open, locked, hp, floor) VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (id) DO UPDATE SET is_open=$4, locked=$5, hp=$6, floor=$7, updated_at=now()`,
+    [id, x, y, open, locked, hp, floor],
   );
 }
 
@@ -478,7 +507,8 @@ export async function loadZombies(): Promise<ZombieRow[]> {
     hp: number;
     state: string;
     alive: boolean;
-  }>('SELECT id, chunk_x, chunk_y, type, x, y, aim, hp, state, alive FROM world_zombies');
+    floor: number;
+  }>('SELECT id, chunk_x, chunk_y, type, x, y, aim, hp, state, alive, floor FROM world_zombies');
   return res.rows;
 }
 
@@ -489,16 +519,17 @@ export async function upsertZombie(z: {
   type: number;
   x: number;
   y: number;
+  floor?: number;
   aim: number;
   hp: number;
   state: string;
   alive: boolean;
 }): Promise<void> {
   await query(
-    `INSERT INTO world_zombies(id, chunk_x, chunk_y, type, x, y, aim, hp, state, alive)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-     ON CONFLICT (id) DO UPDATE SET x=$5, y=$6, aim=$7, hp=$8, state=$9, alive=$10, updated_at=now()`,
-    [z.id, z.chunkX, z.chunkY, z.type, z.x, z.y, z.aim, z.hp, z.state, z.alive],
+    `INSERT INTO world_zombies(id, chunk_x, chunk_y, type, x, y, aim, hp, state, alive, floor)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     ON CONFLICT (id) DO UPDATE SET x=$5, y=$6, aim=$7, hp=$8, state=$9, alive=$10, floor=$11, updated_at=now()`,
+    [z.id, z.chunkX, z.chunkY, z.type, z.x, z.y, z.aim, z.hp, z.state, z.alive, z.floor ?? 0],
   );
 }
 
@@ -506,11 +537,11 @@ export async function markZombieDead(id: string): Promise<void> {
   await query('UPDATE world_zombies SET alive = false, updated_at = now() WHERE id = $1', [id]);
 }
 
-export async function touchChunk(cx: number, cy: number, seed: string): Promise<void> {
+export async function touchChunk(cx: number, cy: number, seed: string, version = 1): Promise<void> {
   await query(
-    `INSERT INTO world_chunks(cx, cy, seed) VALUES ($1,$2,$3)
-     ON CONFLICT (cx, cy) DO UPDATE SET last_seen = now()`,
-    [cx, cy, seed],
+    `INSERT INTO world_chunks(cx, cy, seed, version) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (cx, cy) DO UPDATE SET last_seen = now(), version=$4`,
+    [cx, cy, seed, version],
   );
 }
 
@@ -721,3 +752,45 @@ export async function setUserBan(userId: number, banned: boolean, reason = ''): 
 }
 
 export { withTransaction };
+
+export async function loadWindowStates(): Promise<Map<string, { broken: boolean; boarded: boolean; hp: number }>> {
+  const res = await query<{ id: string; broken: boolean; boarded: boolean; hp: number }>(
+    'SELECT id, broken, boarded, hp FROM world_windows',
+  );
+  const map = new Map<string, { broken: boolean; boarded: boolean; hp: number }>();
+  for (const row of res.rows) map.set(row.id, { broken: row.broken, boarded: row.boarded, hp: row.hp });
+  return map;
+}
+
+export async function saveWindowState(id: string, broken: boolean, boarded: boolean, hp: number, floor = 0): Promise<void> {
+  await query(
+    `INSERT INTO world_windows(id, broken, boarded, hp, floor) VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (id) DO UPDATE SET broken=$2, boarded=$3, hp=$4, floor=$5, revision=world_windows.revision+1, updated_at=now()`,
+    [id, broken, boarded, hp, floor],
+  );
+}
+
+export async function loadObjectStates(): Promise<Map<string, { open: boolean; broken: boolean; destroyed: boolean; hp: number; on: boolean }>> {
+  const res = await query<{ id: string; is_open: boolean; broken: boolean; destroyed: boolean; hp: number; is_on: boolean }>(
+    'SELECT id, is_open, broken, destroyed, hp, is_on FROM world_objects',
+  );
+  const map = new Map<string, { open: boolean; broken: boolean; destroyed: boolean; hp: number; on: boolean }>();
+  for (const row of res.rows) {
+    map.set(row.id, { open: row.is_open, broken: row.broken, destroyed: row.destroyed, hp: row.hp, on: row.is_on });
+  }
+  return map;
+}
+
+export async function saveObjectState(
+  id: string,
+  floor: number,
+  state: { open: boolean; broken: boolean; destroyed: boolean; hp: number; on: boolean },
+): Promise<void> {
+  await query(
+    `INSERT INTO world_objects(id, floor, is_open, broken, destroyed, hp, is_on)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (id) DO UPDATE SET floor=$2, is_open=$3, broken=$4, destroyed=$5, hp=$6, is_on=$7,
+       revision=world_objects.revision+1, updated_at=now()`,
+    [id, floor, state.open, state.broken, state.destroyed, state.hp, state.on],
+  );
+}

@@ -1,35 +1,8 @@
-export interface Vec2 {
-  x: number;
-  y: number;
-}
+import type { Vec2 } from './geometry/units.js';
+import type { BuildingSpec, OpeningStateSnapshot } from './buildings/types.js';
+import type { ObjectInstance, ObjectState } from './interiors/types.js';
 
-export interface StairDef {
-  x: number;
-  y: number;
-  dir: 'up' | 'down';
-  targetLevel: number;
-}
-
-export interface FloorLevelDef {
-  level: number;
-  walls?: Array<{ x: number; y: number; mat: number }>;
-  floors?: Array<{ x: number; y: number; tile: number }>;
-}
-
-export interface BuildingDef {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  style: number;
-  name: string;
-  roof: boolean;
-  doorTiles: Array<{ x: number; y: number }>;
-  floorsCount?: number;
-  stairs?: StairDef[];
-  levels?: FloorLevelDef[];
-}
+export type { Vec2 };
 
 export interface PropDef {
   id: string;
@@ -43,29 +16,34 @@ export interface PropDef {
   destructible: boolean;
   hp: number;
   maxHp: number;
+  floor: number;
+  roomId?: string;
   containerId?: string;
 }
 
-export interface DoorDef {
+export interface ContainerInfo {
   id: string;
+  type: string;
   x: number;
   y: number;
-  open: boolean;
-  locked: boolean;
-  hp: number;
-  facing?: 'south' | 'east';
+  floor: number;
+  buildingId: string;
+  roomId: string;
+  objectId: string;
+  label: string;
+  maxSlots: number;
 }
 
 export interface ChunkData {
   cx: number;
   cy: number;
   tiles: string;
-  walls: string;
-  buildings: BuildingDef[];
+  buildings: BuildingSpec[];
+  objects: ObjectInstance[];
+  objectStates: ObjectState[];
+  openingStates: OpeningStateSnapshot[];
   props: PropDef[];
-  doors: DoorDef[];
-  /** Container positions, ids and types (loot contents stay server-side). */
-  containers: Array<{ id: string; type: string; x: number; y: number; label: string }>;
+  containers: ContainerInfo[];
 }
 
 export interface PlayerSnapshot {
@@ -73,6 +51,7 @@ export interface PlayerSnapshot {
   name: string;
   x: number;
   y: number;
+  floor: number;
   aim: number;
   hp: number;
   maxHp: number;
@@ -91,6 +70,7 @@ export interface ZombieSnapshot {
   type: number;
   x: number;
   y: number;
+  floor: number;
   aim: number;
   hp: number;
   maxHp: number;
@@ -105,12 +85,14 @@ export interface GroundItemSnapshot {
   qty: number;
   x: number;
   y: number;
+  floor: number;
 }
 
 export interface SelfSnapshot {
   id: number;
   x: number;
   y: number;
+  floor: number;
   aim: number;
   hp: number;
   maxHp: number;
@@ -156,11 +138,30 @@ export interface EventView {
   t: string;
   x?: number;
   y?: number;
+  floor?: number;
   [k: string]: unknown;
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; v: number; id: number; name: string; spawn: Vec2; seed: string; time: number; characterId: number; x: number; y: number; aim: number; hp: number; stamina: number; hunger: number; thirst: number; status: 'alive' | 'dead' }
+  | {
+      t: 'welcome';
+      v: number;
+      id: number;
+      name: string;
+      spawn: Vec2;
+      seed: string;
+      time: number;
+      characterId: number;
+      x: number;
+      y: number;
+      floor: number;
+      aim: number;
+      hp: number;
+      stamina: number;
+      hunger: number;
+      thirst: number;
+      status: 'alive' | 'dead';
+    }
   | { t: 'chunk'; chunk: ChunkData }
   | { t: 'chunk_unload'; cx: number; cy: number }
   | {

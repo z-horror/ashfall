@@ -25,7 +25,6 @@ export class Minimap {
 
   addChunk(chunk: ChunkData): void {
     const tiles = decodeRLE(chunk.tiles, 32 * 32);
-    const walls = decodeRLE(chunk.walls, 32 * 32);
     const x0 = chunk.cx * 32 * 2;
     const y0 = chunk.cy * 32 * 2;
     const colors: Record<number, string> = {
@@ -45,19 +44,26 @@ export class Minimap {
         this.baseCtx.fillRect(x0 + x * 2, y0 + y * 2, 2, 2);
       }
     }
-    // buildings on top
-    for (const b of chunk.buildings) {
-      this.baseCtx.fillStyle = b.style === 2 ? '#4a453c' : b.style === 1 ? '#4b4134' : '#423a30';
-      this.baseCtx.fillRect(b.x * 2, b.y * 2, b.w * 2, b.h * 2);
-      this.baseCtx.strokeStyle = '#665d4b';
-      this.baseCtx.lineWidth = 0.7;
-      this.baseCtx.strokeRect(b.x * 2 + 0.5, b.y * 2 + 0.5, b.w * 2 - 1, b.h * 2 - 1);
-    }
-    // walls (interior partitions / edges)
-    this.baseCtx.fillStyle = '#151713';
-    for (let y = 0; y < 32; y++) {
-      for (let x = 0; x < 32; x++) {
-        if (walls[y * 32 + x]) this.baseCtx.fillRect(x0 + x * 2, y0 + y * 2, 2, 2);
+    // buildings and rooms
+    for (const building of chunk.buildings) {
+      for (const floor of building.floors) {
+        for (const room of floor.rooms) {
+          this.baseCtx.fillStyle = room.kind === 'kitchen' ? '#4b4134' : room.kind === 'bedroom' ? '#423a30' : '#3d4138';
+          for (const rect of room.rects) this.baseCtx.fillRect(rect.x * 2, rect.y * 2, rect.w * 2, rect.h * 2);
+        }
+        this.baseCtx.strokeStyle = '#151713';
+        this.baseCtx.lineWidth = 1;
+        for (const run of floor.wallRuns) {
+          this.baseCtx.beginPath();
+          if (run.axis === 'h') {
+            this.baseCtx.moveTo(run.from * 2, run.fixed * 2);
+            this.baseCtx.lineTo(run.to * 2, run.fixed * 2);
+          } else {
+            this.baseCtx.moveTo(run.fixed * 2, run.from * 2);
+            this.baseCtx.lineTo(run.fixed * 2, run.to * 2);
+          }
+          this.baseCtx.stroke();
+        }
       }
     }
     // props as faint texture dots

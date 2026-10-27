@@ -1,9 +1,15 @@
 import Phaser from 'phaser';
-import { ITEMS, ZOMBIE_TYPES, type PlayerSnapshot, type ZombieSnapshot } from '@ashfall/shared';
+import { ITEMS, PX_PER_METER, ZOMBIE_TYPES, type PlayerSnapshot, type ZombieSnapshot } from '@ashfall/shared';
 import { screenDirectionFromAngle, directionFromDelta, iso } from '../game/iso.js';
 import { CHARACTER_ATLAS, initialFrame, playerSheetFor, zombieSheetFor } from '../art/characters.js';
 import { hashString } from '../art/util.js';
 import { artImage } from '../art/textures.js';
+
+const FLOOR_BAND = 10_000;
+
+function floorElevationM(floor: number): number {
+  return floor < 0 ? -3.0 : floor * 3.2;
+}
 
 function lerpAngle(a: number, b: number, t: number): number {
   let diff = b - a;
@@ -52,6 +58,7 @@ export class CharacterView {
       kind: 'player' | 'zombie';
       x: number;
       y: number;
+      floor?: number;
       aim: number;
       hp: number;
       maxHp: number;
@@ -66,6 +73,7 @@ export class CharacterView {
     this.name = opts.name ?? '';
     this.x = opts.x;
     this.y = opts.y;
+    this.floor = opts.floor ?? 0;
     this.tx = opts.x;
     this.ty = opts.y;
     this.aim = opts.aim;
@@ -297,14 +305,14 @@ export class CharacterView {
     }
 
     const p = iso(this.x, this.y);
-    const floorY = p.y - this.floor * 56;
+    const floorY = p.y - floorElevationM(this.floor) * PX_PER_METER;
     this.sprite.setPosition(p.x, floorY);
     this.shadow.setPosition(p.x, floorY + 2);
     this.hpBg.setPosition(p.x, floorY - (this.kind === 'player' ? 72 : 64));
     this.hpFill.setPosition(p.x - 15, floorY - (this.kind === 'player' ? 72 : 64));
     this.label?.setPosition(p.x, floorY - 82);
 
-    const depth = this.x + this.y;
+    const depth = this.floor * FLOOR_BAND + this.x + this.y;
     this.shadow.setDepth(depth + 0.4);
     this.sprite.setDepth(depth + 0.48);
     this.hpBg.setDepth(depth + 1.15);
