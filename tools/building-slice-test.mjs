@@ -54,29 +54,29 @@ async function shot(name) {
 }
 
 await dev('godmode', {});
-await dev('teleport', { x: 31.5, y: 41.5, floor: 0 });
+await dev('teleport', { x: 35.0, y: 41.0, floor: 0 });
 await page.waitForTimeout(1000);
 await shot('01-outside.png');
 
-await dev('teleport', { x: 31.5, y: 39.0, floor: 0 });
+await dev('teleport', { x: 35.0, y: 38.0, floor: 0 });
 await page.waitForTimeout(500);
 await page.evaluate(() => window.__ashfall.net.action({ t: 'interact' }));
 await page.waitForTimeout(1000);
 await shot('02-outside-door-open.png');
 
-await dev('teleport', { x: 31.5, y: 35.0, floor: 0 });
+await dev('teleport', { x: 31.0, y: 33.0, floor: 0 });
 await page.waitForTimeout(1000);
 await shot('03-inside-west.png');
 
-await dev('teleport', { x: 37.0, y: 35.0, floor: 0 });
+await dev('teleport', { x: 38.0, y: 33.0, floor: 0 });
 await page.waitForTimeout(1000);
 await shot('04-inside-east.png');
 
-await dev('teleport', { x: 32.5, y: 32.5, floor: -1 });
+await dev('teleport', { x: 33.0, y: 32.5, floor: -1 });
 await page.waitForTimeout(1000);
 await shot('05-basement.png');
 
-await dev('teleport', { x: 31.5, y: 30.5, floor: 1 });
+await dev('teleport', { x: 32.0, y: 30.5, floor: 1 });
 await page.waitForTimeout(1000);
 await shot('06-mansard.png');
 

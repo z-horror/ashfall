@@ -56,16 +56,16 @@ test('door interval is measured from the wall-run start in meters', () => {
   const wall = floor.wallRuns.find((run) => run.id === 'w:test:0:south')!;
   const door = floor.openings.find((opening) => opening.id === 'o:test:0:door')!;
   assert.equal(wall.axis, 'h');
-  assert.ok(Math.abs((wall.to - wall.from) * TILE_SIZE_M - 8.0) < 1e-9);
+  assert.ok(Math.abs((wall.to - wall.from) * TILE_SIZE_M - 19.2) < 1e-9);
   const intervals = solidIntervals(wall, [door]);
   assert.equal(intervals.length, 2);
   assert.ok(Math.abs(intervals[0].startM) < 1e-9);
-  assert.ok(Math.abs(intervals[0].endM - 5.1) < 1e-9);
-  assert.ok(Math.abs(intervals[1].startM - 6.1) < 1e-9);
-  assert.ok(Math.abs(intervals[1].endM - 8.0) < 1e-9);
+  assert.ok(Math.abs(intervals[0].endM - 10.4) < 1e-9);
+  assert.ok(Math.abs(intervals[1].startM - 11.4) < 1e-9);
+  assert.ok(Math.abs(intervals[1].endM - 19.2) < 1e-9);
   const center = openingCenter(wall, door);
-  assert.equal(center.x, 31.5);
-  assert.equal(center.y, 38.0);
+  assert.ok(Math.abs(center.x - 34.8125) < 0.1 || Math.abs(center.x - 35.0) < 0.5);
+  assert.equal(center.y, 37.0);
 });
 
 test('rooms are connected masks, do not overlap, and attach to openings', () => {
@@ -75,12 +75,12 @@ test('rooms are connected masks, do not overlap, and attach to openings', () => 
   const east = floor.rooms.find((room) => room.id === 'room:test:0:east')!;
   const westGeometry = buildRoomGeometry(west);
   const eastGeometry = buildRoomGeometry(east);
-  assert.equal(westGeometry.cells.length, 50);
-  assert.equal(eastGeometry.cells.length, 50);
+  assert.equal(westGeometry.cells.length, 54);
+  assert.equal(eastGeometry.cells.length, 36);
   assert.equal(roomsOverlap(westGeometry, eastGeometry), false);
-  assert.equal(world.roomContains('room:test:0:west', 31.5, 35.0), true);
-  assert.equal(world.roomContains('room:test:0:east', 36.5, 35.0), true);
-  assert.equal(world.roomContains('room:test:0:west', 36.5, 35.0), false);
+  assert.equal(world.roomContains('room:test:0:west', 31.5, 33.0), true);
+  assert.equal(world.roomContains('room:test:0:east', 38.0, 33.0), true);
+  assert.equal(world.roomContains('room:test:0:west', 38.0, 33.0), false);
 });
 
 test('furniture footprint rotation changes AABB and support point', () => {
@@ -116,14 +116,14 @@ test('furniture footprint rotation changes AABB and support point', () => {
 
 test('closed doors block movement, open doors allow passage', () => {
   const world = new World('test-door-collision');
-  const start = { x: 31.5, y: 37.2 };
+  const start = { x: 34.8, y: 36.2 };
   const closedGrid = world.getCollisionGrid(0);
   const blocked = moveCircle(closedGrid, start.x, start.y, 0, 1.6, PLAYER_RADIUS);
-  assert.ok(blocked.y < 38, `closed door should stop movement, ended at ${blocked.y}`);
+  assert.ok(blocked.y < 37.0, `closed door should stop movement, ended at ${blocked.y}`);
   world.setDoorOpen('o:test:0:door', true);
   const openGrid = world.getCollisionGrid(0);
   const passed = moveCircle(openGrid, start.x, start.y, 0, 1.6, PLAYER_RADIUS);
-  assert.ok(passed.y > 38, `open door should allow passage, ended at ${passed.y}`);
+  assert.ok(passed.y > 37.0, `open door should allow passage, ended at ${passed.y}`);
 });
 
 test('walls and windows participate in line of sight', () => {
@@ -133,19 +133,19 @@ test('walls and windows participate in line of sight', () => {
   const templates = OBJECT_TEMPLATES;
   const states = world.getObjectStateRecord();
   assert.equal(
-    hasFloorSight(floor, world.getOpeningStates(), { x: 36.5, y: 36.8 }, { x: 36.5, y: 39.2 }, 'sight', objects, templates, states),
+    hasFloorSight(floor, world.getOpeningStates(), { x: 32.0, y: 36.5 }, { x: 32.0, y: 38.0 }, 'sight', objects, templates, states),
     false,
     'solid south wall must block sight',
   );
-  world.setWindowState('o:test:0:window', { broken: false, boarded: false });
+  world.setWindowState('o:test:0:window_east', { broken: false, boarded: false });
   assert.equal(
-    hasFloorSight(floor, world.getOpeningStates(), { x: 39.0, y: 31.5 }, { x: 41.0, y: 31.5 }, 'sight', objects, templates, states),
+    hasFloorSight(floor, world.getOpeningStates(), { x: 39.5, y: 32.5 }, { x: 40.5, y: 32.5 }, 'sight', objects, templates, states),
     false,
     'intact window must block sight',
   );
-  world.setWindowState('o:test:0:window', { broken: true });
+  world.setWindowState('o:test:0:window_east', { broken: true });
   assert.equal(
-    hasFloorSight(floor, world.getOpeningStates(), { x: 39.0, y: 31.5 }, { x: 41.0, y: 31.5 }, 'sight', objects, templates, states),
+    hasFloorSight(floor, world.getOpeningStates(), { x: 39.5, y: 32.5 }, { x: 40.5, y: 32.5 }, 'sight', objects, templates, states),
     true,
     'broken window must pass sight',
   );

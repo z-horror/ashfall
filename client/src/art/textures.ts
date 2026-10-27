@@ -222,21 +222,30 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
       }
     }
   } else if (kind === 'grass') {
-    // Project Zomboid style: deep, muted, overgrown turf with weeds and soil patches
-    const bases = ['#2d3623', '#28311f', '#323b27', '#2a3321', '#2f3825'];
+    // Project Zomboid style: deep, muted, overgrown turf with weeds, soil patches, and aggregate pebbles
+    const bases = [
+      '#2a3320', '#262f1d', '#2e3724', '#28321e', '#2c3522',
+      '#27301c', '#303926', '#252d1b', '#2d3623', '#29311f',
+    ];
     fillDiamond(bases[variant % bases.length]);
-    speckle(ctx, 0, 0, 64, 32, 110, ['#1e2417', '#3c472f', '#445135', '#353e2a'], rnd, 1.5);
+    speckle(ctx, 0, 0, 64, 32, 130, ['#1e2417', '#3c472f', '#445135', '#353e2a', '#22281a'], rnd, 1.5);
 
-    // Patches of exposed damp soil (removes checkerboard look)
-    if (variant === 1 || variant === 4) {
-      ctx.fillStyle = 'rgba(32,27,19,0.4)';
+    // Patches of exposed damp soil & dead trampled earth (eliminates checkerboard repetition)
+    if (variant === 1 || variant === 4 || variant === 7) {
+      ctx.fillStyle = 'rgba(32,27,19,0.45)';
       ctx.beginPath();
-      ctx.ellipse(24 + rnd() * 16, 12 + rnd() * 8, 8 + rnd() * 6, 3.5 + rnd() * 2, rnd() * 0.5, 0, Math.PI * 2);
+      ctx.ellipse(24 + rnd() * 16, 12 + rnd() * 8, 9 + rnd() * 6, 4 + rnd() * 2, rnd() * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (variant === 2 || variant === 6 || variant === 9) {
+      // Dry trampled thatch / dried moss
+      ctx.fillStyle = 'rgba(48,42,28,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(20 + rnd() * 24, 10 + rnd() * 12, 11 + rnd() * 5, 4.5 + rnd() * 2, rnd() * 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // Natural wild grass blade clusters
-    const bladeCount = 35 + Math.floor(rnd() * 30);
+    const bladeCount = 40 + Math.floor(rnd() * 35);
     for (let i = 0; i < bladeCount; i++) {
       const x = rnd() * 64;
       const y = rnd() * 32;
@@ -251,11 +260,22 @@ function makeGround(kind: GroundKind, variant: number): HTMLCanvasElement {
     }
 
     // Weed rosettes / plantain / dried leaves
-    if (rnd() < 0.5) {
+    if (rnd() < 0.6) {
       ctx.fillStyle = rnd() < 0.5 ? 'rgba(42,52,32,0.6)' : 'rgba(68,58,38,0.45)';
       ctx.beginPath();
       ctx.ellipse(14 + rnd() * 36, 8 + rnd() * 16, 2.8 + rnd() * 2, 1.4 + rnd(), rnd() * 3, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // Small gravel aggregate pebbles scattered in soil
+    if (variant % 2 === 1) {
+      const pebbleCount = 2 + Math.floor(rnd() * 4);
+      for (let p = 0; p < pebbleCount; p++) {
+        ctx.fillStyle = rnd() < 0.5 ? '#3e3a32' : '#524c40';
+        ctx.beginPath();
+        ctx.ellipse(12 + rnd() * 40, 6 + rnd() * 20, 1.0 + rnd() * 0.6, 0.6 + rnd() * 0.4, rnd() * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   } else if (kind === 'dirt') {
     const bases = ['#4b4335', '#473f32', '#514838', '#443d31'];
@@ -2833,7 +2853,7 @@ export function buildEnvironmentArt(scene: Phaser.Scene): void {
   const groundCounts: Array<[GroundKind, number]> = [
     ['asphalt', 10],
     ['sidewalk', 4],
-    ['grass', 5],
+    ['grass', 10],
     ['dirt', 4],
     ['wood', 3],
     ['tile', 3],
