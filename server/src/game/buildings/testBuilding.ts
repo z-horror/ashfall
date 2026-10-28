@@ -297,9 +297,9 @@ export const TEST_BUILDING: BuildingSpec = {
       x: 38.0,
       y: 35.0,
       elevationM: 3.05,
-      textureKey: 'gen_roof_ac_unit',
-      widthPx: 80,
-      heightPx: 80,
+      textureKey: 'prop_ac',
+      widthPx: 64,
+      heightPx: 54,
     },
   ],
 };

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { artImage } from '../art/textures.js';
 import {
   OBJECT_TEMPLATES,
   PX_PER_METER,
@@ -570,8 +571,10 @@ class WindowView {
     this.run = run;
     this.opening = opening;
     this.state = state;
-    const center = openingCenter(run, opening);
-    this.depth = center.x + center.y + FLOOR_BAND * floor.level + 0.35;
+    const runDepth = run.axis === 'h'
+      ? (run.from + run.to) / 2 + run.fixed
+      : run.fixed + (run.from + run.to) / 2;
+    this.depth = runDepth + FLOOR_BAND * floor.level + 0.5;
     this.graphics = scene.add.graphics().setDepth(this.depth + 0.05);
 
     const sillZ = floor.elevationM + opening.sillM;
@@ -824,7 +827,14 @@ class StairView {
       const isGoingUp = this.stair.toLevel > this.stair.fromLevel;
       const yMid = this.stair.hole.y + this.stair.hole.h / 2;
       this.graphics.setDepth(midX + yMid + 0.3 + FLOOR_BAND * activeFloor);
-      this.draw(activeFloor === this.stair.fromLevel && isGoingUp ? 6 : this.stair.steps);
+      const goingDown = !isGoingUp;
+      const stepCount =
+        activeFloor === this.stair.fromLevel && goingDown
+          ? Math.min(4, this.stair.steps)
+          : activeFloor === this.stair.fromLevel
+            ? 6
+            : this.stair.steps;
+      this.draw(stepCount);
     }
   }
 
@@ -841,17 +851,16 @@ export class BuildingView {
     {
       floor: Phaser.GameObjects.Graphics;
       floorImage?: Phaser.GameObjects.Image;
+      stairHole?: Phaser.GameObjects.Graphics;
       walls: WallPiece[];
       doors: DoorView[];
       windows: WindowView[];
       furniture: InteriorView[];
       stairs: StairView[];
-      innerCorner?: Phaser.GameObjects.Image;
-      outerCornerPilaster?: Phaser.GameObjects.Graphics;
     }
   >();
   private subfloor?: Phaser.GameObjects.Graphics;
-  private foundationCurb?: Phaser.GameObjects.Graphics;
+  private foundationCurbs: Phaser.GameObjects.Graphics[] = [];
   private mansardRoofObjects: (Phaser.GameObjects.Graphics | Phaser.GameObjects.Image)[] = [];
   private terraceRoofObjects: (Phaser.GameObjects.Graphics | Phaser.GameObjects.Image)[] = [];
   private activeFloor = 0;
@@ -895,13 +904,12 @@ export class BuildingView {
     );
     this.subfloor = subfloor;
 
-    // 3D Textured Foundation Plinth (Цоколь) around Manor perimeter: 28..40, 28..37
-    const curb = scene.add.graphics().setDepth(FLOOR_BAND * 0 + 0.05);
     const zGround = 0.0;
     const zPlinthTop = 0.22;
     const zWaterTable = 0.26;
 
     const drawPlinthSegment = (
+      g: Phaser.GameObjects.Graphics,
       axis: 'h' | 'v',
       fixed: number,
       from: number,
@@ -923,24 +931,24 @@ export class BuildingView {
         const pTR_ledge = worldToScreen(to, yLedge, zWaterTable);
         const pTL_ledge = worldToScreen(from, yLedge, zWaterTable);
 
-        fillQuad(curb, pTL, pTR, pBR, pBL, baseColor);
-        fillQuad(curb, pTL_ledge, pTR_ledge, pTR, pTL, topColor);
+        fillQuad(g, pTL, pTR, pBR, pBL, baseColor);
+        fillQuad(g, pTL_ledge, pTR_ledge, pTR, pTL, topColor);
 
-        curb.lineStyle(1.5, 0x221e1a, 0.7);
+        g.lineStyle(1.5, 0x221e1a, 0.7);
         const pMidL = worldToScreen(from, yFace, zGround + 0.11);
         const pMidR = worldToScreen(to, yFace, zGround + 0.11);
-        curb.beginPath();
-        curb.moveTo(pMidL.x, pMidL.y);
-        curb.lineTo(pMidR.x, pMidR.y);
-        curb.strokePath();
+        g.beginPath();
+        g.moveTo(pMidL.x, pMidL.y);
+        g.lineTo(pMidR.x, pMidR.y);
+        g.strokePath();
 
         for (let x = from + 0.6; x < to - 0.2; x += 0.8) {
           const jBot = worldToScreen(x, yFace, zGround);
           const jTop = worldToScreen(x, yFace, zPlinthTop);
-          curb.beginPath();
-          curb.moveTo(jBot.x, jBot.y);
-          curb.lineTo(jTop.x, jTop.y);
-          curb.strokePath();
+          g.beginPath();
+          g.moveTo(jBot.x, jBot.y);
+          g.lineTo(jTop.x, jTop.y);
+          g.strokePath();
         }
       } else {
         const xFace = fixed + sign * half;
@@ -952,30 +960,30 @@ export class BuildingView {
         const pTR_ledge = worldToScreen(xLedge, from, zWaterTable);
         const pTL_ledge = worldToScreen(xLedge, to, zWaterTable);
 
-        fillQuad(curb, pTL, pTR, pBR, pBL, baseColor);
-        fillQuad(curb, pTL_ledge, pTR_ledge, pTR, pTL, topColor);
+        fillQuad(g, pTL, pTR, pBR, pBL, baseColor);
+        fillQuad(g, pTL_ledge, pTR_ledge, pTR, pTL, topColor);
 
-        curb.lineStyle(1.5, 0x1c1a16, 0.7);
+        g.lineStyle(1.5, 0x1c1a16, 0.7);
         const pMidL = worldToScreen(xFace, to, zGround + 0.11);
         const pMidR = worldToScreen(xFace, from, zGround + 0.11);
-        curb.beginPath();
-        curb.moveTo(pMidL.x, pMidL.y);
-        curb.lineTo(pMidR.x, pMidR.y);
-        curb.strokePath();
+        g.beginPath();
+        g.moveTo(pMidL.x, pMidL.y);
+        g.lineTo(pMidR.x, pMidR.y);
+        g.strokePath();
       }
     };
 
-    const drawDoorstep = (x0: number, x1: number, y: number) => {
+    const drawDoorstep = (g: Phaser.GameObjects.Graphics, x0: number, x1: number, y: number) => {
       const p0 = worldToScreen(x0, y + 0.12, 0.0);
       const p1 = worldToScreen(x1, y + 0.12, 0.0);
       const p2 = worldToScreen(x1, y - 0.12, 0.03);
       const p3 = worldToScreen(x0, y - 0.12, 0.03);
-      fillQuad(curb, p0, p1, p2, p3, 0x5c544a);
-      curb.lineStyle(1.5, 0x3a342c, 0.9);
-      curb.beginPath();
-      curb.moveTo(p0.x, p0.y);
-      curb.lineTo(p1.x, p1.y);
-      curb.strokePath();
+      fillQuad(g, p0, p1, p2, p3, 0x5c544a);
+      g.lineStyle(1.5, 0x3a342c, 0.9);
+      g.beginPath();
+      g.moveTo(p0.x, p0.y);
+      g.lineTo(p1.x, p1.y);
+      g.strokePath();
     };
 
     // Plinth is generated from the same ground-floor wall runs as collision.
@@ -989,7 +997,10 @@ export class BuildingView {
         run.axis === 'h'
           ? run.fixed <= bMinY + 1e-6 ? 'north' : 'south'
           : run.fixed <= bMinX + 1e-6 ? 'west' : 'east';
-      drawPlinthSegment(run.axis, run.fixed, run.from, run.to, facing);
+      const depth = (run.axis === 'h' ? (run.from + run.to) / 2 + run.fixed : run.fixed + (run.from + run.to) / 2) + 0.08;
+      const g = scene.add.graphics().setDepth(depth);
+      this.foundationCurbs.push(g);
+      drawPlinthSegment(g, run.axis, run.fixed, run.from, run.to, facing);
     }
     for (const opening of groundFloor?.openings ?? []) {
       if (opening.kind !== 'door') continue;
@@ -997,10 +1008,11 @@ export class BuildingView {
       if (!run || run.axis !== 'h') continue;
       const x0 = run.from + opening.startM / 1.6;
       const x1 = run.from + (opening.startM + opening.widthM) / 1.6;
-      drawDoorstep(x0, x1, run.fixed);
+      const g = scene.add.graphics().setDepth((run.from + run.to) / 2 + run.fixed + 0.1);
+      this.foundationCurbs.push(g);
+      drawDoorstep(g, x0, x1, run.fixed);
     }
 
-    this.foundationCurb = curb;
 
     for (const floor of building.floors) {
       this.buildFloor(floor, objects, states, doorStates, windowStates);
@@ -1016,6 +1028,12 @@ export class BuildingView {
     windowStates: WindowState[],
   ): void {
     const floorGraphics = this.scene.add.graphics().setDepth(FLOOR_BAND * floor.level - 1000);
+    const stairHoles = floor.floor.holes ?? [];
+    // The stair hole underlay belongs to the floor below and must stay beneath
+    // raised slabs (the terrace) while still covering the lower floor surface.
+    const stairHoleGraphics = stairHoles.length > 0
+      ? this.scene.add.graphics().setDepth(FLOOR_BAND * (floor.level - 1) + 100)
+      : undefined;
     const floorTextureKey = floor.floor.material === 'concrete' ? 'gen_floor_concrete' : 'gen_floor_wood';
 
     let fMinX = Infinity, fMaxX = -Infinity, fMinY = Infinity, fMaxY = -Infinity;
@@ -1108,56 +1126,56 @@ export class BuildingView {
     }
 
     // Floor 0 stair hole: draw deep basement concrete floor beneath hole + bullnose edge trim
-    if (floor.level === 0 && (floor.floor.holes ?? []).length > 0) {
-      for (const hole of floor.floor.holes ?? []) {
+    if (floor.level === 0 && stairHoleGraphics) {
+      for (const hole of stairHoles) {
         for (let y = hole.y; y < hole.y + hole.h; y++) {
           for (let x = hole.x; x < hole.x + hole.w; x++) {
             const b0 = worldToScreen(x, y, -3.0);
             const b1 = worldToScreen(x + 1, y, -3.0);
             const b2 = worldToScreen(x + 1, y + 1, -3.0);
             const b3 = worldToScreen(x, y + 1, -3.0);
-            fillQuad(floorGraphics, b0, b1, b2, b3, 0x2c2d2c);
+            fillQuad(stairHoleGraphics, b0, b1, b2, b3, 0x2c2d2c);
           }
         }
         const hTL = worldToScreen(hole.x, hole.y, floor.elevationM + 0.03);
         const hTR = worldToScreen(hole.x + hole.w, hole.y, floor.elevationM + 0.03);
         const hBR = worldToScreen(hole.x + hole.w, hole.y + hole.h, floor.elevationM + 0.03);
         const hBL = worldToScreen(hole.x, hole.y + hole.h, floor.elevationM + 0.03);
-        floorGraphics.lineStyle(3, 0x543c24, 1);
-        floorGraphics.beginPath();
-        floorGraphics.moveTo(hTL.x, hTL.y);
-        floorGraphics.lineTo(hTR.x, hTR.y);
-        floorGraphics.lineTo(hBR.x, hBR.y);
-        floorGraphics.lineTo(hBL.x, hBL.y);
-        floorGraphics.closePath();
-        floorGraphics.strokePath();
+        stairHoleGraphics.lineStyle(3, 0x543c24, 1);
+        stairHoleGraphics.beginPath();
+        stairHoleGraphics.moveTo(hTL.x, hTL.y);
+        stairHoleGraphics.lineTo(hTR.x, hTR.y);
+        stairHoleGraphics.lineTo(hBR.x, hBR.y);
+        stairHoleGraphics.lineTo(hBL.x, hBL.y);
+        stairHoleGraphics.closePath();
+        stairHoleGraphics.strokePath();
       }
     }
 
     // Floor 1 stair hole: draw Floor 0 foyer floor beneath hole so outdoor grass NEVER shows through!
-    if (floor.level === 1 && (floor.floor.holes ?? []).length > 0) {
-      for (const hole of floor.floor.holes ?? []) {
+    if (floor.level === 1 && stairHoleGraphics) {
+      for (const hole of stairHoles) {
         for (let y = hole.y; y < hole.y + hole.h; y++) {
           for (let x = hole.x; x < hole.x + hole.w; x++) {
             const b0 = worldToScreen(x, y, 0.0);
             const b1 = worldToScreen(x + 1, y, 0.0);
             const b2 = worldToScreen(x + 1, y + 1, 0.0);
             const b3 = worldToScreen(x, y + 1, 0.0);
-            fillQuad(floorGraphics, b0, b1, b2, b3, 0x5a4832);
+            fillQuad(stairHoleGraphics, b0, b1, b2, b3, 0x5a4832);
           }
         }
         const hTL = worldToScreen(hole.x, hole.y, floor.elevationM + 0.03);
         const hTR = worldToScreen(hole.x + hole.w, hole.y, floor.elevationM + 0.03);
         const hBR = worldToScreen(hole.x + hole.w, hole.y + hole.h, floor.elevationM + 0.03);
         const hBL = worldToScreen(hole.x, hole.y + hole.h, floor.elevationM + 0.03);
-        floorGraphics.lineStyle(3, 0x543c24, 1);
-        floorGraphics.beginPath();
-        floorGraphics.moveTo(hTL.x, hTL.y);
-        floorGraphics.lineTo(hTR.x, hTR.y);
-        floorGraphics.lineTo(hBR.x, hBR.y);
-        floorGraphics.lineTo(hBL.x, hBL.y);
-        floorGraphics.closePath();
-        floorGraphics.strokePath();
+        stairHoleGraphics.lineStyle(3, 0x543c24, 1);
+        stairHoleGraphics.beginPath();
+        stairHoleGraphics.moveTo(hTL.x, hTL.y);
+        stairHoleGraphics.lineTo(hTR.x, hTR.y);
+        stairHoleGraphics.lineTo(hBR.x, hBR.y);
+        stairHoleGraphics.lineTo(hBL.x, hBL.y);
+        stairHoleGraphics.closePath();
+        stairHoleGraphics.strokePath();
       }
     }
 
@@ -1210,43 +1228,15 @@ export class BuildingView {
 
     const stairs = floor.stairs.map((stair) => new StairView(this.scene, floor, stair));
 
-    // Corner treatment is derived from the same floor bounds as the walls,
-    // rather than a single hardcoded SW/SE special case.
-    let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity;
-    for (const cell of floor.floor.cells) {
-      cMinX = Math.min(cMinX, cell.x);
-      cMaxX = Math.max(cMaxX, cell.x + cell.w);
-      cMinY = Math.min(cMinY, cell.y);
-      cMaxY = Math.max(cMaxY, cell.y + cell.h);
-    }
-    const outerCornerPilaster = this.scene.add.graphics()
-      .setDepth(cMaxX + cMaxY + FLOOR_BAND * floor.level + 0.35);
-    if (Number.isFinite(cMinX)) {
-      for (const [cx, cy] of [
-        [cMinX, cMinY],
-        [cMaxX, cMinY],
-        [cMaxX, cMaxY],
-        [cMinX, cMaxY],
-      ]) {
-        const bottom = worldToScreen(cx, cy, floor.elevationM);
-        const top = worldToScreen(cx, cy, floor.elevationM + floor.clearHeightM);
-        outerCornerPilaster.lineStyle(2.5, 0x221a14, 0.8);
-        outerCornerPilaster.beginPath();
-        outerCornerPilaster.moveTo(bottom.x, bottom.y);
-        outerCornerPilaster.lineTo(top.x, top.y);
-        outerCornerPilaster.strokePath();
-      }
-    }
-
     this.floors.set(floor.level, {
       floor: floorGraphics,
       floorImage,
+      stairHole: stairHoleGraphics,
       walls,
       doors,
       windows,
       furniture,
       stairs,
-      outerCornerPilaster,
     });
   }
 
@@ -1451,29 +1441,17 @@ export class BuildingView {
       // Roof equipment is data-driven too, so its support height and depth
       // cannot drift away from the terrace surface.
       for (const fixture of this.building.fixtures ?? []) {
-        if (!this.scene.textures.exists(fixture.textureKey)) continue;
         const pos = worldToScreen(fixture.x, fixture.y, fixture.elevationM);
         const fixtureDepth = FLOOR_BAND * fixture.level + fixture.x + fixture.y;
-        const rails = this.scene.add.graphics().setDepth(fixtureDepth - 1);
-        const r0 = worldToScreen(fixture.x - 0.4, fixture.y - 0.2, fixture.elevationM);
-        const r1 = worldToScreen(fixture.x + 0.4, fixture.y - 0.2, fixture.elevationM);
-        const r2 = worldToScreen(fixture.x - 0.4, fixture.y + 0.2, fixture.elevationM);
-        const r3 = worldToScreen(fixture.x + 0.4, fixture.y + 0.2, fixture.elevationM);
-        rails.lineStyle(3, 0x2e2c28, 1);
-        rails.beginPath();
-        rails.moveTo(r0.x, r0.y);
-        rails.lineTo(r1.x, r1.y);
-        rails.moveTo(r2.x, r2.y);
-        rails.lineTo(r3.x, r3.y);
-        rails.strokePath();
-        rails.fillStyle(0x050504, 0.6);
-        rails.fillEllipse(pos.x, pos.y - 2, 54, 20);
-        this.terraceRoofObjects.push(rails);
+        const shadow = this.scene.add.graphics().setDepth(fixtureDepth - 1);
+        shadow.fillStyle(0x080706, 0.32);
+        shadow.fillEllipse(pos.x, pos.y - 2, 52, 16);
+        this.terraceRoofObjects.push(shadow);
 
-        const fixtureImage = this.scene.add.image(pos.x, pos.y, fixture.textureKey)
+        const fixtureImage = artImage(this.scene, pos.x, pos.y, fixture.textureKey)
           .setOrigin(0.5, 0.98)
           .setDepth(fixtureDepth)
-          .setDisplaySize(fixture.widthPx ?? 80, fixture.heightPx ?? 80);
+          .setDisplaySize(fixture.widthPx ?? 64, fixture.heightPx ?? 54);
         this.terraceRoofObjects.push(fixtureImage);
       }
     }
@@ -1520,7 +1498,7 @@ export class BuildingView {
 
     // Plinth (curb) & subfloor: strictly visible when activeFloor >= 0, completely hidden in basement
     const curbVisible = floor >= 0 && (!this.inside || floor === 0 || floor === 1);
-    this.foundationCurb?.setVisible(curbVisible);
+    for (const curb of this.foundationCurbs) curb.setVisible(curbVisible);
     this.subfloor?.setVisible(foundationVisible(floor));
 
     for (const [level, entry] of this.floors) {
@@ -1545,8 +1523,6 @@ export class BuildingView {
           for (const window of entry.windows) window.setActive(false);
           for (const furniture of entry.furniture) furniture.setVisible(false);
           for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
-          entry.innerCorner?.setVisible(false);
-          entry.outerCornerPilaster?.setVisible(false);
         } else if (floor === 0) {
           // On ground floor
           const active = true;
@@ -1557,8 +1533,6 @@ export class BuildingView {
           for (const window of entry.windows) window.setActive(active);
           for (const furniture of entry.furniture) furniture.setVisible(this.inside);
           for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
-          entry.innerCorner?.setVisible(this.inside);
-          entry.outerCornerPilaster?.setVisible(!this.inside);
         } else if (floor === 1) {
           // On 2nd floor (Mansard): Floor 0 exterior walls/windows stay visible from outside!
           entry.floor.setVisible(false);
@@ -1573,8 +1547,6 @@ export class BuildingView {
           for (const window of entry.windows) window.setActive(true);
           for (const furniture of entry.furniture) furniture.setVisible(false);
           for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
-          entry.innerCorner?.setVisible(false);
-          entry.outerCornerPilaster?.setVisible(true);
         }
       } else if (level === 1) {
         // Mansard / 2nd floor
@@ -1610,6 +1582,10 @@ export class BuildingView {
         }
       }
     }
+
+    // Stair-hole underlays follow their floor's visibility so they never
+    // linger over exposed lower surfaces when the floor is hidden.
+    for (const entry of this.floors.values()) entry.stairHole?.setVisible(entry.floor.visible);
 
     // Mansard roof: visible only from outside. Inside the cutaway it must not
     // cover the space the player is inspecting.
@@ -1650,17 +1626,17 @@ export class BuildingView {
 
   destroy(): void {
     this.subfloor?.destroy();
-    this.foundationCurb?.destroy();
+    for (const curb of this.foundationCurbs) curb.destroy();
+    this.foundationCurbs = [];
     for (const entry of this.floors.values()) {
       entry.floor.destroy();
       entry.floorImage?.destroy();
+      entry.stairHole?.destroy();
       for (const wall of entry.walls) wall.destroy();
       for (const door of entry.doors) door.destroy();
       for (const window of entry.windows) window.destroy();
       for (const furniture of entry.furniture) furniture.destroy();
       for (const stair of entry.stairs) stair.destroy();
-      entry.innerCorner?.destroy();
-      entry.outerCornerPilaster?.destroy();
     }
     for (const obj of this.mansardRoofObjects) obj.destroy();
     for (const obj of this.terraceRoofObjects) obj.destroy();

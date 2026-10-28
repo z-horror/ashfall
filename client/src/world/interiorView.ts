@@ -274,11 +274,13 @@ export class InteriorView {
             g.moveTo(pFront0.x, pFront0.y);
             g.lineTo(pFront1.x, pFront1.y);
             g.strokePath();
-            const pHandle = worldToScreen(aabb.maxX, aabb.maxY - 0.08, elevation + heightM * 0.55);
-            g.fillStyle(0xe0e4e6, 1);
-            g.fillRect(pHandle.x - 2, pHandle.y - 12, 4, 16);
-            g.fillStyle(0x606568, 1);
-            g.fillRect(pHandle.x - 1, pHandle.y - 10, 2, 12);
+            const handle0 = worldToScreen(aabb.maxX, aabb.maxY - 0.08, elevation + heightM * 0.53);
+            const handle1 = worldToScreen(aabb.maxX, aabb.maxY - 0.08, elevation + heightM * 0.6);
+            g.lineStyle(2, 0x656b68, 1);
+            g.beginPath();
+            g.moveTo(handle0.x, handle0.y);
+            g.lineTo(handle1.x, handle1.y);
+            g.strokePath();
             break;
           }
           case 'shelf': {
