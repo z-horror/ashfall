@@ -6,6 +6,7 @@
 ## 0. TL;DR
 
 - Репозиторий: `/root/opencode-project/ashfall`, ветка `main`.
+- Коммит этой итерации: `57fbee1` (`fix(buildings): repair cutaway, stair shafts, fixtures and interiors`).
 - Последний коммит до этой итерации: `0d44286` (`fix(buildings): correct stair-hole draw order and document remaining visuals`).
 - В этой итерации закрыты ранее согласованные баги Stage 0–2: cutaway-стены, шахты лестниц, AC, стеллаж, посадка мебели, окна, цоколь, углы, контур игрока.
 - Эталон внешнего вида зафиксирован: `docs/reference/visual-target.jpg` (источник: https://disk.yandex.ru/i/DC7iETbz3zHEyA). Это **не** текущий результат, а ориентир для отдельного будущего арт-прохода.
@@ -28,7 +29,7 @@
 - Перед коммитом смотреть `git status -sb`, `git diff --stat`, `git log --oneline -5`.
 - Коммиты — атомарные, стиль репозитория: `fix(buildings): ...`, `docs(handoff): ...`.
 
-Текущий HEAD после этой итерации смотреть командой:
+Текущий HEAD всегда можно проверить командой:
 
 ```bash
 cd /root/opencode-project/ashfall
