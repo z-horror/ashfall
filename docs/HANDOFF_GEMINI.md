@@ -5,22 +5,29 @@
 
 ## 0. TL;DR
 
-- Репозиторий: `/root/opencode-project/ashfall`, ветка `main`.
+- GitHub-репозиторий: `https://github.com/z-horror/ashfall`, ветка `main`.
+- **Gemini работает в своём локальном клоне этого репозитория.** У неё нет доступа к VPS предыдущего агента, `/root/opencode-project`, `/opt/ashfall`, локальному opencode и портам `3103/5176`. Все команды ниже выполняются в локальном клоне; пути `/root/...` — исторические, заменяй на свою папку.
 - Коммит этой итерации: `57fbee1` (`fix(buildings): repair cutaway, stair shafts, fixtures and interiors`).
 - Последний коммит до этой итерации: `0d44286` (`fix(buildings): correct stair-hole draw order and document remaining visuals`).
 - В этой итерации закрыты ранее согласованные баги Stage 0–2: cutaway-стены, шахты лестниц, AC, стеллаж, посадка мебели, окна, цоколь, углы, контур игрока.
 - Эталон внешнего вида зафиксирован: `docs/reference/visual-target.jpg` (источник: https://disk.yandex.ru/i/DC7iETbz3zHEyA). Это **не** текущий результат, а ориентир для отдельного будущего арт-прохода.
 - Проверки: `npm run typecheck` — OK, `npm test` — 51 тест (49 pass, 2 skip, 0 fail), `npm run build` — OK, визуальный аудит 9 сцен — `errors: 0`.
+- Исходные скриншоты багов + before/after + разбор: `docs/reference/bug-report-2026-10-28/`.
 - Что осталось: визуальная приёмка пользователем, затем арт-доводка до эталона (плющ, водостоки, мусор, rooftop-хлам, детализация кладки/крыши, поручни шахт).
 
 ---
 
 ## 1. Git / репозиторий
 
-- Локальный путь: `/root/opencode-project/ashfall`.
-- Ветка: `main`.
-- Remote: `origin = https://github.com/z-horror/ashfall.git`.
+- GitHub: `https://github.com/z-horror/ashfall`, ветка `main`.
+- Работай в своём локальном клоне. Первым делом:
+  ```bash
+  git clone https://github.com/z-horror/ashfall.git
+  cd ashfall
+  git pull origin main
+  ```
 - Пуш в `main` пользователь разрешил явно. Force-push запрещён.
+- Нет доступа к VPS предыдущего агента, `/opt/ashfall`, `/root/opencode-project` и его запущенным серверам. Не пытайся подключаться к ним.
 - Не коммитить и не трогать:
   - `landing-review/`
   - `landing-review-upload.zip`
@@ -29,10 +36,9 @@
 - Перед коммитом смотреть `git status -sb`, `git diff --stat`, `git log --oneline -5`.
 - Коммиты — атомарные, стиль репозитория: `fix(buildings): ...`, `docs(handoff): ...`.
 
-Текущий HEAD всегда можно проверить командой:
+Текущий HEAD всегда можно проверить командой (в своём клоне):
 
 ```bash
-cd /root/opencode-project/ashfall
 git log --oneline -3
 ```
 
@@ -145,6 +151,7 @@ if (cameraSide !== playerSide) cut.add(run.id);
 
 - `docs/STATUS.md`, раздел `VIS-03`, обновлён: что исправлено и что осталось.
 - `docs/reference/visual-target.jpg` — эталон.
+- `docs/reference/bug-report-2026-10-28/` — исходные скриншоты пользователя, before/after-кропы, разбор каждого бага и статус.
 - `tools/building-visual-audit.mjs` — harness для 9 сцен (уже в git).
 
 ---
@@ -163,56 +170,56 @@ if (cameraSide !== playerSide) cut.add(run.id);
 
 ---
 
-## 4. Тестовый контур: как запустить
+## 4. Тестовый контур: как запустить локально (GitHub-only)
 
-### 4.1. Сервер (in-memory, порт 3103)
+Gemini работает из локального клона GitHub. Никакого доступа к VPS, `/opt/ashfall`, `/root/opencode-project` или портам `3103/5176` предыдущего агента нет.
 
-Из корня репозитория:
+### 4.1. Быстрый контур без PostgreSQL (рекомендуется для визуального аудита)
+
+Терминал 1 — сервер на `:3000`:
 
 ```bash
-cd /root/opencode-project/ashfall
 DATABASE_URL=memory \
-PORT=3103 \
+PORT=3000 \
 WORLD_SEED=ashfall-buildings-v3-manor \
 REQUIRE_INVITES=false \
 ALLOW_DEV_ACTIONS=true \
-node --import tsx server/src/index.ts
+npm run dev:server
 ```
 
-Если запускать в фоне и сессия может закрыться:
+Терминал 2 — клиент на `:5173`:
 
 ```bash
-setsid env DATABASE_URL=memory PORT=3103 WORLD_SEED=ashfall-buildings-v3-manor \
-  REQUIRE_INVITES=false ALLOW_DEV_ACTIONS=true \
-  node --import tsx server/src/index.ts \
-  > /tmp/opencode/server-3103.log 2>&1 < /dev/null &
+VITE_WS_URL=ws://127.0.0.1:3000/ws npm run dev:client
 ```
 
-Проверка:
+URL:
+
+```
+http://localhost:5173/?buildingTest=1
+```
+
+`ALLOW_DEV_ACTIONS=true` обязателен: audit-скрипт телепортирует игрока через dev actions.
+
+### 4.2. Стандартный контур с PostgreSQL
+
+Если локально есть Docker:
 
 ```bash
-ss -ltn | grep 3103
-tail -5 /tmp/opencode/server-3103.log
+npm ci
+docker compose up -d db
+npm run migrate
+# в .env: ALLOW_DEV_ACTIONS=true (иначе аудит не сможет телепортироваться)
+npm run dev
 ```
 
-**После изменений в `server/` или `shared/` сервер 3103 нужно перезапустить.** Клиент подхватывает изменения через Vite HMR.
+`npm run dev` поднимает сервер на `:3000` и клиент на `:5173`.
 
-### 4.2. Vite (порт 5176)
+### 4.3. Перезапуск
 
-```bash
-cd /root/opencode-project/ashfall
-VITE_WS_URL=ws://127.0.0.1:3103/ws npx vite --host 127.0.0.1 --port 5176
-```
+После изменений в `server/` или `shared/` перезапусти сервер. Клиент подхватывает изменения через Vite HMR.
 
-URL для аудита:
-
-```
-http://127.0.0.1:5176/?buildingTest=1
-```
-
-Без `debugBuildings=1`.
-
-### 4.3. Учётные данные / вход
+### 4.4. Вход
 
 Audit-скрипт сам нажимает `#auth-new-guest` или `#auth-guest`. Для ручной проверки — гость.
 
@@ -229,9 +236,9 @@ Audit-скрипт сам нажимает `#auth-new-guest` или `#auth-guest
 ### 5.2. Автоматический аудит 9 сцен
 
 ```bash
-cd /root/opencode-project/ashfall
-GAME_URL='http://127.0.0.1:5176/?buildingTest=1' \
-BUILDING_AUDIT_OUT=/tmp/opencode/audit-$(date +%H%M) \
+# из корня своего клона; скриншоты складываются в screenshots/ (gitignored)
+GAME_URL='http://localhost:5173/?buildingTest=1' \
+BUILDING_AUDIT_OUT=./screenshots/audit-local-$(date +%H%M) \
 node tools/building-visual-audit.mjs
 ```
 
@@ -239,11 +246,13 @@ node tools/building-visual-audit.mjs
 
 ```json
 {
-  "outDir": "/tmp/opencode/audit-...",
+  "outDir": "./screenshots/audit-local-...",
   "scenes": 9,
   "errors": 0
 }
 ```
+
+Если Chromium не найден, задай `CHROMIUM_PATH` (путь к Chrome/Chromium на твоей машине). Скрипт умеет искать стандартный Windows Chrome.
 
 Если `errors > 0` — это блокер. Смотреть консоль браузера в выводе, не подписывать результат.
 
@@ -263,19 +272,21 @@ node tools/building-visual-audit.mjs
 
 ### 5.3. Как смотреть скриншоты, не раздувая контекст
 
-Полные PNG — 1440×900, ~1.4–1.8 МБ. Не вставлять их целиком в контекст без необходимости. Делать кропы:
+Полные PNG — 1440×900, ~1.4–1.8 МБ. Не вставлять их целиком в контекст без необходимости. Делать кропы любым локальным инструментом (ImageMagick, ffmpeg, Python/PIL):
 
 ```bash
-cd /tmp/opencode
-convert audit-14/07-terrace.png -crop 340x240+560+380 +repage crop-terrace.png
-identify crop-terrace.png
+# пример с ImageMagick; путь к своей папке аудита
+convert screenshots/audit-local-1234/07-terrace.png \
+  -crop 340x240+560+380 +repage crop-terrace.png
 ```
 
 Затем открывать `crop-terrace.png` через инструмент Read. Для сравнения до/после:
 
 ```bash
-compare -metric AE audit-13/01-outside.png audit-14/01-outside.png diff.png
+compare -metric AE before.png after.png diff.png
 ```
+
+В репозитории уже есть готовые before/after кропы: `docs/reference/bug-report-2026-10-28/` — начни с них, не пересобирай их заново.
 
 Но помнить: камера/позиция игрока между аудитами может отличаться, поэтому `compare` даёт много ложных отличий. Надёжнее — одинаковые сцены + визуальный кроп.
 
@@ -314,7 +325,7 @@ window.__ashfall.net.action({ t: 'dev_action', action: 'teleport', args: { x: 34
 ## 6. Валидация перед коммитом
 
 ```bash
-cd /root/opencode-project/ashfall
+# из корня своего клона
 npm run typecheck
 npm test
 npm run build
@@ -336,10 +347,10 @@ git diff --check
 
 ## 7. Пуш на GitHub
 
-Пользователь явно разрешил пушить в `main`. Порядок:
+Пользователь явно разрешил пушить в `main`. Порядок — из **своего локального клона**:
 
 ```bash
-cd /root/opencode-project/ashfall
+git pull origin main
 git status -sb
 git diff --stat
 git log --oneline -5
@@ -369,7 +380,8 @@ git add \
   tools/building-visual-audit.mjs \
   docs/STATUS.md \
   docs/HANDOFF_GEMINI.md \
-  docs/reference/visual-target.jpg
+  docs/reference/visual-target.jpg \
+  docs/reference/bug-report-2026-10-28/
 ```
 
 Коммит:
@@ -394,18 +406,13 @@ git push origin main
 
 Не делать `git push --force`, не переписывать `main`, не коммитить чужие файлы.
 
-После пуша сервер обновляет **пользователь** на VPS:
-
-```bash
-cd /opt/ashfall && ashfall update
-```
-
-На этой dev-машине `/opt/ashfall` нет. Не деплоить отсюда.
+После пуша сервер обновляет **пользователь** на VPS самостоятельно. У Gemini нет доступа к VPS и `/opt/ashfall`; не пытаться деплоить, не просить доступ и не выполнять `ashfall update`.
 
 ---
 
 ## 8. Ограничения и правила
 
+- Gemini работает только с локальным клоном GitHub. Нет доступа к VPS, `/opt/ashfall`, `/root/opencode-project` и портам предыдущего агента.
 - Не менять `WORLD_SEED` и не сбрасывать БД/мир без явного решения.
 - Никогда не `docker compose down -v`.
 - Не трогать `landing-review/` и `landing-review-upload.zip`.
@@ -435,6 +442,7 @@ cd /opt/ashfall && ashfall update
 - `client/src/world/clientWorld.ts` — клиентская коллизия (parity).
 - `tools/building-visual-audit.mjs` — 9 сцен + `scene.json`.
 - `docs/reference/visual-target.jpg` — эталон.
+- `docs/reference/bug-report-2026-10-28/` — скриншоты багов + разбор + after-кропы.
 - `docs/STATUS.md` — `VIS-03` актуальный статус.
 
 ---
