@@ -18,6 +18,8 @@ import {
   createGrid,
   encodeRLE,
   nearestStairAt,
+  surfaceElevationM,
+  surfaceHitAt,
   type BuildingSpec,
   type CollisionGrid,
   type ContainerInfo,
@@ -253,13 +255,19 @@ export class World {
 
   buildingAt(x: number, y: number, level = 0): BuildingSpec | null {
     for (const building of this.buildings) {
-      const floor = building.floors.find((candidate) => candidate.level === level);
-      if (!floor) continue;
-      for (const room of floor.rooms) {
-        if (this.roomGeometry.get(room.id) && this.roomContains(room.id, x, y)) return building;
-      }
+      if (surfaceHitAt(building.floors, level, x, y)) return building;
+      if (nearestStairAt(building.floors, x, y, level)) return building;
     }
     return null;
+  }
+
+  surfaceElevationAt(x: number, y: number, level = 0): number {
+    return surfaceElevationM(
+      this.buildings.flatMap((building) => building.floors),
+      level,
+      x,
+      y,
+    );
   }
 
   roomAt(x: number, y: number, level = 0): RoomSpec | null {

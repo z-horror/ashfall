@@ -95,6 +95,11 @@ export interface RoomAccessPoint {
   targetLevel?: FloorIndex;
 }
 
+export interface WalkableRegion extends TileRect {
+  elevationM: number;
+  thicknessM?: number;
+}
+
 export interface FloorSpec {
   level: FloorIndex;
   elevationM: number;
@@ -104,11 +109,22 @@ export interface FloorSpec {
    * Extra walkable surfaces outside floor.cells, e.g. an open roof terrace.
    * They are supported by this floor and bounded by its collision mask.
    */
-  walkable?: TileRect[];
+  walkable?: WalkableRegion[];
   rooms: RoomSpec[];
   wallRuns: WallRun[];
   openings: OpeningSpec[];
   stairs: StairSpec[];
+}
+
+export interface RoofFixtureSpec {
+  id: string;
+  level: FloorIndex;
+  x: number;
+  y: number;
+  elevationM: number;
+  textureKey: string;
+  widthPx?: number;
+  heightPx?: number;
 }
 
 export interface BuildingSpec {
@@ -117,6 +133,7 @@ export interface BuildingSpec {
   origin: Vec2;
   floors: FloorSpec[];
   roof?: RoofSpec;
+  fixtures?: RoofFixtureSpec[];
 }
 
 export interface DoorState {

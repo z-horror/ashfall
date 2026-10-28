@@ -43,7 +43,7 @@ function wallRunsFloor0(): WallRun[] {
 
     // Interior dividing partition walls: ALWAYS 'interior' material, NEVER exterior brick!
     // Partition 1: separates West Bedroom (28..34) from Central Foyer (34..36)
-    { id: 'w:test:0:part_west', level: 0, axis: 'v', fixed: 34, from: 28, to: 37, material: 'interior', thicknessM: 0.15, heightM: hM },
+    { id: 'w:test:0:part_west', level: 0, axis: 'v', fixed: 33, from: 28, to: 37, material: 'interior', thicknessM: 0.15, heightM: hM },
     // Partition 2: separates Central Foyer (34..36) from East Kitchen/Dining (36..40)
     { id: 'w:test:0:part_east', level: 0, axis: 'v', fixed: 36, from: 28, to: 37, material: 'interior', thicknessM: 0.15, heightM: hM },
   ];
@@ -77,14 +77,14 @@ function roomsFloor0(): RoomSpec[] {
       id: 'room:test:0:west',
       level: 0,
       kind: 'bedroom',
-      rects: [{ x: 28, y: 28, w: 6, h: 9 }],
+      rects: [{ x: 28, y: 28, w: 5, h: 9 }],
       reservedZones: [{ x: 31, y: 36, w: 1, h: 1 }],
     },
     {
       id: 'room:test:0:foyer',
       level: 0,
       kind: 'living',
-      rects: [{ x: 34, y: 28, w: 2, h: 9 }],
+      rects: [{ x: 33, y: 28, w: 3, h: 9 }],
       reservedZones: [STAIR_HOLE_MANSARD, { x: 34, y: 32, w: 1, h: 1 }, { x: 35, y: 36, w: 1, h: 1 }],
     },
     {
@@ -145,7 +145,7 @@ const groundFloor: FloorSpec = {
       wallRunId: 'w:test:0:south',
       kind: 'door',
       startM: 10.4,
-      widthM: 1.0,
+      widthM: 1.2,
       sillM: 0,
       heightM: 2.1,
     },
@@ -195,7 +195,7 @@ const groundFloor: FloorSpec = {
       wallRunId: 'w:test:0:part_west',
       kind: 'arch',
       startM: 8.0,
-      widthM: 1.0,
+      widthM: 1.2,
       sillM: 0,
       heightM: 2.2,
     },
@@ -205,7 +205,7 @@ const groundFloor: FloorSpec = {
       wallRunId: 'w:test:0:part_east',
       kind: 'arch',
       startM: 8.0,
-      widthM: 1.0,
+      widthM: 1.2,
       sillM: 0,
       heightM: 2.2,
     },
@@ -238,7 +238,7 @@ const mansardFloor: FloorSpec = {
   clearHeightM: 2.6,
   floor: { cells: MANSARD_CELLS, material: 'wood', thicknessM: 0.4, holes: [STAIR_HOLE_MANSARD] },
   // Open roof terrace south of the mansard (the lower roof slab is walkable).
-  walkable: [{ x: 28, y: 33, w: 12, h: 4 }],
+  walkable: [{ x: 28, y: 33, w: 12, h: 4, elevationM: 3.05, thicknessM: 0.25 }],
   rooms: [
     {
       id: 'room:test:1:mansard',
@@ -256,7 +256,7 @@ const mansardFloor: FloorSpec = {
       wallRunId: 'w:test:1:south',
       kind: 'door',
       startM: 10.4,
-      widthM: 1.0,
+      widthM: 1.2,
       sillM: 0,
       heightM: 2.1,
     },
@@ -290,6 +290,18 @@ export const TEST_BUILDING: BuildingSpec = {
   origin: TEST_BUILDING_ORIGIN,
   floors: [basementFloor, groundFloor, mansardFloor],
   roof: { cells: MANSARD_CELLS, material: 'roof', thicknessM: 0.4, parapetM: 0.5 },
+  fixtures: [
+    {
+      id: 'fixture:test:roof:ac',
+      level: 1,
+      x: 38.0,
+      y: 35.0,
+      elevationM: 3.05,
+      textureKey: 'gen_roof_ac_unit',
+      widthPx: 80,
+      heightPx: 80,
+    },
+  ],
 };
 
 function floorObject(
@@ -337,7 +349,7 @@ export const TEST_OBJECTS: ObjectInstance[] = [
   // Wardrobe flat against North wall
   floorObject('obj:test:0:west:wardrobe:0', 'wardrobe', 0, 'room:test:0:west', { mount: 'floor', x: 29.5, y: 28.45, rotation: 0 }, true),
   floorObject('obj:test:0:west:bed:0', 'bed_double', 0, 'room:test:0:west', { mount: 'floor', x: 32.0, y: 28.8, rotation: 0 }, false),
-  floorObject('obj:test:0:west:nightstand:0', 'nightstand', 0, 'room:test:0:west', { mount: 'floor', x: 33.3, y: 28.6, rotation: 0 }, false),
+  floorObject('obj:test:0:west:nightstand:0', 'nightstand', 0, 'room:test:0:west', { mount: 'floor', x: 32.6, y: 28.6, rotation: 0 }, false),
   floorObject('obj:test:0:west:rug:0', 'rug', 0, 'room:test:0:west', { mount: 'floor', x: 31.0, y: 31.5, rotation: 0 }, false),
   wallObject('obj:test:0:west:picture:0', 'picture', 0, 'room:test:0:west', 'w:test:0:north', 3.0, 1.5),
 

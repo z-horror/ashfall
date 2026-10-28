@@ -73,19 +73,15 @@ export function footprintAabb(parts: WorldFootprint[]): WorldAabb {
   return { minX, minY, maxX, maxY };
 }
 
+/**
+ * Visual ground contact point in world space: the centre of the front
+ * (south-facing) edge of the footprint. This is the one point used by the
+ * sprite anchor, contact shadow and support tests.
+ */
 export function supportPoint(parts: WorldFootprint[]): Vec2 {
-  let best = { x: 0, y: 0 };
-  let bestDepth = -Infinity;
-  for (const part of parts) {
-    const x = isAabb(part) ? part.maxX : part.x + part.r;
-    const y = isAabb(part) ? part.maxY : part.y + part.r;
-    const depth = x + y;
-    if (depth > bestDepth) {
-      bestDepth = depth;
-      best = { x, y };
-    }
-  }
-  return best;
+  if (parts.length === 0) return { x: 0, y: 0 };
+  const box = footprintAabb(parts);
+  return { x: (box.minX + box.maxX) / 2, y: box.maxY };
 }
 
 export function aabbOverlap(a: WorldAabb, b: WorldAabb): boolean {

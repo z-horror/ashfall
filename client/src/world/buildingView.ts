@@ -5,7 +5,6 @@ import {
   TILE_SIZE_M,
   openingCenter,
   runPointAtM,
-  sideOfWall,
   solidIntervals,
   worldToScreen,
   type BuildingSpec,
@@ -18,6 +17,11 @@ import {
   type WindowState,
   type StairSpec,
   TILE_W,
+  cutWallIds,
+  foundationVisible,
+  mansardRoofVisible,
+  terraceRoofVisible,
+  wallIsExterior,
 } from '@ashfall/shared';
 import { InteriorView } from './interiorView.js';
 
@@ -157,8 +161,9 @@ class WallPiece {
     // Draw solid wall panel with top face across thickness
     drawWallPanel(this.full, run, startM, endM - startM, zBot, zTop, colors.face, colors.top);
 
-    // Realistic cutaway wall: lower portion (0.5m) with coping on top
-    const cutTop = Math.min(zTop, floor.elevationM + 0.5);
+    // Cutaway base follows the same plinth scale for interior partitions.
+    const cutHeight = run.material === 'interior' ? 0.22 : 0.5;
+    const cutTop = Math.min(zTop, floor.elevationM + cutHeight);
     if (cutTop > zBot) {
       drawWallPanel(this.cut, run, startM, endM - startM, zBot, cutTop, colors.cut, colors.top);
     }
@@ -552,11 +557,13 @@ class DoorView {
 class WindowView {
   private graphics: Phaser.GameObjects.Graphics;
   private image?: Phaser.GameObjects.Image;
-  private run: WallRun;
+  readonly run: WallRun;
   private opening: OpeningSpec;
   private floor: FloorSpec;
   private state: WindowState;
   private depth: number;
+  private active = true;
+  private cutVisible = false;
 
   constructor(scene: Phaser.Scene, floor: FloorSpec, run: WallRun, opening: OpeningSpec, state: WindowState) {
     this.floor = floor;
@@ -587,10 +594,12 @@ class WindowView {
       pTR = worldToScreen(endTile, y, lintelZ);
     } else {
       const x = run.fixed + half;
-      pBL = worldToScreen(x, endTile, sillZ);
-      pBR = worldToScreen(x, startTile, sillZ);
-      pTL = worldToScreen(x, endTile, lintelZ);
-      pTR = worldToScreen(x, startTile, lintelZ);
+      // Match DoorView's run direction; a vertical wall must not mirror its
+      // opening relative to the wall segment.
+      pBL = worldToScreen(x, startTile, sillZ);
+      pBR = worldToScreen(x, endTile, sillZ);
+      pTL = worldToScreen(x, startTile, lintelZ);
+      pTR = worldToScreen(x, endTile, lintelZ);
     }
 
     const minX = Math.min(pBL.x, pBR.x, pTL.x, pTR.x) - 4;
@@ -640,6 +649,13 @@ class WindowView {
   private draw(): void {
     const g = this.graphics;
     g.clear();
+    if (this.cutVisible) {
+      g.setVisible(false);
+      this.image?.setVisible(false);
+      return;
+    }
+    g.setVisible(this.active);
+    this.image?.setVisible(this.active);
     if (this.state.boarded) {
       const z0 = this.floor.elevationM + this.opening.sillM;
       drawWallPanel(g, this.run, this.opening.startM + 0.05, this.opening.widthM - 0.1, z0 + 0.25, z0 + 0.35, 0x5a4632);
@@ -653,8 +669,15 @@ class WindowView {
   }
 
   setActive(active: boolean): void {
-    this.graphics.setVisible(active);
-    this.image?.setVisible(active);
+    this.active = active;
+    this.graphics.setVisible(active && !this.cutVisible);
+    this.image?.setVisible(active && !this.cutVisible);
+  }
+
+  setCut(cut: boolean): void {
+    if (this.cutVisible === cut) return;
+    this.cutVisible = cut;
+    this.draw();
   }
 
   destroy(): void {
@@ -769,7 +792,7 @@ class StairView {
         const yMid = (y0 + y1) / 2;
         const postBase = p(x1 - 0.04, yMid, zTop);
         const postTop = p(x1 - 0.04, yMid, zTop + 0.82);
-        g.lineStyle(3, 0x3e2c1c, 0.95);
+        g.lineStyle(2.5, 0x5a4028, 0.95);
         g.beginPath();
         g.moveTo(postBase.x, postBase.y);
         g.lineTo(postTop.x, postTop.y);
@@ -780,12 +803,12 @@ class StairView {
     // Wooden handrail running down the open side
     const railTopStart = worldToScreen(x1 - 0.04, yStart, zRailStart + 0.82);
     const railTopEnd = worldToScreen(x1 - 0.04, yEnd, zRailEnd + 0.82);
-    g.lineStyle(4, 0x5a4028, 1);
+    g.lineStyle(2.5, 0x7c5a3a, 1);
     g.beginPath();
     g.moveTo(railTopStart.x, railTopStart.y);
     g.lineTo(railTopEnd.x, railTopEnd.y);
     g.strokePath();
-    g.lineStyle(1.5, 0x7c5a3a, 0.9);
+    g.lineStyle(1, 0x8e6e4c, 0.9);
     g.beginPath();
     g.moveTo(railTopStart.x, railTopStart.y - 1.5);
     g.lineTo(railTopEnd.x, railTopEnd.y - 1.5);
@@ -849,10 +872,19 @@ export class BuildingView {
     this.scene = scene;
     this.building = building;
 
-    // Solid foundation subfloor slab strictly under building footprint (28..40, 28..37)
-    // Does NOT extend outside into the grass!
+    // Solid foundation subfloor follows the ground-floor footprint from data.
     const subfloor = scene.add.graphics().setDepth(-500_000);
-    const bMinX = 28.0, bMaxX = 40.0, bMinY = 28.0, bMaxY = 37.0;
+    const groundFloor = building.floors.find((floor) => floor.level === 0);
+    let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
+    for (const cell of groundFloor?.floor.cells ?? []) {
+      bMinX = Math.min(bMinX, cell.x);
+      bMaxX = Math.max(bMaxX, cell.x + cell.w);
+      bMinY = Math.min(bMinY, cell.y);
+      bMaxY = Math.max(bMaxY, cell.y + cell.h);
+    }
+    if (!Number.isFinite(bMinX)) {
+      bMinX = 0; bMaxX = 0; bMinY = 0; bMaxY = 0;
+    }
     fillQuad(
       subfloor,
       worldToScreen(bMinX, bMinY, -0.05),
@@ -874,15 +906,16 @@ export class BuildingView {
       fixed: number,
       from: number,
       to: number,
-      facing: 'south' | 'east' | 'west',
+      facing: 'north' | 'south' | 'east' | 'west',
     ) => {
       const half = 0.1;
+      const sign = facing === 'north' || facing === 'west' ? -1 : 1;
       const baseColor = facing === 'south' ? 0x3e3a34 : facing === 'east' ? 0x2a2722 : 0x34302a;
-      const topColor = facing === 'south' ? 0x544e44 : 0x3e3a34;
+      const topColor = facing === 'south' ? 0x544e44 : facing === 'east' ? 0x3e3a34 : 0x34302a;
 
       if (axis === 'h') {
-        const yFace = fixed + half;
-        const yLedge = fixed + half - 0.08;
+        const yFace = fixed + sign * half;
+        const yLedge = yFace - sign * 0.08;
         const pBL = worldToScreen(from, yFace, zGround);
         const pBR = worldToScreen(to, yFace, zGround);
         const pTR = worldToScreen(to, yFace, zPlinthTop);
@@ -910,8 +943,8 @@ export class BuildingView {
           curb.strokePath();
         }
       } else {
-        const xFace = facing === 'east' ? fixed + half : fixed - half;
-        const xLedge = facing === 'east' ? fixed + half - 0.08 : fixed - half + 0.08;
+        const xFace = fixed + sign * half;
+        const xLedge = xFace - sign * 0.08;
         const pBL = worldToScreen(xFace, to, zGround);
         const pBR = worldToScreen(xFace, from, zGround);
         const pTR = worldToScreen(xFace, from, zPlinthTop);
@@ -945,13 +978,27 @@ export class BuildingView {
       curb.strokePath();
     };
 
-    // South facade plinth with doorstep for front door at x = 34.45..35.55
-    drawPlinthSegment('h', 37, 27.9, 34.45, 'south');
-    drawDoorstep(34.45, 35.55, 37.0);
-    drawPlinthSegment('h', 37, 35.55, 40.05, 'south');
-
-    // East facade plinth
-    drawPlinthSegment('v', 40, 27.9, 37.05, 'east');
+    // Plinth is generated from the same ground-floor wall runs as collision.
+    for (const run of groundFloor?.wallRuns ?? []) {
+      const exterior =
+        run.axis === 'h'
+          ? run.fixed <= bMinY + 1e-6 || run.fixed >= bMaxY - 1e-6
+          : run.fixed <= bMinX + 1e-6 || run.fixed >= bMaxX - 1e-6;
+      if (!exterior) continue;
+      const facing: 'north' | 'south' | 'east' | 'west' =
+        run.axis === 'h'
+          ? run.fixed <= bMinY + 1e-6 ? 'north' : 'south'
+          : run.fixed <= bMinX + 1e-6 ? 'west' : 'east';
+      drawPlinthSegment(run.axis, run.fixed, run.from, run.to, facing);
+    }
+    for (const opening of groundFloor?.openings ?? []) {
+      if (opening.kind !== 'door') continue;
+      const run = groundFloor?.wallRuns.find((candidate) => candidate.id === opening.wallRunId);
+      if (!run || run.axis !== 'h') continue;
+      const x0 = run.from + opening.startM / 1.6;
+      const x1 = run.from + (opening.startM + opening.widthM) / 1.6;
+      drawDoorstep(x0, x1, run.fixed);
+    }
 
     this.foundationCurb = curb;
 
@@ -1163,26 +1210,33 @@ export class BuildingView {
 
     const stairs = floor.stairs.map((stair) => new StairView(this.scene, floor, stair));
 
-    let innerCorner: Phaser.GameObjects.Image | undefined;
-    if (floor.level === 0 && this.scene.textures.exists('gen_wall_corner')) {
-      const cornerPt = worldToScreen(28, 28, floor.elevationM);
-      innerCorner = this.scene.add.image(cornerPt.x, cornerPt.y, 'gen_wall_corner')
-        .setOrigin(0.5, 0.969)
-        .setDepth(28 + 28 + FLOOR_BAND * floor.level + 0.15)
-        .setDisplaySize(80, 2.8 * 40 * 1.05);
-      innerCorner.setVisible(false);
+    // Corner treatment is derived from the same floor bounds as the walls,
+    // rather than a single hardcoded SW/SE special case.
+    let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity;
+    for (const cell of floor.floor.cells) {
+      cMinX = Math.min(cMinX, cell.x);
+      cMaxX = Math.max(cMaxX, cell.x + cell.w);
+      cMinY = Math.min(cMinY, cell.y);
+      cMaxY = Math.max(cMaxY, cell.y + cell.h);
     }
-
-    // Outer corner pilaster at SE corner (40, 37)
     const outerCornerPilaster = this.scene.add.graphics()
-      .setDepth(40 + 37 + FLOOR_BAND * floor.level + 0.35);
-    const seBottom = worldToScreen(40.1, 37.1, floor.elevationM);
-    const seTop = worldToScreen(40.1, 37.1, floor.elevationM + (floor.level < 0 ? 2.6 : 2.8));
-    outerCornerPilaster.lineStyle(2.5, 0x221a14, 0.8);
-    outerCornerPilaster.beginPath();
-    outerCornerPilaster.moveTo(seBottom.x, seBottom.y);
-    outerCornerPilaster.lineTo(seTop.x, seTop.y);
-    outerCornerPilaster.strokePath();
+      .setDepth(cMaxX + cMaxY + FLOOR_BAND * floor.level + 0.35);
+    if (Number.isFinite(cMinX)) {
+      for (const [cx, cy] of [
+        [cMinX, cMinY],
+        [cMaxX, cMinY],
+        [cMaxX, cMaxY],
+        [cMinX, cMaxY],
+      ]) {
+        const bottom = worldToScreen(cx, cy, floor.elevationM);
+        const top = worldToScreen(cx, cy, floor.elevationM + floor.clearHeightM);
+        outerCornerPilaster.lineStyle(2.5, 0x221a14, 0.8);
+        outerCornerPilaster.beginPath();
+        outerCornerPilaster.moveTo(bottom.x, bottom.y);
+        outerCornerPilaster.lineTo(top.x, top.y);
+        outerCornerPilaster.strokePath();
+      }
+    }
 
     this.floors.set(floor.level, {
       floor: floorGraphics,
@@ -1192,7 +1246,6 @@ export class BuildingView {
       windows,
       furniture,
       stairs,
-      innerCorner,
       outerCornerPilaster,
     });
   }
@@ -1348,50 +1401,81 @@ export class BuildingView {
         .setDepth(depth);
     };
 
-    // 1. Mansard Roof over Floor 1 (27.85..40.15, 27.85..33.15, z=5.4..5.65m)
-    const mansardRoof = buildRoofSlab('roof_mansard', 27.85, 40.15, 27.85, 33.15, 5.4, 5.65, FLOOR_BAND * 1 + 9000, true);
-    if (mansardRoof) this.mansardRoofObjects.push(mansardRoof);
+    const mansardFloor = this.building.floors.find((floor) => floor.level === 1);
+    const roof = this.building.roof;
+    if (roof && mansardFloor) {
+      const bounds = (cells: typeof roof.cells) => {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const cell of cells) {
+          minX = Math.min(minX, cell.x);
+          maxX = Math.max(maxX, cell.x + cell.w);
+          minY = Math.min(minY, cell.y);
+          maxY = Math.max(maxY, cell.y + cell.h);
+        }
+        return { minX, maxX, minY, maxY };
+      };
+      const roofBounds = bounds(roof.cells);
+      const roofBase = mansardFloor.elevationM + mansardFloor.clearHeightM;
+      const roofTop = roofBase + Math.max(0.1, roof.thicknessM);
+      const mansardRoof = buildRoofSlab(
+        'roof_mansard',
+        roofBounds.minX,
+        roofBounds.maxX,
+        roofBounds.minY,
+        roofBounds.maxY,
+        roofBase,
+        roofTop,
+        FLOOR_BAND * 1 + 9000,
+        true,
+      );
+      if (mansardRoof) this.mansardRoofObjects.push(mansardRoof);
 
-    // 2. Open Roof Terrace over Floor 0 South section (27.85..40.15, 32.85..37.15, z=2.8..3.05m)
-    const terraceRoof = buildRoofSlab('terrace_front', 27.85, 40.15, 32.85, 37.15, 2.8, 3.05, FLOOR_BAND * 0 + 8000, false);
-    if (terraceRoof) this.terraceRoofObjects.push(terraceRoof);
+      // Raised open surfaces (the terrace) are data, not a second hardcoded roof.
+      (mansardFloor.walkable ?? []).forEach((region, index) => {
+        const key = index === 0 ? 'terrace_front' : `terrace_${index}`;
+        const base = region.elevationM - (region.thicknessM ?? 0.25);
+        const terrace = buildRoofSlab(
+          key,
+          region.x,
+          region.x + region.w,
+          region.y,
+          region.y + region.h,
+          base,
+          region.elevationM,
+          FLOOR_BAND * 0 + 8000,
+          false,
+        );
+        if (terrace) this.terraceRoofObjects.push(terrace);
+      });
 
-    // 3. Rooftop Industrial AC Unit: Firmly grounded on the front roof terrace at (38.0, 35.0)!
-    if (this.scene.textures.exists('gen_roof_ac_unit')) {
-      const acX = 38.0;
-      const acY = 35.0;
-      const zTerraceTop = 3.05;
-      const acPos = worldToScreen(acX, acY, zTerraceTop);
-      // The unit stands on the lower terrace, south of the mansard facade.
-      // Its isometric depth must sort against the floor-1 band, otherwise the
-      // floor-1 slab/south wall (depth 9000/10068+) hides its right side.
-      const acDepth = FLOOR_BAND * 1 + acX + acY;
+      // Roof equipment is data-driven too, so its support height and depth
+      // cannot drift away from the terrace surface.
+      for (const fixture of this.building.fixtures ?? []) {
+        if (!this.scene.textures.exists(fixture.textureKey)) continue;
+        const pos = worldToScreen(fixture.x, fixture.y, fixture.elevationM);
+        const fixtureDepth = FLOOR_BAND * fixture.level + fixture.x + fixture.y;
+        const rails = this.scene.add.graphics().setDepth(fixtureDepth - 1);
+        const r0 = worldToScreen(fixture.x - 0.4, fixture.y - 0.2, fixture.elevationM);
+        const r1 = worldToScreen(fixture.x + 0.4, fixture.y - 0.2, fixture.elevationM);
+        const r2 = worldToScreen(fixture.x - 0.4, fixture.y + 0.2, fixture.elevationM);
+        const r3 = worldToScreen(fixture.x + 0.4, fixture.y + 0.2, fixture.elevationM);
+        rails.lineStyle(3, 0x2e2c28, 1);
+        rails.beginPath();
+        rails.moveTo(r0.x, r0.y);
+        rails.lineTo(r1.x, r1.y);
+        rails.moveTo(r2.x, r2.y);
+        rails.lineTo(r3.x, r3.y);
+        rails.strokePath();
+        rails.fillStyle(0x050504, 0.6);
+        rails.fillEllipse(pos.x, pos.y - 2, 54, 20);
+        this.terraceRoofObjects.push(rails);
 
-      // Steel mounting rails resting directly on tar paper
-      const railsG = this.scene.add.graphics().setDepth(acDepth - 1);
-      const r0 = worldToScreen(37.6, 34.8, zTerraceTop);
-      const r1 = worldToScreen(38.4, 34.8, zTerraceTop);
-      const r2 = worldToScreen(37.6, 35.2, zTerraceTop);
-      const r3 = worldToScreen(38.4, 35.2, zTerraceTop);
-      railsG.lineStyle(3, 0x2e2c28, 1);
-      railsG.beginPath();
-      railsG.moveTo(r0.x, r0.y);
-      railsG.lineTo(r1.x, r1.y);
-      railsG.moveTo(r2.x, r2.y);
-      railsG.lineTo(r3.x, r3.y);
-      railsG.strokePath();
-
-      // Contact drop shadow directly under mounting feet (no air hover!)
-      railsG.fillStyle(0x050504, 0.6);
-      railsG.fillEllipse(acPos.x, acPos.y - 2, 54, 20);
-      this.terraceRoofObjects.push(railsG);
-
-      // AC Unit Sprite firmly anchored on the roof surface
-      const acSprite = this.scene.add.image(acPos.x, acPos.y, 'gen_roof_ac_unit')
-        .setOrigin(0.5, 0.98)
-        .setDepth(acDepth)
-        .setDisplaySize(80, 80);
-      this.terraceRoofObjects.push(acSprite);
+        const fixtureImage = this.scene.add.image(pos.x, pos.y, fixture.textureKey)
+          .setOrigin(0.5, 0.98)
+          .setDepth(fixtureDepth)
+          .setDisplaySize(fixture.widthPx ?? 80, fixture.heightPx ?? 80);
+        this.terraceRoofObjects.push(fixtureImage);
+      }
     }
   }
 
@@ -1409,6 +1493,12 @@ export class BuildingView {
 
   setObjectState(id: string, state: ObjectState): void {
     this.furnitureViews.get(id)?.setState(state);
+  }
+
+  private stairVisibilityFloor(floor: number): number {
+    // Stairs are interior geometry. Hide them from the exterior shell and from
+    // the open terrace; keep them visible on the basement/current interior.
+    return this.inside || floor === -1 ? floor : 999;
   }
 
   private roomHere(x: number, y: number, floor: number): boolean {
@@ -1431,7 +1521,7 @@ export class BuildingView {
     // Plinth (curb) & subfloor: strictly visible when activeFloor >= 0, completely hidden in basement
     const curbVisible = floor >= 0 && (!this.inside || floor === 0 || floor === 1);
     this.foundationCurb?.setVisible(curbVisible);
-    this.subfloor?.setVisible(floor >= 0);
+    this.subfloor?.setVisible(foundationVisible(floor));
 
     for (const [level, entry] of this.floors) {
       if (level === -1) {
@@ -1443,7 +1533,7 @@ export class BuildingView {
         for (const door of entry.doors) door.setActive(active);
         for (const window of entry.windows) window.setActive(active);
         for (const furniture of entry.furniture) furniture.setVisible(active);
-        for (const stair of entry.stairs) stair.setActive(floor);
+        for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
       } else if (level === 0) {
         // Ground floor
         if (floor === -1) {
@@ -1454,7 +1544,7 @@ export class BuildingView {
           for (const door of entry.doors) door.setActive(false);
           for (const window of entry.windows) window.setActive(false);
           for (const furniture of entry.furniture) furniture.setVisible(false);
-          for (const stair of entry.stairs) stair.setActive(floor);
+          for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
           entry.innerCorner?.setVisible(false);
           entry.outerCornerPilaster?.setVisible(false);
         } else if (floor === 0) {
@@ -1466,22 +1556,23 @@ export class BuildingView {
           for (const door of entry.doors) door.setActive(active);
           for (const window of entry.windows) window.setActive(active);
           for (const furniture of entry.furniture) furniture.setVisible(this.inside);
-          for (const stair of entry.stairs) stair.setActive(floor);
+          for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
           entry.innerCorner?.setVisible(this.inside);
           entry.outerCornerPilaster?.setVisible(!this.inside);
         } else if (floor === 1) {
           // On 2nd floor (Mansard): Floor 0 exterior walls/windows stay visible from outside!
           entry.floor.setVisible(false);
           entry.floorImage?.setVisible(false);
+          const ground = this.building.floors.find((candidate) => candidate.level === 0);
           for (const wall of entry.walls) {
-            const isExterior = wall.run.id === 'w:test:0:south' || wall.run.id === 'w:test:0:east' || wall.run.id === 'w:test:0:west';
+            const isExterior = ground ? wallIsExterior(wall.run, ground) : false;
             wall.setActive(isExterior);
             if (isExterior) wall.setCut(false);
           }
           for (const door of entry.doors) door.setActive(true);
           for (const window of entry.windows) window.setActive(true);
           for (const furniture of entry.furniture) furniture.setVisible(false);
-          for (const stair of entry.stairs) stair.setActive(floor);
+          for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
           entry.innerCorner?.setVisible(false);
           entry.outerCornerPilaster?.setVisible(true);
         }
@@ -1495,7 +1586,7 @@ export class BuildingView {
           for (const door of entry.doors) door.setActive(false);
           for (const window of entry.windows) window.setActive(false);
           for (const furniture of entry.furniture) furniture.setVisible(false);
-          for (const stair of entry.stairs) stair.setActive(floor);
+          for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
         } else if (floor === 0) {
           // On ground floor: 2nd floor exterior visible from outside, hidden when inside
           const active = !this.inside;
@@ -1505,7 +1596,7 @@ export class BuildingView {
           for (const door of entry.doors) door.setActive(active);
           for (const window of entry.windows) window.setActive(active);
           for (const furniture of entry.furniture) furniture.setVisible(false);
-          for (const stair of entry.stairs) stair.setActive(floor);
+          for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
         } else if (floor === 1) {
           // On 2nd floor
           const active = true;
@@ -1515,35 +1606,32 @@ export class BuildingView {
           for (const door of entry.doors) door.setActive(active);
           for (const window of entry.windows) window.setActive(active);
           for (const furniture of entry.furniture) furniture.setVisible(this.inside);
-          for (const stair of entry.stairs) stair.setActive(floor);
+          for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
         }
       }
     }
 
-    // Mansard roof: hidden when player is inside floor 1, visible otherwise (when outside on ground)
-    const mansardRoofVisible = floor >= 0 && (!this.inside || floor < 1);
-    for (const obj of this.mansardRoofObjects) obj.setVisible(mansardRoofVisible);
+    // Mansard roof: visible only from outside. Inside the cutaway it must not
+    // cover the space the player is inspecting.
+    for (const obj of this.mansardRoofObjects) obj.setVisible(mansardRoofVisible(floor, this.inside));
 
     // Front terrace roof: visible on ground outside OR when on floor 1!
-    const terraceRoofVisible = floor >= 0 && (!this.inside || floor === 1);
-    for (const obj of this.terraceRoofObjects) obj.setVisible(terraceRoofVisible);
+    for (const obj of this.terraceRoofObjects) obj.setVisible(terraceRoofVisible(floor, this.inside));
 
     // Cutaway wall slicing for current interior floor
     const current = this.floors.get(floor);
-    if (current && this.inside) {
-      const camera = { x: x + 1000, y: y + 1000 };
-      const cutWalls = new Set<string>();
-      for (const run of this.building.floors.find((candidate) => candidate.level === floor)?.wallRuns ?? []) {
-        const a = sideOfWall(run, { x, y });
-        const b = sideOfWall(run, camera);
-        if (Math.sign(a) !== Math.sign(b)) cutWalls.add(run.id);
-      }
+    const currentSpec = this.building.floors.find((candidate) => candidate.level === floor);
+    if (current && currentSpec && this.inside) {
+      const cutWalls = cutWallIds(currentSpec, x, y);
       for (const wall of current.walls) {
         const run = this.building.floors.find((candidate) => candidate.level === floor)?.wallRuns.find((candidate) => candidate.id === wall.run.id);
         if (run) wall.setCut(cutWalls.has(run.id));
       }
       for (const door of current.doors) {
         door.setCut(cutWalls.has(door.run.id));
+      }
+      for (const window of current.windows) {
+        window.setCut(cutWalls.has(window.run.id));
       }
       for (const [id, furniture] of this.furnitureViews) {
         const object = furniture.object;
@@ -1554,6 +1642,7 @@ export class BuildingView {
       for (const entry of this.floors.values()) {
         for (const wall of entry.walls) wall.setCut(false);
         for (const door of entry.doors) door.setCut(false);
+        for (const window of entry.windows) window.setCut(false);
       }
       for (const furniture of this.furnitureViews.values()) furniture.setWallCut(false);
     }

@@ -9,6 +9,14 @@ import {
   canAttackAcrossFloor,
   circleHits,
   floorElevationM,
+  stairPromptFor,
+  surfaceElevationM,
+  surfaceHitAt,
+  cutWallIds,
+  floorVisibility,
+  mansardRoofVisible,
+  terraceRoofVisible,
+  wallIsExterior,
   hasFloorSight,
   moveCircle,
   openingCenter,
@@ -26,6 +34,7 @@ import { World } from '../src/game/world.js';
 import { Simulation } from '../src/game/simulation.js';
 import { waitForDatabase } from '../src/persistence/db.js';
 import { ClientWorld } from '../../client/src/world/clientWorld.js';
+import { containerSignature, selectionExists } from '../../client/src/ui/lootState.js';
 
 function floorOf(world: World) {
   const floor = world.getFloor(0);
@@ -62,7 +71,7 @@ test('door interval is measured from the wall-run start in meters', () => {
   assert.equal(intervals.length, 2);
   assert.ok(Math.abs(intervals[0].startM) < 1e-9);
   assert.ok(Math.abs(intervals[0].endM - 10.4) < 1e-9);
-  assert.ok(Math.abs(intervals[1].startM - 11.4) < 1e-9);
+  assert.ok(Math.abs(intervals[1].startM - 11.6) < 1e-9);
   assert.ok(Math.abs(intervals[1].endM - 19.2) < 1e-9);
   const center = openingCenter(wall, door);
   assert.ok(Math.abs(center.x - 34.8125) < 0.1 || Math.abs(center.x - 35.0) < 0.5);
@@ -76,7 +85,7 @@ test('rooms are connected masks, do not overlap, and attach to openings', () => 
   const east = floor.rooms.find((room) => room.id === 'room:test:0:east')!;
   const westGeometry = buildRoomGeometry(west);
   const eastGeometry = buildRoomGeometry(east);
-  assert.equal(westGeometry.cells.length, 54);
+  assert.equal(westGeometry.cells.length, 45);
   assert.equal(eastGeometry.cells.length, 36);
   assert.equal(roomsOverlap(westGeometry, eastGeometry), false);
   assert.equal(world.roomContains('room:test:0:west', 31.5, 33.0), true);
@@ -112,7 +121,10 @@ test('furniture footprint rotation changes AABB and support point', () => {
   const rotatedAabb = aabbOf(worldFootprintParts(rotated, wardrobe));
   assert.ok(baseAabb.maxX - baseAabb.minX > rotatedAabb.maxX - rotatedAabb.minX);
   assert.ok(rotatedAabb.maxY - rotatedAabb.minY > baseAabb.maxY - baseAabb.minY);
-  assert.ok(supportPoint(worldFootprintParts(rotated, wardrobe)).y > supportPoint(worldFootprintParts(base, wardrobe)).y);
+  const baseSupport = supportPoint(worldFootprintParts(base, wardrobe));
+  assert.ok(baseSupport.x > baseAabb.minX && baseSupport.x < baseAabb.maxX, 'support X must be the footprint centre, not a corner');
+  assert.equal(baseSupport.y, baseAabb.maxY, 'support Y must be the front footprint edge');
+  assert.ok(supportPoint(worldFootprintParts(rotated, wardrobe)).y > baseSupport.y);
 });
 
 test('closed doors block movement, open doors allow passage', () => {
@@ -233,7 +245,7 @@ test('player-sized routes remain open around furniture and through arches', () =
   const world = new World('test-routes');
   world.setDoorOpen('o:test:1:door_terrace', true);
   assert.equal(
-    circleHits(world.getCollisionGrid(0), 33.7, 28.6, PLAYER_RADIUS),
+    circleHits(world.getCollisionGrid(0), 32.9, 28.6, PLAYER_RADIUS),
     true,
     'nightstand/partition gap is narrower than the player and must stay blocked',
   );
@@ -254,6 +266,76 @@ test('floor elevation comes from FloorSpec data, including the basement and mans
   assert.equal(floorElevationM(floors, 0), 0);
   assert.equal(floorElevationM(floors, -1), -3.0);
   assert.equal(floorElevationM(floors, 1), 2.8);
+});
+
+test('walkable surfaces resolve terrace height and building context', () => {
+  const world = new World('test-surfaces');
+  assert.equal(surfaceElevationM(world.getFloor(1) ? [world.getFloor(1)!] : [], 1, 32, 30), 2.8);
+  assert.equal(world.surfaceElevationAt(32, 30, 1), 2.8);
+  assert.equal(world.surfaceElevationAt(35.5, 35.5, 1), 3.05);
+  assert.equal(surfaceHitAt([world.getFloor(1)!], 1, 35.5, 35.5)?.kind, 'walkable');
+  assert.equal(world.buildingAt(35.5, 35.5, 1)?.id, 'b:v3:test:28:28');
+  assert.equal(world.roomAt(35.5, 35.5, 1), null);
+  assert.equal(world.buildingAt(41, 35, 1), null);
+});
+
+test('floor visibility matrix is consistent for all supported levels', () => {
+  const groundInside = floorVisibility(0, 0, true);
+  assert.deepEqual(
+    { surface: groundInside.surface, walls: groundInside.walls, furniture: groundInside.furniture, stairs: groundInside.stairs },
+    { surface: true, walls: true, furniture: true, stairs: true },
+  );
+  const groundUnderMansard = floorVisibility(0, 1, true);
+  assert.equal(groundUnderMansard.surface, false);
+  assert.equal(groundUnderMansard.walls, true);
+  assert.equal(groundUnderMansard.furniture, false);
+  const terraceFromGround = floorVisibility(1, 0, false);
+  assert.equal(terraceFromGround.surface, true);
+  assert.equal(terraceFromGround.walls, true);
+  assert.equal(terraceFromGround.furniture, false);
+  assert.equal(floorVisibility(1, 0, true).visible, false);
+  assert.equal(floorVisibility(-1, -1, true).visible, true);
+  assert.equal(mansardRoofVisible(0, true), false);
+  assert.equal(mansardRoofVisible(0, false), true);
+  assert.equal(terraceRoofVisible(1, true), true);
+  assert.equal(terraceRoofVisible(0, true), false);
+});
+
+test('cutaway and exterior wall helpers use geometry, not test ids', () => {
+  const world = new World('test-visibility');
+  const ground = world.getFloor(0)!;
+  const cut = cutWallIds(ground, 31, 33);
+  assert.ok(cut.has('w:test:0:south'));
+  assert.ok(cut.has('w:test:0:east'));
+  assert.equal(wallIsExterior(ground.wallRuns.find((run) => run.id === 'w:test:0:south')!, ground), true);
+  assert.equal(wallIsExterior(ground.wallRuns.find((run) => run.id === 'w:test:0:part_west')!, ground), false);
+});
+
+test('stair geometry and prompt target the real destination floor', () => {
+  const world = new World('test-stair-model');
+  const ground = world.getFloor(0)!;
+  const wallX = ground.wallRuns.find((run) => run.id === 'w:test:0:part_west')!;
+  const mansard = ground.stairs.find((stair) => stair.id === 's:test:0:1')!;
+  assert.equal(wallX.fixed, 33);
+  assert.equal(mansard.hole.x >= wallX.fixed + wallX.thicknessM / 2, true, 'stairwell must not cut the partition');
+  assert.equal(stairPromptFor(0, -1), 'Спуститься в подвал');
+  assert.equal(stairPromptFor(0, 1), 'Подняться на мансарду');
+  assert.equal(stairPromptFor(1, 0), 'Спуститься на первый этаж');
+  assert.equal(stairPromptFor(-1, 0), 'Подняться на первый этаж');
+});
+
+test('loot selection survives stable ground snapshots', () => {
+  const ground = {
+    id: '__ground__',
+    label: 'Земля',
+    type: 'ground',
+    maxSlots: 12,
+    items: [{ id: 'g1', key: 'bandage', qty: 1, name: 'Бинт', weight: 0.1, equipped: false, kind: 'med' as const, durability: 100 }],
+  };
+  const inv = { items: [], weight: 0, maxWeight: 26, slots: 24, equipped: null };
+  assert.equal(containerSignature(ground), containerSignature({ ...ground, items: [...ground.items] }));
+  assert.equal(selectionExists('g1', inv, ground), true);
+  assert.equal(selectionExists('g1', inv, { ...ground, items: [] }), false);
 });
 
 test('test building objects are inside rooms and do not overlap', () => {

@@ -10,6 +10,7 @@ export * from './buildings/geometry.js';
 export * from './buildings/rooms.js';
 export * from './buildings/collision.js';
 export * from './buildings/sight.js';
+export * from './buildings/visibility.js';
 export * from './interiors/types.js';
 export * from './interiors/catalog.js';
 export * from './interiors/footprint.js';

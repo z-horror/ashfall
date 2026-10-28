@@ -124,6 +124,10 @@ export class CharacterView {
     if (elevationM !== undefined) this.elevationM = elevationM;
   }
 
+  setElevation(elevationM: number): void {
+    this.elevationM = elevationM;
+  }
+
   setLocal(local: boolean): void {
     this.local = local;
   }
@@ -435,13 +439,15 @@ export class ItemSprite {
   private y: number;
   private phase: number;
   private key: string;
+  private floor = 0;
 
-  constructor(scene: Phaser.Scene, id: string, key: string, x: number, y: number) {
+  constructor(scene: Phaser.Scene, id: string, key: string, x: number, y: number, floor = 0) {
     this.scene = scene;
     this.id = id;
     this.x = x;
     this.y = y;
     this.key = key;
+    this.floor = floor;
     this.phase = (hashString(id) % 100) / 100;
     const p = iso(x, y);
     this.glow = artImage(scene, p.x, p.y, 'item_glow').setAlpha(0.5).setDepth(x + y + 0.18);
@@ -457,6 +463,15 @@ export class ItemSprite {
   setPosition(x: number, y: number): void {
     this.x = x;
     this.y = y;
+  }
+
+  setFloor(floor: number): void {
+    this.floor = floor;
+  }
+
+  setVisible(visible: boolean): void {
+    this.icon.setVisible(visible);
+    this.glow.setVisible(visible);
   }
 
   update(now: number): void {

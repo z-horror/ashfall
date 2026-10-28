@@ -1,4 +1,4 @@
-import { metersToTiles, tileToMeters, type Vec2 } from '../geometry/units.js';
+import { metersToTiles, pointInRect, tileToMeters, type Vec2 } from '../geometry/units.js';
 import type { FloorIndex, FloorSpec, OpeningSpec, StairSpec, WallRun } from './types.js';
 
 export interface IntervalM {
@@ -129,4 +129,54 @@ export function nearestStairAt(
     }
   }
   return null;
+}
+
+export interface SurfaceHit {
+  floorLevel: FloorIndex;
+  elevationM: number;
+  kind: 'floor' | 'walkable';
+  rect: { x: number; y: number; w: number; h: number };
+}
+
+/** Resolve the actual support surface at a point, including raised terraces. */
+export function surfaceHitAtFloor(floor: FloorSpec, x: number, y: number): SurfaceHit | null {
+  for (const rect of floor.floor.cells) {
+    if (!pointInRect(x, y, rect)) continue;
+    if ((floor.floor.holes ?? []).some((hole) => pointInRect(x, y, hole))) continue;
+    return { floorLevel: floor.level, elevationM: floor.elevationM, kind: 'floor', rect };
+  }
+  for (const region of floor.walkable ?? []) {
+    if (!pointInRect(x, y, region)) continue;
+    if ((floor.floor.holes ?? []).some((hole) => pointInRect(x, y, hole))) continue;
+    return { floorLevel: floor.level, elevationM: region.elevationM, kind: 'walkable', rect: region };
+  }
+  return null;
+}
+
+export function surfaceHitAt(
+  floors: readonly FloorSpec[],
+  level: FloorIndex,
+  x: number,
+  y: number,
+): SurfaceHit | null {
+  const floor = floors.find((candidate) => candidate.level === level);
+  return floor ? surfaceHitAtFloor(floor, x, y) : null;
+}
+
+export function surfaceElevationM(
+  floors: readonly FloorSpec[],
+  level: FloorIndex,
+  x: number,
+  y: number,
+): number {
+  return surfaceHitAt(floors, level, x, y)?.elevationM ?? floorElevationM(floors, level);
+}
+
+/** UI text must follow the actual target floor, not the stair's source direction. */
+export function stairPromptFor(fromLevel: FloorIndex, toLevel: FloorIndex): string {
+  if (toLevel === -1) return 'Спуститься в подвал';
+  if (fromLevel === -1 && toLevel === 0) return 'Подняться на первый этаж';
+  if (toLevel === 0) return 'Спуститься на первый этаж';
+  if (toLevel === 1) return 'Подняться на мансарду';
+  return `Перейти на этаж ${toLevel}`;
 }

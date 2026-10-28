@@ -10,6 +10,7 @@ import {
   type SelfSnapshot,
 } from '@ashfall/shared';
 import { getItemIconUrl } from '../art/textures.js';
+import { containerSignature, selectionExists } from './lootState.js';
 import type { NetStatus } from '../net/connection.js';
 
 export interface HudActions {
@@ -40,6 +41,7 @@ export class HUD {
   private inv: InventoryView | null = null;
   private container: ContainerView | null = null;
   private selectedId: string | null = null;
+  private lastContainerSignature = '';
   private inventoryOpen = false;
   private chatOpen = false;
   private deathOpen = false;
@@ -332,8 +334,17 @@ export class HUD {
 
   setInventory(inv: InventoryView, container?: ContainerView | null): void {
     this.inv = inv;
-    this.container = container ?? null;
-    if (this.selectedId && !inv.items.some((i) => i.id === this.selectedId)) this.selectedId = null;
+    // A server inventory response for a player's backpack must not close the
+    // client-side ground-loot panel; it is refreshed by the next snapshot.
+    if (container === null && this.container?.id === '__ground__') {
+      // keep the current ground container
+    } else {
+      this.container = container ?? null;
+    }
+    this.lastContainerSignature = containerSignature(this.container);
+    if (this.selectedId && !selectionExists(this.selectedId, this.inv, this.container)) {
+      this.selectedId = null;
+    }
     this.renderQuickbar();
     this.renderInventory();
     this.renderCrafting();
@@ -341,12 +352,20 @@ export class HUD {
 
   setContainer(container: ContainerView | null): void {
     if (container) {
-      if (this.container?.id !== container.id) this.selectedId = null;
+      const signature = containerSignature(container);
+      if (this.container?.id === container.id && signature === this.lastContainerSignature) {
+        // Same contents: update the reference without tearing down the DOM.
+        this.container = container;
+        return;
+      }
+      if (this.selectedId && !selectionExists(this.selectedId, this.inv, container)) this.selectedId = null;
       this.container = container;
+      this.lastContainerSignature = signature;
     } else {
       this.container = null;
+      this.selectedId = null;
+      this.lastContainerSignature = '';
     }
-    if (!this.container) this.selectedId = null;
     this.renderInventory();
   }
 
@@ -371,6 +390,7 @@ export class HUD {
     this.panel.classList.add('hidden');
     this.container = null;
     this.selectedId = null;
+    this.lastContainerSignature = '';
   }
 
   toggleInventory(): void {

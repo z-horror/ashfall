@@ -7,9 +7,9 @@ import {
   PICKUP_RANGE,
   TILE,
   chunkOf,
-  floorElevationM,
   moveCircle,
   raycast,
+  stairPromptFor,
   type ContainerView,
   type EventView,
   type GroundItemSnapshot,
@@ -423,8 +423,8 @@ export class GameScene extends Phaser.Scene {
 
   private attackAim = 0;
 
-  private floorElevationFor(level: number): number {
-    return floorElevationM([...this.world.buildings.values()].flatMap((building) => building.floors), level);
+  private surfaceElevationFor(x: number, y: number, level: number): number {
+    return this.world.surfaceElevationAt(x, y, level);
   }
 
   private ensureSelfView(s: {
@@ -444,7 +444,7 @@ export class GameScene extends Phaser.Scene {
       x: s.x,
       y: s.y,
       floor: s.floor ?? 0,
-      elevationM: this.floorElevationFor(s.floor ?? 0),
+      elevationM: this.surfaceElevationFor(s.x, s.y, s.floor ?? 0),
       aim: s.aim,
       hp: s.hp,
       maxHp: s.maxHp,
@@ -644,6 +644,10 @@ export class GameScene extends Phaser.Scene {
       view.updateLocal(this.predicted.x, this.predicted.y, this.playerFloor, inside);
     }
     for (const chunk of this.chunks.values()) chunk.setGroundVisible(this.playerFloor >= 0);
+    for (const [id, sprite] of this.itemSprites) {
+      const item = this.currentItems.get(id);
+      sprite.setVisible(item?.floor === this.playerFloor);
+    }
   }
 
   private applyInventory(inv: InventoryView, container: ContainerView | null): void {
@@ -667,7 +671,7 @@ export class GameScene extends Phaser.Scene {
     this.selfSnapshot = msg.self;
     this.lastOnline = msg.online;
     this.playerFloor = msg.self.floor;
-    this.selfView?.setFloor(msg.self.floor, this.floorElevationFor(msg.self.floor));
+    this.selfView?.setFloor(msg.self.floor, this.surfaceElevationFor(this.predicted.x, this.predicted.y, msg.self.floor));
 
     if (msg.self.status === 'alive') {
       if (prevStatus === 'dead' || !this.selfView) {
@@ -733,12 +737,13 @@ export class GameScene extends Phaser.Scene {
           maxHp: p.maxHp,
           name: p.name,
           floor: p.floor,
-          elevationM: this.floorElevationFor(p.floor),
+          elevationM: this.surfaceElevationFor(p.x, p.y, p.floor),
         });
         this.playerViews.set(p.id, view);
       }
-      view.setFloor(p.floor, this.floorElevationFor(p.floor));
+      view.setFloor(p.floor, this.surfaceElevationFor(p.x, p.y, p.floor));
       view.applyPlayer(p);
+      view.setElevation(this.surfaceElevationFor(p.x, p.y, p.floor));
     }
     for (const [id, view] of [...this.playerViews]) {
       if (!seenPlayers.has(id)) {
@@ -762,12 +767,13 @@ export class GameScene extends Phaser.Scene {
           hp: z.hp,
           maxHp: z.maxHp,
           floor: z.floor,
-          elevationM: this.floorElevationFor(z.floor),
+          elevationM: this.surfaceElevationFor(z.x, z.y, z.floor),
         });
         this.zombieViews.set(z.id, view);
       }
-      view.setFloor(z.floor, this.floorElevationFor(z.floor));
+      view.setFloor(z.floor, this.surfaceElevationFor(z.x, z.y, z.floor));
       view.applyZombie(z);
+      view.setElevation(this.surfaceElevationFor(z.x, z.y, z.floor));
     }
     for (const [id, view] of [...this.zombieViews]) {
       if (!seenZombies.has(id)) {
@@ -782,10 +788,12 @@ export class GameScene extends Phaser.Scene {
       this.currentItems.set(it.id, it);
       let sprite = this.itemSprites.get(it.id);
       if (!sprite) {
-        sprite = new ItemSprite(this, it.id, it.key, it.x, it.y);
+        sprite = new ItemSprite(this, it.id, it.key, it.x, it.y, it.floor);
         this.itemSprites.set(it.id, sprite);
       }
       sprite.setPosition(it.x, it.y);
+      sprite.setFloor(it.floor);
+      sprite.setVisible(it.floor === this.playerFloor);
     }
     for (const [id, sprite] of [...this.itemSprites]) {
       if (!seenItems.has(id)) {
@@ -963,7 +971,7 @@ export class GameScene extends Phaser.Scene {
       }
       case 'stair': {
         this.playerFloor = Number(ev.floor ?? ev.toLevel ?? 0);
-        this.selfView?.setFloor(this.playerFloor, this.floorElevationFor(this.playerFloor));
+        this.selfView?.setFloor(this.playerFloor, this.surfaceElevationFor(this.predicted.x, this.predicted.y, this.playerFloor));
         this.updateBuildingVisibility();
         break;
       }
@@ -1060,6 +1068,7 @@ export class GameScene extends Phaser.Scene {
       this.predicted.x = Phaser.Math.Clamp(res.x, 0.4, 127.6);
       this.predicted.y = Phaser.Math.Clamp(res.y, 0.4, 127.6);
       this.selfView.setPredicted(this.predicted.x, this.predicted.y, this.aim, mx !== 0 || my !== 0, sprint, mx, my);
+      this.selfView.setElevation(this.surfaceElevationFor(this.predicted.x, this.predicted.y, this.playerFloor));
       this.selfView.update(dt, now);
       if ((mx !== 0 || my !== 0) && now - this.lastFootstep > (sprint ? 290 : 430)) {
         this.lastFootstep = now;
@@ -1176,7 +1185,7 @@ export class GameScene extends Phaser.Scene {
     const y = this.predicted.y;
     const stair = this.world.nearestStair(x, y, this.playerFloor);
     if (stair) {
-      this.hud.setPrompt(`<b>E</b>${stair.direction === 'down' ? 'Спуститься в подвал' : 'Подняться наверх'}`);
+      this.hud.setPrompt(`<b>E</b>${stairPromptFor(this.playerFloor, stair.toLevel)}`);
       return;
     }
     const door = this.world.nearestDoor(x, y, 2.2, this.playerFloor);

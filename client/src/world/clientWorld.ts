@@ -6,6 +6,8 @@ import {
   buildRoomGeometry,
   decodeRLE,
   nearestStairAt,
+  surfaceElevationM,
+  surfaceHitAt,
   openingCenter,
   createGrid,
   type BuildingSpec,
@@ -230,19 +232,19 @@ export class ClientWorld {
 
   buildingAt(x: number, y: number, level = 0): BuildingSpec | null {
     for (const building of this.buildings.values()) {
-      const floor = building.floors.find((candidate) => candidate.level === level);
-      if (!floor) continue;
-      for (const room of floor.rooms) {
-        const geometry = this.rooms.get(room.id);
-        if (!geometry) continue;
-        const ix = Math.floor(x);
-        const iy = Math.floor(y);
-        const lx = ix - geometry.bounds.x;
-        const ly = iy - geometry.bounds.y;
-        if (lx >= 0 && ly >= 0 && lx < geometry.bounds.w && ly < geometry.bounds.h && geometry.mask[ly * geometry.bounds.w + lx]) return building;
-      }
+      if (surfaceHitAt(building.floors, level, x, y)) return building;
+      if (nearestStairAt(building.floors, x, y, level)) return building;
     }
     return null;
+  }
+
+  surfaceElevationAt(x: number, y: number, level = 0): number {
+    return surfaceElevationM(
+      [...this.buildings.values()].flatMap((building) => building.floors),
+      level,
+      x,
+      y,
+    );
   }
 
   nearestDoor(x: number, y: number, range: number, level = 0): ClientDoor | null {

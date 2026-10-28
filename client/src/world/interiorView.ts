@@ -118,19 +118,16 @@ export class InteriorView {
       g.setDepth(support.x + support.y + FLOOR_BAND * this.floor.level + 0.1);
       g.setVisible(true);
 
-      const centerX = (footprint.minX + footprint.maxX) / 2;
-      const centerY = (footprint.minY + footprint.maxY) / 2;
-      const screenBase = worldToScreen(centerX, centerY, elevation);
-      const bottomY = worldToScreen(support.x, support.y, elevation).y;
+      const supportScreen = worldToScreen(support.x, support.y, elevation);
 
-      if (!this.image) this.image = this.scene.add.image(screenBase.x, bottomY, textureKey).setOrigin(0.5, 1);
+      if (!this.image) this.image = this.scene.add.image(supportScreen.x, supportScreen.y, textureKey).setOrigin(0.5, 1);
       this.image.setTexture(textureKey);
       const wT = template.sizeM.width / 1.6;
       const dT = template.sizeM.depth / 1.6;
       const targetH = template.sizeM.height * 40 + (wT + dT) * HALF_H;
       const aspect = this.image.width / Math.max(1, this.image.height);
       this.image.setDisplaySize(targetH * aspect, targetH);
-      this.image.setPosition(screenBase.x, bottomY);
+      this.image.setPosition(supportScreen.x, supportScreen.y);
       this.image.setDepth(support.x + support.y + FLOOR_BAND * this.floor.level + 0.5);
       this.image.setVisible(true);
       return;
