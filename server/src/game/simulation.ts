@@ -134,6 +134,7 @@ function hasSight(
   to: { x: number; y: number; floor: number },
   mode: 'sight' | 'shot',
   ignoreOpeningId?: string,
+  ignoreObjectId?: string,
 ): boolean {
   if (from.floor !== to.floor) return false;
   const floor = world.getFloor(from.floor);
@@ -148,6 +149,7 @@ function hasSight(
     OBJECT_TEMPLATES,
     world.getObjectStateRecord(),
     ignoreOpeningId,
+    ignoreObjectId,
   );
 }
 
@@ -1414,7 +1416,7 @@ export class Simulation {
       this.notice(p, 'Контейнер в другом помещении.');
       return;
     }
-    if (!hasSight(this.world, p, { x: spot.x, y: spot.y, floor: spot.floor }, 'sight')) {
+    if (!hasSight(this.world, p, { x: spot.x, y: spot.y, floor: spot.floor }, 'sight', undefined, spot.objectId)) {
       this.notice(p, 'Контейнер за препятствием.');
       return;
     }

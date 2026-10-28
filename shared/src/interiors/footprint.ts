@@ -84,6 +84,28 @@ export function supportPoint(parts: WorldFootprint[]): Vec2 {
   return { x: (box.minX + box.maxX) / 2, y: box.maxY };
 }
 
+/**
+ * Lowest screen-space point of a footprint in the isometric projection.
+ * This is the point a pre-rendered sprite's own ground-contact pixel must sit
+ * on; unlike `supportPoint` it is the front corner for boxes and the front of
+ * the circle for round footprints.
+ */
+export function groundContactPoint(parts: WorldFootprint[]): Vec2 {
+  let best: Vec2 = { x: 0, y: 0 };
+  let bestSum = -Infinity;
+  for (const part of parts) {
+    const candidate = isAabb(part)
+      ? { x: part.maxX, y: part.maxY }
+      : { x: part.x, y: part.y + part.r };
+    const sum = candidate.x + candidate.y;
+    if (sum > bestSum) {
+      bestSum = sum;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 export function aabbOverlap(a: WorldAabb, b: WorldAabb): boolean {
   return Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX) > 1e-9 && Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY) > 1e-9;
 }

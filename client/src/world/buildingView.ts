@@ -25,8 +25,20 @@ import {
   wallIsExterior,
 } from '@ashfall/shared';
 import { InteriorView } from './interiorView.js';
+import { StairShaftView } from './stairShaftView.js';
 
 const FLOOR_BAND = 10_000;
+
+function imageOccludes(
+  img: Phaser.GameObjects.Image | undefined,
+  sx: number,
+  sy: number,
+  depth: number,
+): boolean {
+  if (!img || !img.visible || img.depth <= depth) return false;
+  const bounds = img.getBounds();
+  return sx >= bounds.x && sx <= bounds.right && sy >= bounds.y && sy <= bounds.bottom;
+}
 
 function materialColors(material: string): { face: number; top: number; cut: number } {
   switch (material) {
@@ -250,9 +262,19 @@ class WallPiece {
         }
         ctx.restore();
 
+        // The peeling-wallpaper asset is deliberately dark; lift it a little so
+        // interior partitions stay readable under the night lighting.
+        if (textureKey === 'gen_wall_interior_damaged') {
+          ctx.save();
+          ctx.globalCompositeOperation = 'source-atop';
+          ctx.fillStyle = 'rgba(176, 158, 124, 0.30)';
+          ctx.fillRect(0, 0, width, height);
+          ctx.restore();
+        }
+
         // Shading: East-facing walls get subtle ambient shadowing for realistic 3D volume
         if (run.axis === 'v') {
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+          ctx.fillStyle = run.material === 'interior' ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.16)';
           ctx.beginPath();
           ctx.moveTo(top0.x - minX, top0.y - minY);
           ctx.lineTo(top1.x - minX, top1.y - minY);
@@ -281,6 +303,11 @@ class WallPiece {
     this.full.setVisible(active && !this.cutVisible);
     this.image?.setVisible(active && !this.cutVisible);
     this.cut.setVisible(active && this.cutVisible);
+  }
+
+  occludes(sx: number, sy: number, depth: number): boolean {
+    if (this.cutVisible) return false;
+    return imageOccludes(this.image, sx, sy, depth);
   }
 
   destroy(): void {
@@ -547,6 +574,13 @@ class DoorView {
     }
   }
 
+  occludes(sx: number, sy: number, depth: number): boolean {
+    if (this.cutVisible) return false;
+    return imageOccludes(this.closedImage, sx, sy, depth) ||
+      imageOccludes(this.openImage, sx, sy, depth) ||
+      imageOccludes(this.cutawayImage, sx, sy, depth);
+  }
+
   destroy(): void {
     this.graphics.destroy();
     this.closedImage?.destroy();
@@ -630,6 +664,26 @@ class WindowView {
       ctx.drawImage(source, 0, 0, source.width, source.height);
       ctx.restore();
 
+      // Sky sheen + faint interior bounce. The raw window texture is almost
+      // black at night, which made intact windows read as holes in the wall.
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      const sheen = ctx.createLinearGradient(0, 0, 0, height);
+      sheen.addColorStop(0, 'rgba(150, 170, 182, 0.22)');
+      sheen.addColorStop(0.5, 'rgba(105, 118, 124, 0.09)');
+      sheen.addColorStop(1, 'rgba(30, 30, 28, 0)');
+      ctx.fillStyle = sheen;
+      ctx.fillRect(0, 0, width, height);
+      const bounce = ctx.createRadialGradient(
+        width * 0.5, height * 0.55, 2,
+        width * 0.5, height * 0.55, Math.max(width, height) * 0.48,
+      );
+      bounce.addColorStop(0, 'rgba(198, 172, 125, 0.11)');
+      bounce.addColorStop(1, 'rgba(198, 172, 125, 0)');
+      ctx.fillStyle = bounce;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+
       // Shading on vertical East-facing wall
       if (run.axis === 'v') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
@@ -683,6 +737,11 @@ class WindowView {
     this.draw();
   }
 
+  occludes(sx: number, sy: number, depth: number): boolean {
+    if (this.cutVisible) return false;
+    return imageOccludes(this.image, sx, sy, depth);
+  }
+
   destroy(): void {
     this.graphics.destroy();
     this.image?.destroy();
@@ -720,14 +779,18 @@ class StairView {
     const zRailStart = startZ + (isGoingUp ? this.stair.riseM : -this.stair.riseM);
     const zRailEnd = startZ + numSteps * this.stair.riseM * (isGoingUp ? 1 : -1);
     const yEnd = yStart + numSteps * treadTiles * dirY;
+    // An ascending run touches the floor at its lower end; a descending run
+    // touches the lower floor at its end. Drawing the contact shadow at the
+    // top of an ascending run painted a black patch into the stairwell.
+    const shadowZ = isGoingUp ? startZ : zRailEnd;
 
-    // Contact drop shadow on floor beneath stairs
+    // Contact drop shadow on the floor beneath the stairs.
     fillQuad(
       g,
-      worldToScreen(x0 - 0.05, yStart, zRailEnd),
-      worldToScreen(x1 + 0.12, yStart, zRailEnd),
-      worldToScreen(x1 + 0.12, yEnd + 0.1 * dirY, zRailEnd),
-      worldToScreen(x0 - 0.05, yEnd + 0.1 * dirY, zRailEnd),
+      worldToScreen(x0 - 0.05, yStart, shadowZ),
+      worldToScreen(x1 + 0.12, yStart, shadowZ),
+      worldToScreen(x1 + 0.12, yEnd + 0.1 * dirY, shadowZ),
+      worldToScreen(x0 - 0.05, yEnd + 0.1 * dirY, shadowZ),
       0x0c0b0a,
       0.45,
     );
@@ -827,14 +890,9 @@ class StairView {
       const isGoingUp = this.stair.toLevel > this.stair.fromLevel;
       const yMid = this.stair.hole.y + this.stair.hole.h / 2;
       this.graphics.setDepth(midX + yMid + 0.3 + FLOOR_BAND * activeFloor);
-      const goingDown = !isGoingUp;
-      const stepCount =
-        activeFloor === this.stair.fromLevel && goingDown
-          ? Math.min(4, this.stair.steps)
-          : activeFloor === this.stair.fromLevel
-            ? 6
-            : this.stair.steps;
-      this.draw(stepCount);
+      // Draw the whole run: the shaft walls now contain it, and truncating it
+      // left the rest of the opening as a black void.
+      this.draw();
     }
   }
 
@@ -857,6 +915,8 @@ export class BuildingView {
       windows: WindowView[];
       furniture: InteriorView[];
       stairs: StairView[];
+      shafts: StairShaftView[];
+      joints: Phaser.GameObjects.Graphics[];
     }
   >();
   private subfloor?: Phaser.GameObjects.Graphics;
@@ -918,8 +978,8 @@ export class BuildingView {
     ) => {
       const half = 0.1;
       const sign = facing === 'north' || facing === 'west' ? -1 : 1;
-      const baseColor = facing === 'south' ? 0x3e3a34 : facing === 'east' ? 0x2a2722 : 0x34302a;
-      const topColor = facing === 'south' ? 0x544e44 : facing === 'east' ? 0x3e3a34 : 0x34302a;
+      const baseColor = facing === 'south' ? 0x4a463e : facing === 'east' ? 0x403c35 : 0x3a3630;
+      const topColor = facing === 'south' ? 0x625b4f : facing === 'east' ? 0x544e44 : 0x4a463e;
 
       if (axis === 'h') {
         const yFace = fixed + sign * half;
@@ -997,7 +1057,11 @@ export class BuildingView {
         run.axis === 'h'
           ? run.fixed <= bMinY + 1e-6 ? 'north' : 'south'
           : run.fixed <= bMinX + 1e-6 ? 'west' : 'east';
-      const depth = (run.axis === 'h' ? (run.from + run.to) / 2 + run.fixed : run.fixed + (run.from + run.to) / 2) + 0.08;
+      const wallDepth = (run.axis === 'h' ? (run.from + run.to) / 2 + run.fixed : run.fixed + (run.from + run.to) / 2) + 0.35;
+      // Near (south/east) plinth sections protrude toward the camera and must
+      // draw in front of their wall; far sections sit behind it.
+      const near = facing === 'south' || facing === 'east';
+      const depth = wallDepth + (near ? 0.02 : -0.02);
       const g = scene.add.graphics().setDepth(depth);
       this.foundationCurbs.push(g);
       drawPlinthSegment(g, run.axis, run.fixed, run.from, run.to, facing);
@@ -1008,7 +1072,7 @@ export class BuildingView {
       if (!run || run.axis !== 'h') continue;
       const x0 = run.from + opening.startM / 1.6;
       const x1 = run.from + (opening.startM + opening.widthM) / 1.6;
-      const g = scene.add.graphics().setDepth((run.from + run.to) / 2 + run.fixed + 0.1);
+      const g = scene.add.graphics().setDepth((run.from + run.to) / 2 + run.fixed + 0.37);
       this.foundationCurbs.push(g);
       drawDoorstep(g, x0, x1, run.fixed);
     }
@@ -1227,6 +1291,40 @@ export class BuildingView {
     }
 
     const stairs = floor.stairs.map((stair) => new StairView(this.scene, floor, stair));
+    const lowerFloor = this.building.floors.find((candidate) => candidate.level === floor.level - 1);
+    const lowerZ = lowerFloor?.elevationM ?? floor.elevationM - 3.0;
+    const shafts = stairHoles.map((hole) => new StairShaftView(this.scene, floor, hole, lowerZ));
+
+    // Cover the bright texture seam where two exterior wall canvases meet.
+    const joints: Phaser.GameObjects.Graphics[] = [];
+    if (floor.level >= 0) {
+      const seen = new Set<string>();
+      for (const run of floor.wallRuns) {
+        if (!wallIsExterior(run, floor)) continue;
+        const endpoints = run.axis === 'h'
+          ? [{ x: run.from, y: run.fixed }, { x: run.to, y: run.fixed }]
+          : [{ x: run.fixed, y: run.from }, { x: run.fixed, y: run.to }];
+        for (const point of endpoints) {
+          const key = `${point.x},${point.y}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const g = this.scene.add.graphics()
+            .setDepth(point.x + point.y + FLOOR_BAND * floor.level + 0.45);
+          const z0 = floor.elevationM;
+          const z1 = z0 + run.heightM;
+          const half = run.thicknessM / 2;
+          const p = (px: number, py: number, pz: number) => worldToScreen(px, py, pz);
+          // Wall end face across the thickness. Without it the bright street
+          // background leaks through the 0.2 m seam at every exterior corner.
+          if (run.axis === 'h') {
+            fillQuad(g, p(point.x, point.y - half, z0), p(point.x, point.y + half, z0), p(point.x, point.y + half, z1), p(point.x, point.y - half, z1), 0x3b2b22);
+          } else {
+            fillQuad(g, p(point.x - half, point.y, z0), p(point.x + half, point.y, z0), p(point.x + half, point.y, z1), p(point.x - half, point.y, z1), 0x33251d);
+          }
+          joints.push(g);
+        }
+      }
+    }
 
     this.floors.set(floor.level, {
       floor: floorGraphics,
@@ -1237,6 +1335,8 @@ export class BuildingView {
       windows,
       furniture,
       stairs,
+      shafts,
+      joints,
     });
   }
 
@@ -1457,6 +1557,23 @@ export class BuildingView {
     }
   }
 
+  /** True when a visible building surface covers the given scene point at a
+   * depth greater than `depth` (used for the through-wall player outline). */
+  occludesPoint(sx: number, sy: number, depth: number): boolean {
+    for (const entry of this.floors.values()) {
+      for (const wall of entry.walls) if (wall.occludes(sx, sy, depth)) return true;
+      for (const door of entry.doors) if (door.occludes(sx, sy, depth)) return true;
+      for (const window of entry.windows) if (window.occludes(sx, sy, depth)) return true;
+    }
+    for (const obj of this.mansardRoofObjects) {
+      if (obj instanceof Phaser.GameObjects.Image && imageOccludes(obj, sx, sy, depth)) return true;
+    }
+    for (const obj of this.terraceRoofObjects) {
+      if (obj instanceof Phaser.GameObjects.Image && imageOccludes(obj, sx, sy, depth)) return true;
+    }
+    return false;
+  }
+
   setDoor(id: string, state: DoorState): void {
     this.doorViews.get(id)?.setState(state);
     const view = this.doorViews.get(id);
@@ -1586,13 +1703,21 @@ export class BuildingView {
     // Stair-hole underlays follow their floor's visibility so they never
     // linger over exposed lower surfaces when the floor is hidden.
     for (const entry of this.floors.values()) entry.stairHole?.setVisible(entry.floor.visible);
+    for (const [level, entry] of this.floors) {
+      const shaftActive = level === 0 ? floor === 0 : level === 1 ? floor === 1 && this.inside : false;
+      for (const shaft of entry.shafts) shaft.setActive(shaftActive);
+      for (const joint of entry.joints) joint.setVisible(!this.inside);
+    }
 
     // Mansard roof: visible only from outside. Inside the cutaway it must not
     // cover the space the player is inspecting.
     for (const obj of this.mansardRoofObjects) obj.setVisible(mansardRoofVisible(floor, this.inside));
 
-    // Front terrace roof: visible on ground outside OR when on floor 1!
-    for (const obj of this.terraceRoofObjects) obj.setVisible(terraceRoofVisible(floor, this.inside));
+    // Front terrace roof: visible from outside and while inspecting floor 1.
+    // The stair shaft is drawn above it, so the opening stays readable.
+    for (const obj of this.terraceRoofObjects) {
+      obj.setVisible(terraceRoofVisible(floor, this.inside));
+    }
 
     // Cutaway wall slicing for current interior floor
     const current = this.floors.get(floor);
@@ -1637,6 +1762,8 @@ export class BuildingView {
       for (const window of entry.windows) window.destroy();
       for (const furniture of entry.furniture) furniture.destroy();
       for (const stair of entry.stairs) stair.destroy();
+      for (const shaft of entry.shafts) shaft.destroy();
+      for (const joint of entry.joints) joint.destroy();
     }
     for (const obj of this.mansardRoofObjects) obj.destroy();
     for (const obj of this.terraceRoofObjects) obj.destroy();

@@ -2,7 +2,7 @@ import { COLLISION_SCALE, TILE_SIZE_M, metersToTiles, type TileRect } from '../g
 import { createGrid, type CollisionGrid } from '../physics.js';
 import { WORLD_TILES } from '../constants.js';
 import { solidIntervals } from './geometry.js';
-import type { DoorState, FloorSpec, OpeningStateSnapshot, StairSpec, WallRun, WindowState } from './types.js';
+import type { DoorState, FloorSpec, OpeningStateSnapshot, RoofFixtureSpec, StairSpec, WallRun, WindowState } from './types.js';
 import type { ObjectInstance, ObjectState, ObjectTemplate } from '../interiors/types.js';
 import { isAabb, worldFootprintParts, type WorldFootprint } from '../interiors/footprint.js';
 
@@ -139,6 +139,7 @@ export function buildFloorCollision(
   templates: Record<string, ObjectTemplate>,
   objectStates: Record<string, ObjectState> = {},
   stairs: readonly StairSpec[] = floor.stairs,
+  fixtures: readonly RoofFixtureSpec[] = [],
 ): CollisionGrid {
   const grid = createGrid(WORLD_TILES, WORLD_TILES, COLLISION_SCALE);
   applySupportMask(grid, floor, stairs);
@@ -164,6 +165,13 @@ export function buildFloorCollision(
     const template = templates[object.templateId];
     if (!template || !template.placement.blocksPath) continue;
     for (const part of worldFootprintParts(object, template)) blockFootprint(grid, part);
+  }
+
+  for (const fixture of fixtures) {
+    if (fixture.level !== floor.level) continue;
+    const halfW = (fixture.widthM ?? 0.8) / 2;
+    const halfD = (fixture.depthM ?? 0.8) / 2;
+    blockAabb(grid, fixture.x - halfW, fixture.y - halfD, fixture.x + halfW, fixture.y + halfD);
   }
   return grid;
 }

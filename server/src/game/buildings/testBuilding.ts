@@ -133,7 +133,7 @@ const groundFloor: FloorSpec = {
     cells: GROUND_CELLS,
     material: 'wood',
     thicknessM: 0.4,
-    holes: [STAIR_HOLE_BASEMENT, STAIR_HOLE_MANSARD],
+    holes: [STAIR_HOLE_BASEMENT],
   },
   rooms: roomsFloor0(),
   wallRuns: wallRunsFloor0(),
@@ -297,9 +297,11 @@ export const TEST_BUILDING: BuildingSpec = {
       x: 38.0,
       y: 35.0,
       elevationM: 3.05,
-      textureKey: 'prop_ac',
-      widthPx: 64,
-      heightPx: 54,
+      textureKey: 'gen_roof_ac_unit',
+      widthPx: 80,
+      heightPx: 80,
+      widthM: 1.0,
+      depthM: 0.9,
     },
   ],
 };
@@ -348,7 +350,7 @@ export const TEST_OBJECTS: ObjectInstance[] = [
   // Master Bedroom (West wing: 28..34, 28..37)
   // Wardrobe flat against North wall
   floorObject('obj:test:0:west:wardrobe:0', 'wardrobe', 0, 'room:test:0:west', { mount: 'floor', x: 29.5, y: 28.45, rotation: 0 }, true),
-  floorObject('obj:test:0:west:bed:0', 'bed_double', 0, 'room:test:0:west', { mount: 'floor', x: 32.0, y: 28.8, rotation: 0 }, false),
+  floorObject('obj:test:0:west:bed:0', 'bed_double', 0, 'room:test:0:west', { mount: 'floor', x: 32.0, y: 29.15, rotation: 0 }, false),
   floorObject('obj:test:0:west:nightstand:0', 'nightstand', 0, 'room:test:0:west', { mount: 'floor', x: 32.6, y: 28.6, rotation: 0 }, false),
   floorObject('obj:test:0:west:rug:0', 'rug', 0, 'room:test:0:west', { mount: 'floor', x: 31.0, y: 31.5, rotation: 0 }, false),
   wallObject('obj:test:0:west:picture:0', 'picture', 0, 'room:test:0:west', 'w:test:0:north', 3.0, 1.5),

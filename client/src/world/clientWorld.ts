@@ -178,7 +178,7 @@ export class ClientWorld {
       const stairs = building.floors.flatMap((floor) => floor.stairs);
       for (const floor of building.floors) {
         const objects = [...this.objects.values()].filter((object) => object.buildingId === building.id && object.level === floor.level);
-        this.collisionGrids.set(floor.level, buildFloorCollision(floor, openingStates, objects, OBJECT_TEMPLATES, stateRecord, stairs));
+        this.collisionGrids.set(floor.level, buildFloorCollision(floor, openingStates, objects, OBJECT_TEMPLATES, stateRecord, stairs, building.fixtures ?? []));
       }
     }
   }

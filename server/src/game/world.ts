@@ -298,14 +298,24 @@ export class World {
   private rebuildCollision(): void {
     this.collision.fill(0);
     const stairs = this.buildings.flatMap((building) => building.floors.flatMap((floor) => floor.stairs));
-    for (const floor of this.buildings.flatMap((building) => building.floors)) {
-      const grid = buildFloorCollision(floor, this.getOpeningStates(), this.objects, OBJECT_TEMPLATES, this.getObjectStateRecord(), stairs);
-      this.collisionGrids.set(floor.level, grid);
-      if (floor.level === 0) {
-        for (let y = 0; y < WORLD_TILES; y++) {
-          for (let x = 0; x < WORLD_TILES; x++) {
-            if (!circleHits(grid, x + 0.5, y + 0.5, PLAYER_RADIUS)) this.collision[y * WORLD_TILES + x] = 0;
-            else this.collision[y * WORLD_TILES + x] = 1;
+    for (const building of this.buildings) {
+      for (const floor of building.floors) {
+        const grid = buildFloorCollision(
+          floor,
+          this.getOpeningStates(),
+          this.objects,
+          OBJECT_TEMPLATES,
+          this.getObjectStateRecord(),
+          stairs,
+          building.fixtures ?? [],
+        );
+        this.collisionGrids.set(floor.level, grid);
+        if (floor.level === 0) {
+          for (let y = 0; y < WORLD_TILES; y++) {
+            for (let x = 0; x < WORLD_TILES; x++) {
+              if (!circleHits(grid, x + 0.5, y + 0.5, PLAYER_RADIUS)) this.collision[y * WORLD_TILES + x] = 0;
+              else this.collision[y * WORLD_TILES + x] = 1;
+            }
           }
         }
       }

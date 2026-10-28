@@ -3,6 +3,7 @@ import {
   OBJECT_TEMPLATES,
   PX_PER_METER,
   footprintAabb,
+  groundContactPoint,
   runPointAtM,
   supportPoint,
   worldFootprintParts,
@@ -17,6 +18,66 @@ import { worldToScreen, HALF_H } from '@ashfall/shared';
 import { generatedFurnitureKey } from '../art/generatedAssets.js';
 
 const FLOOR_BAND = 10_000;
+
+interface SpriteContact {
+  ox: number;
+  oy: number;
+}
+
+const spriteContactCache = new Map<string, SpriteContact>();
+
+/**
+ * Find the actual ground-contact pixel inside a generated sprite. AI-rendered
+ * furniture is not authored with a consistent pivot, so measuring the lowest
+ * opaque pixel (and the centre of the bottom band) is more reliable than
+ * assuming every asset uses the same bottom-centre origin.
+ */
+function spriteContact(scene: Phaser.Scene, key: string): SpriteContact {
+  const cached = spriteContactCache.get(key);
+  if (cached) return cached;
+  const source = scene.textures.get(key).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+  const width = source.width;
+  const height = source.height;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    const fallback = { ox: 0.5, oy: 1 };
+    spriteContactCache.set(key, fallback);
+    return fallback;
+  }
+  ctx.drawImage(source, 0, 0);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  let bottomRow = height - 1;
+  while (bottomRow > 0) {
+    let any = false;
+    for (let x = 0; x < width; x++) {
+      if (data[(bottomRow * width + x) * 4 + 3] > 8) {
+        any = true;
+        break;
+      }
+    }
+    if (any) break;
+    bottomRow--;
+  }
+  let sumX = 0;
+  let count = 0;
+  for (let y = Math.max(0, bottomRow - 2); y <= bottomRow; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] > 8) {
+        sumX += x;
+        count++;
+      }
+    }
+  }
+  const contact = {
+    ox: count > 0 ? (sumX / count + 0.5) / width : 0.5,
+    oy: (bottomRow + 1) / height,
+  };
+  spriteContactCache.set(key, contact);
+  return contact;
+}
 
 function fillQuad(
   g: Phaser.GameObjects.Graphics,
@@ -110,25 +171,27 @@ export class InteriorView {
     if (textureKey && this.scene.textures.exists(textureKey) && this.object.placement.mount === 'floor') {
       const parts = worldFootprintParts(this.object, template);
       const footprint = footprintAabb(parts);
-      const support = supportPoint(parts);
+      const contact = spriteContact(this.scene, textureKey);
+      const ground = groundContactPoint(parts);
 
       // Contact shadow on the floor
       g.clear();
       diamond(g, footprint, elevation, 0x080806, 0.4);
-      g.setDepth(support.x + support.y + FLOOR_BAND * this.floor.level + 0.1);
+      g.setDepth(ground.x + ground.y + FLOOR_BAND * this.floor.level + 0.1);
       g.setVisible(true);
 
-      const supportScreen = worldToScreen(support.x, support.y, elevation);
+      const groundScreen = worldToScreen(ground.x, ground.y, elevation);
 
-      if (!this.image) this.image = this.scene.add.image(supportScreen.x, supportScreen.y, textureKey).setOrigin(0.5, 1);
+      if (!this.image) this.image = this.scene.add.image(groundScreen.x, groundScreen.y, textureKey);
       this.image.setTexture(textureKey);
+      this.image.setOrigin(contact.ox, contact.oy);
       const wT = template.sizeM.width / 1.6;
       const dT = template.sizeM.depth / 1.6;
       const targetH = template.sizeM.height * 40 + (wT + dT) * HALF_H;
       const aspect = this.image.width / Math.max(1, this.image.height);
       this.image.setDisplaySize(targetH * aspect, targetH);
-      this.image.setPosition(supportScreen.x, supportScreen.y);
-      this.image.setDepth(support.x + support.y + FLOOR_BAND * this.floor.level + 0.5);
+      this.image.setPosition(groundScreen.x, groundScreen.y);
+      this.image.setDepth(ground.x + ground.y + FLOOR_BAND * this.floor.level + 0.5);
       this.image.setVisible(true);
       return;
     }

@@ -45,6 +45,7 @@ export function hasFloorSight(
   templates: Record<string, ObjectTemplate>,
   objectStates: Record<string, ObjectState> = {},
   ignoreOpeningId?: string,
+  ignoreObjectId?: string,
 ): boolean {
   for (const run of floor.wallRuns) {
     const openings = floor.openings.filter((opening) => opening.wallRunId === run.id);
@@ -65,6 +66,7 @@ export function hasFloorSight(
   }
 
   for (const object of objects) {
+    if (object.id === ignoreObjectId) continue;
     if (object.level !== floor.level) continue;
     const state = objectStates[object.id];
     if (state?.destroyed) continue;

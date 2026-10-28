@@ -125,6 +125,8 @@ export interface RoofFixtureSpec {
   textureKey: string;
   widthPx?: number;
   heightPx?: number;
+  widthM?: number;
+  depthM?: number;
 }
 
 export interface BuildingSpec {

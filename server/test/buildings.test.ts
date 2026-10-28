@@ -164,6 +164,34 @@ test('walls and windows participate in line of sight', () => {
   );
 });
 
+test('a container does not block sight to itself', () => {
+  const world = new World('test-container-sight');
+  const basement = world.getFloor(-1)!;
+  const shelf = world.objects.find((object) => object.id === 'obj:test:-1:storage:shelf:0');
+  assert.ok(shelf);
+  if (shelf.placement.mount !== 'floor') throw new Error('shelf must be a floor object');
+  const from = { x: 29.6, y: 31.5 };
+  const to = { x: shelf.placement.x, y: shelf.placement.y };
+  const objects = world.objects;
+  const templates = OBJECT_TEMPLATES;
+  const states = world.getObjectStateRecord();
+  assert.equal(
+    hasFloorSight(basement, world.getOpeningStates(), from, to, 'sight', objects, templates, states),
+    false,
+    'the shelf itself is in the sight line',
+  );
+  assert.equal(
+    hasFloorSight(basement, world.getOpeningStates(), from, to, 'sight', objects, templates, states, undefined, shelf.id),
+    true,
+    'ignoring the target container must open the sight line',
+  );
+});
+
+test('roof fixtures are solid on their floor', () => {
+  const world = new World('test-fixtures');
+  assert.equal(world.isWalkable(38, 35, 1), false, 'terrace AC footprint must block movement');
+});
+
 test('melee attacks cannot cross a solid wall or floor', () => {
   const world = new World('test-attack');
   const floor = floorOf(world);
@@ -307,6 +335,8 @@ test('cutaway and exterior wall helpers use geometry, not test ids', () => {
   const cut = cutWallIds(ground, 31, 33);
   assert.ok(cut.has('w:test:0:south'));
   assert.ok(cut.has('w:test:0:east'));
+  assert.equal(cut.has('w:test:0:north'), false, 'far wall must stay full height');
+  assert.equal(cut.has('w:test:0:west'), false, 'far wall must stay full height');
   assert.equal(wallIsExterior(ground.wallRuns.find((run) => run.id === 'w:test:0:south')!, ground), true);
   assert.equal(wallIsExterior(ground.wallRuns.find((run) => run.id === 'w:test:0:part_west')!, ground), false);
 });

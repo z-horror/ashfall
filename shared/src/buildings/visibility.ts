@@ -54,7 +54,12 @@ export function cutWallIds(floor: FloorSpec, x: number, y: number): Set<string> 
   const camera = { x: x + 1000, y: y + 1000 };
   const cut = new Set<string>();
   for (const run of floor.wallRuns) {
-    if (sideOfWall(run, camera) !== sideOfWall(run, { x, y })) cut.add(run.id);
+    // Only walls the camera is on the opposite side of can occlude the player.
+    // Compare signs, not raw distances: the camera probe is deliberately far
+    // away, so comparing values would cut every wall in the building.
+    const cameraSide = Math.sign(sideOfWall(run, camera));
+    const playerSide = Math.sign(sideOfWall(run, { x, y }));
+    if (cameraSide !== playerSide) cut.add(run.id);
   }
   return cut;
 }

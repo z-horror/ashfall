@@ -47,6 +47,8 @@ export class CharacterView {
   private floor = 0;
   private elevationM = 0;
   private moveDir: number | null = null;
+  private outline?: Phaser.GameObjects.Sprite;
+  private outlineVisible = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -130,6 +132,25 @@ export class CharacterView {
 
   setLocal(local: boolean): void {
     this.local = local;
+    if (local && this.kind === 'player' && !this.outline) {
+      // A high-depth copy of the character used as a through-wall outline.
+      // It is only shown while the player is hidden behind a building.
+      this.outline = this.scene.add.sprite(
+        this.sprite.x,
+        this.sprite.y,
+        CHARACTER_ATLAS,
+        this.sprite.frame.name,
+      ).setOrigin(0.5, 0.932).setDepth(85_000).setVisible(false);
+      if (this.outline.preFX) {
+        this.outline.preFX.addGlow(0xffd27a, 5, 0, true, 0.1);
+      } else {
+        this.outline.setTint(0xffd27a).setAlpha(0.4);
+      }
+    }
+  }
+
+  setOutlineVisible(visible: boolean): void {
+    this.outlineVisible = visible;
   }
 
   setWeapon(key: string | null): void {
@@ -258,6 +279,7 @@ export class CharacterView {
     this.label?.setVisible(false);
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
+    this.outline?.setVisible(false);
   }
 
   revive(): void {
@@ -323,6 +345,16 @@ export class CharacterView {
     this.hpBg.setDepth(depth + 1.15);
     this.hpFill.setDepth(depth + 1.16);
     this.label?.setDepth(depth + 1.2);
+
+    if (this.outline) {
+      const sprite = this.sprite;
+      this.outline.setTexture(sprite.texture.key, sprite.frame.name);
+      this.outline.setPosition(sprite.x, sprite.y);
+      this.outline.setScale(sprite.scaleX, sprite.scaleY);
+      this.outline.setFlipX(sprite.flipX);
+      this.outline.setFlipY(sprite.flipY);
+      this.outline.setVisible(this.outlineVisible && sprite.visible && !this.dead);
+    }
 
     const showBar = this.hp < this.maxHp - 0.5;
     this.hpBg.setVisible(showBar);
@@ -427,6 +459,7 @@ export class CharacterView {
     this.label?.destroy();
     this.hpBg.destroy();
     this.hpFill.destroy();
+    this.outline?.destroy();
   }
 }
 

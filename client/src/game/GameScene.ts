@@ -5,6 +5,7 @@ import {
   PLAYER_SPEED,
   PLAYER_SPRINT,
   PICKUP_RANGE,
+  PX_PER_METER,
   TILE,
   chunkOf,
   moveCircle,
@@ -1068,7 +1069,26 @@ export class GameScene extends Phaser.Scene {
       this.predicted.x = Phaser.Math.Clamp(res.x, 0.4, 127.6);
       this.predicted.y = Phaser.Math.Clamp(res.y, 0.4, 127.6);
       this.selfView.setPredicted(this.predicted.x, this.predicted.y, this.aim, mx !== 0 || my !== 0, sprint, mx, my);
-      this.selfView.setElevation(this.surfaceElevationFor(this.predicted.x, this.predicted.y, this.playerFloor));
+      const elevation = this.surfaceElevationFor(this.predicted.x, this.predicted.y, this.playerFloor);
+      this.selfView.setElevation(elevation);
+      const bInsideNow = this.getInsideBuilding(this.predicted.x, this.predicted.y);
+      this.currentBuilding = bInsideNow?.id ?? null;
+      const feet = iso(this.predicted.x, this.predicted.y);
+      const feetY = feet.y - elevation * PX_PER_METER;
+      const playerDepth = this.playerFloor * 10_000 + this.predicted.x + this.predicted.y;
+      let occluded = false;
+      if (!bInsideNow) {
+        for (const view of this.buildingViews.values()) {
+          if (
+            view.occludesPoint(feet.x, feetY - 6, playerDepth) ||
+            view.occludesPoint(feet.x, feetY - 30, playerDepth)
+          ) {
+            occluded = true;
+            break;
+          }
+        }
+      }
+      this.selfView.setOutlineVisible(occluded);
       this.selfView.update(dt, now);
       if ((mx !== 0 || my !== 0) && now - this.lastFootstep > (sprint ? 290 : 430)) {
         this.lastFootstep = now;
