@@ -40,6 +40,26 @@ const assetsToProcess = [
     src: join(brainDir, 'isometric_climbing_ivy_decals_sheet_1793206663416.jpg'),
     dest: join(targetDir, 'ivy_decals_sheet.png'),
     type: 'prop'
+  },
+  {
+    src: join(brainDir, 'ashfall_brick_plaster_decals_1793219152314.jpg'),
+    dest: join(targetDir, 'brick_damage_decals.png'),
+    type: 'prop'
+  },
+  {
+    src: join(brainDir, 'rooftop_bitumen_tar_patches_1793219167660.jpg'),
+    dest: join(targetDir, 'rooftop_tar_patches.png'),
+    type: 'prop'
+  },
+  {
+    src: join(brainDir, 'ashfall_muddy_puddle_decal_v1_1793219185007.jpg'),
+    dest: join(targetDir, 'muddy_puddle_decal.png'),
+    type: 'prop'
+  },
+  {
+    src: join(brainDir, 'ashfall_rooftop_street_clutter_sheet_1793219221162.jpg'),
+    dest: join(targetDir, 'clutter_debris_sheet.png'),
+    type: 'prop'
   }
 ];
 
@@ -79,20 +99,20 @@ for (const asset of assetsToProcess) {
           // Magenta chroma key detection: high red & blue, low green
           // Pure magenta is (255, 0, 255)
           const magentaScore = (r + b) / 2 - g;
-          if (magentaScore > 60 && (r > 120 || b > 120)) {
-            if (magentaScore > 80) {
+          if (magentaScore > 35 && (r > 60 || b > 60)) {
+            if (magentaScore > 55) {
               d[i + 3] = 0;
             } else {
               // Smooth fringe transition
-              const alpha = (80 - magentaScore) / 20;
+              const alpha = (55 - magentaScore) / 20;
               d[i + 3] = Math.floor(d[i + 3] * Math.max(0, Math.min(1, alpha)));
             }
           }
           // De-spill: if there is residual excess magenta in visible pixels
           if (d[i + 3] > 0) {
             const excess = ((d[i] + d[i + 2]) / 2) - d[i + 1];
-            if (excess > 15) {
-              const maxC = d[i + 1] + 15;
+            if (excess > 5) {
+              const maxC = d[i + 1] + 5;
               if (d[i] > maxC) d[i] = maxC;
               if (d[i + 2] > maxC) d[i + 2] = maxC;
             }
