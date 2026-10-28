@@ -435,7 +435,7 @@ class DoorView {
         ctx.fillRect(0, 0, 204, 472);
         ctx.restore();
       } else {
-        ctx.fillStyle = '#4e3826';
+        ctx.fillStyle = '#313533';
         ctx.beginPath();
         ctx.moveTo(bHinge.x - oMinX, bHinge.y - oMinY);
         ctx.lineTo(bTip.x - oMinX, bTip.y - oMinY);
@@ -446,7 +446,7 @@ class DoorView {
       }
 
       // Top edge thickness (visible in isometric dimetric perspective!)
-      ctx.fillStyle = '#725438';
+      ctx.fillStyle = '#3e4441';
       ctx.beginPath();
       ctx.moveTo(tHinge.x - oMinX, tHinge.y - oMinY);
       ctx.lineTo(tTip.x - oMinX, tTip.y - oMinY);
@@ -454,12 +454,12 @@ class DoorView {
       ctx.lineTo(tHingeBack.x - oMinX, tHingeBack.y - oMinY);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = '#8a6844';
+      ctx.strokeStyle = '#5c6460';
       ctx.lineWidth = 1;
       ctx.stroke();
 
       // Swing end vertical edge face (at tip)
-      ctx.fillStyle = '#5c422c';
+      ctx.fillStyle = '#262928';
       ctx.beginPath();
       ctx.moveTo(bTip.x - oMinX, bTip.y - oMinY);
       ctx.lineTo(bTipBack.x - oMinX, bTipBack.y - oMinY);
@@ -468,11 +468,11 @@ class DoorView {
       ctx.closePath();
       ctx.fill();
 
-      // Brass door hardware on swung edge
+      // Heavy industrial steel latch & deadbolt on swung edge
       const knobScr = worldToScreen(tx + doorThickTiles * 0.5, ty, z0 + 0.95);
-      ctx.fillStyle = '#d4af37';
+      ctx.fillStyle = '#7e8683';
       ctx.fillRect(knobScr.x - oMinX - 3, knobScr.y - oMinY - 8, 6, 16);
-      ctx.fillStyle = '#f5c542';
+      ctx.fillStyle = '#9fa8a5';
       ctx.beginPath();
       ctx.arc(knobScr.x - oMinX, knobScr.y - oMinY, 4, 0, Math.PI * 2);
       ctx.fill();
