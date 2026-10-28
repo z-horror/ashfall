@@ -176,7 +176,17 @@ export class InteriorView {
 
       // Contact shadow on the floor
       g.clear();
-      diamond(g, footprint, elevation, 0x080806, 0.4);
+      diamond(g, footprint, elevation, 0x080806, 0.45);
+      if (this.object.templateId === 'bed_double') {
+        // Deep ambient occlusion shadow directly under bed frame and mattress
+        const inAabb = {
+          minX: footprint.minX + 0.12,
+          minY: footprint.minY + 0.12,
+          maxX: footprint.maxX - 0.12,
+          maxY: footprint.maxY - 0.12,
+        };
+        diamond(g, inAabb, elevation, 0x050503, 0.65);
+      }
       g.setDepth(ground.x + ground.y + FLOOR_BAND * this.floor.level + 0.1);
       g.setVisible(true);
 
@@ -187,11 +197,15 @@ export class InteriorView {
       this.image.setOrigin(contact.ox, contact.oy);
       const wT = template.sizeM.width / 1.6;
       const dT = template.sizeM.depth / 1.6;
-      const targetH = template.sizeM.height * 40 + (wT + dT) * HALF_H;
+      let targetH = template.sizeM.height * 40 + (wT + dT) * HALF_H;
+      if (this.object.templateId === 'bed_double') {
+        // Double bed headboard is 1.35m tall, sprite display height calibrated to room scale
+        targetH = 1.35 * 40 + (wT + dT) * HALF_H;
+      }
       const aspect = this.image.width / Math.max(1, this.image.height);
       this.image.setDisplaySize(targetH * aspect, targetH);
       this.image.setPosition(groundScreen.x, groundScreen.y);
-      this.image.setDepth(ground.x + ground.y + FLOOR_BAND * this.floor.level + 0.5);
+      this.image.setDepth(ground.x + ground.y + FLOOR_BAND * this.floor.level + 0.35);
       this.image.setVisible(true);
       return;
     }
@@ -273,10 +287,35 @@ export class InteriorView {
     if (this.object.placement.mount === 'ceiling') {
       const placement = this.object.placement;
       const screen = worldToScreen(placement.x, placement.y, elevation + placement.heightM);
-      g.fillStyle(0x383a37, 1);
-      g.fillCircle(screen.x, screen.y - 4, 6);
-      g.fillStyle(0xf0e4b8, 0.95);
-      g.fillCircle(screen.x, screen.y, 4);
+      const topP = worldToScreen(placement.x, placement.y, elevation + (this.floor.clearHeightM ?? 2.6));
+
+      // Hanging black electrical cable descending from ceiling joist
+      g.lineStyle(1.5, 0x181816, 0.9);
+      g.beginPath();
+      g.moveTo(topP.x, topP.y);
+      g.lineTo(screen.x, screen.y - 8);
+      g.strokePath();
+
+      // Industrial brass socket
+      g.fillStyle(0x6e522a, 1);
+      g.fillRect(screen.x - 3, screen.y - 10, 6, 3);
+
+      // Dark enamel bell shade
+      g.fillStyle(0x242826, 1);
+      g.beginPath();
+      g.moveTo(screen.x, screen.y - 7);
+      g.lineTo(screen.x + 9, screen.y - 2);
+      g.lineTo(screen.x - 9, screen.y - 2);
+      g.closePath();
+      g.fill();
+
+      // Warm incandescent lightbulb inside shade
+      g.fillStyle(0xfde59b, 0.95);
+      g.fillCircle(screen.x, screen.y, 3);
+
+      // Subtle warm ambient light pool on floor below
+      diamond(g, { minX: placement.x - 0.6, minY: placement.y - 0.6, maxX: placement.x + 0.6, maxY: placement.y + 0.6 }, elevation, 0xfae19c, 0.08);
+
       g.setDepth(placement.x + placement.y + FLOOR_BAND * this.floor.level + 0.5);
       return;
     }
@@ -391,12 +430,15 @@ export class InteriorView {
   setWallCut(cut: boolean): void {
     if (this.wallCut === cut) return;
     this.wallCut = cut;
-    this.draw();
+    const active = !cut && !this.state?.destroyed;
+    this.graphics.setVisible(active);
+    this.image?.setVisible(active);
   }
 
   setVisible(visible: boolean): void {
-    this.graphics.setVisible(visible && !this.state?.destroyed);
-    this.image?.setVisible(visible && !this.state?.destroyed);
+    const active = visible && !this.state?.destroyed && !this.wallCut;
+    this.graphics.setVisible(active);
+    this.image?.setVisible(active);
   }
 
   destroy(): void {

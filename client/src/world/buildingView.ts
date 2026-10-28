@@ -45,11 +45,12 @@ function materialColors(material: string): { face: number; top: number; cut: num
     case 'interior':
       return { face: 0x8b7c6c, top: 0x6e5843, cut: 0x5a4a3a };
     case 'concrete':
-      return { face: 0x6e706c, top: 0x585a56, cut: 0x4a4c49 };
+      return { face: 0x6e706c, top: 0x787a76, cut: 0x4a4c49 };
     case 'industrial':
       return { face: 0x6d7774, top: 0x525b58, cut: 0x5f6965 };
     default:
-      return { face: 0x7c3f30, top: 0x504b43, cut: 0x4e463c };
+      // Brick walls: architectural limestone coping cap (0x8c867a) on cutaway tops
+      return { face: 0x7c3f30, top: 0x8c867a, cut: 0x5c3628 };
   }
 }
 
@@ -85,54 +86,72 @@ function drawWallPanel(
   const half = run.thicknessM / 2;
   const s = startM / TILE_SIZE_M;
   const e = (startM + widthM) / TILE_SIZE_M;
+  const isStart = startM <= 1e-4;
+  const isEnd = startM + widthM >= (run.to - run.from) * TILE_SIZE_M - 1e-4;
   if (run.axis === 'h') {
-    const x0 = run.from + s;
-    const x1 = run.from + e;
+    const x0 = run.from + s - (isStart ? half : 0);
+    const x1 = run.from + e + (isEnd ? half : 0);
     const y0 = run.fixed + half;
     const y1 = run.fixed - half;
+    const pF0 = worldToScreen(x0, y0, zTop);
+    const pF1 = worldToScreen(x1, y0, zTop);
     // Front face
     fillQuad(
       g,
       worldToScreen(x0, y0, zBottom),
       worldToScreen(x1, y0, zBottom),
-      worldToScreen(x1, y0, zTop),
-      worldToScreen(x0, y0, zTop),
+      pF1,
+      pF0,
       faceColor,
     );
-    // Top surface across wall thickness
+    // Top surface across wall thickness (limestone coping)
     fillQuad(
       g,
       worldToScreen(x0, y1, zTop),
       worldToScreen(x1, y1, zTop),
-      worldToScreen(x1, y0, zTop),
-      worldToScreen(x0, y0, zTop),
+      pF1,
+      pF0,
       topColor ?? faceColor,
-      0.9,
+      0.95,
     );
+    // Crisp coping edge highlight
+    g.lineStyle(1.5, 0x9e988c, 0.85);
+    g.beginPath();
+    g.moveTo(pF0.x, pF0.y);
+    g.lineTo(pF1.x, pF1.y);
+    g.strokePath();
   } else {
-    const y0 = run.from + s;
-    const y1 = run.from + e;
+    const y0 = run.from + s - (isStart ? half : 0);
+    const y1 = run.from + e + (isEnd ? half : 0);
     const x0 = run.fixed + half;
     const x1 = run.fixed - half;
+    const pF0 = worldToScreen(x0, y0, zTop);
+    const pF1 = worldToScreen(x0, y1, zTop);
     // Front face
     fillQuad(
       g,
       worldToScreen(x0, y0, zBottom),
       worldToScreen(x0, y1, zBottom),
-      worldToScreen(x0, y1, zTop),
-      worldToScreen(x0, y0, zTop),
+      pF1,
+      pF0,
       faceColor,
     );
     // Top surface across wall thickness
     fillQuad(
       g,
       worldToScreen(x1, y0, zTop),
-      worldToScreen(x0, y0, zTop),
-      worldToScreen(x0, y1, zTop),
+      pF0,
+      pF1,
       worldToScreen(x1, y1, zTop),
       topColor ?? faceColor,
-      0.9,
+      0.95,
     );
+    // Crisp coping edge highlight
+    g.lineStyle(1.5, 0x9e988c, 0.85);
+    g.beginPath();
+    g.moveTo(pF0.x, pF0.y);
+    g.lineTo(pF1.x, pF1.y);
+    g.strokePath();
   }
 }
 
@@ -244,19 +263,29 @@ class WallPiece {
         const u0 = ((startM % patternWidthM) / patternWidthM) * source.width;
         const uSpan = Math.max(1, ((endM - startM) / patternWidthM) * source.width);
 
+        // Proportional vertical UV slicing:
+        // For wall pieces above openings (lintels) or below windows (sills), slice only the corresponding
+        // vertical section of the texture so full wallpapers/baseboards are NEVER squashed into lintels!
+        const fullH = run.heightM;
+        const relTop = zTop - floor.elevationM;
+        const relBot = zBot - floor.elevationM;
+        const v0 = Math.max(0, Math.min(source.height - 1, Math.round(((fullH - relTop) / fullH) * source.height)));
+        const v1 = Math.max(v0 + 1, Math.min(source.height, Math.round(((fullH - relBot) / fullH) * source.height)));
+        const vSpan = Math.max(1, v1 - v0);
+
         const a = (top1.x - top0.x) / uSpan;
         const b = (top1.y - top0.y) / uSpan;
-        const c = (bottom0.x - top0.x) / source.height;
-        const d = (bottom0.y - top0.y) / source.height;
+        const c = (bottom0.x - top0.x) / vSpan;
+        const d = (bottom0.y - top0.y) / vSpan;
 
         ctx.setTransform(a, b, c, d, top0.x - minX, top0.y - minY);
 
-        // Draw with seamless horizontal texture wrapping
+        // Draw with seamless horizontal texture wrapping and correct vertical slice
         let curU = u0;
         let drawnSpan = 0;
         while (drawnSpan < uSpan) {
           const sliceW = Math.min(uSpan - drawnSpan, source.width - curU);
-          ctx.drawImage(source, curU, 0, sliceW, source.height, drawnSpan, 0, sliceW, source.height);
+          ctx.drawImage(source, curU, v0, sliceW, vSpan, drawnSpan, 0, sliceW, vSpan);
           drawnSpan += sliceW;
           curU = 0;
         }
@@ -321,6 +350,7 @@ class DoorView {
   private graphics: Phaser.GameObjects.Graphics;
   private closedImage?: Phaser.GameObjects.Image;
   private openImage?: Phaser.GameObjects.Image;
+  private openImageLeaf?: Phaser.GameObjects.Image;
   private cutawayImage?: Phaser.GameObjects.Image;
   readonly run: WallRun;
   private opening: OpeningSpec;
@@ -335,7 +365,7 @@ class DoorView {
     this.opening = opening;
     this.state = state;
     const center = openingCenter(run, opening);
-    this.depth = center.x + center.y + FLOOR_BAND * floor.level + 0.45;
+    this.depth = center.x + center.y + FLOOR_BAND * floor.level + 0.36;
     this.graphics = scene.add.graphics().setDepth(this.depth);
 
     const half = run.thicknessM / 2;
@@ -395,7 +425,27 @@ class DoorView {
       this.closedImage = scene.add.image(minX, minY, closedKey).setOrigin(0, 0).setDepth(this.depth + 0.04);
     }
 
-    // 2. Open Door View: Static casing + 3D authentic swung leaf (90 deg inward into the room)
+    // 2. Open Door View:
+    // Decouple stationary frame from 3D swung leaf so the leaf depth strictly follows its inward position!
+    // This guarantees the wall above the doorway naturally covers the top of the swung door.
+    const openFrameKey = `door_open_frame_${opening.id}`;
+    if (scene.textures.exists(openFrameKey)) scene.textures.remove(openFrameKey);
+    const openFrameCanvas = scene.textures.createCanvas(openFrameKey, cW, cH);
+    if (openFrameCanvas && scene.textures.exists('gen_door_frame')) {
+      const ctx = openFrameCanvas.getContext();
+      const a = (pTR.x - pTL.x) / 256;
+      const b = (pTR.y - pTL.y) / 256;
+      const c = (pBL.x - pTL.x) / 512;
+      const d = (pBL.y - pTL.y) / 512;
+      ctx.setTransform(a, b, c, d, pTL.x - minX, pTL.y - minY);
+      const frameImg = scene.textures.get('gen_door_frame').getSourceImage() as HTMLImageElement;
+      ctx.drawImage(frameImg, 0, 0, 256, 512);
+      openFrameCanvas.refresh();
+      this.openImage = scene.add.image(minX, minY, openFrameKey).setOrigin(0, 0).setDepth(this.depth + 0.04);
+      this.openImage.setVisible(false);
+    }
+
+    // 3. Swung open door leaf in 3D:
     const inwardDist = (opening.widthM * 0.92) / 1.6;
     const doorThickTiles = 0.05 / 1.6; // 50mm door leaf thickness
 
@@ -414,30 +464,18 @@ class DoorView {
     const tTipBack = worldToScreen(run.axis === 'h' ? tx + doorThickTiles : tx, run.axis === 'h' ? ty : ty + doorThickTiles, z1);
     const tHingeBack = worldToScreen(run.axis === 'h' ? hx + doorThickTiles : hx, run.axis === 'h' ? hy : hy + doorThickTiles, z1);
 
-    const oMinX = Math.min(pBL.x, pBR.x, pTL.x, pTR.x, bTip.x, tTip.x, bTipBack.x, tTipBack.x) - 10;
-    const oMinY = Math.min(pBL.y, pBR.y, pTL.y, pTR.y, bTip.y, tTip.y, bTipBack.y, tTipBack.y) - 10;
-    const oMaxX = Math.max(pBL.x, pBR.x, pTL.x, pTR.x, bTip.x, tTip.x, bTipBack.x, tTipBack.x) + 10;
-    const oMaxY = Math.max(pBL.y, pBR.y, pTL.y, pTR.y, bTip.y, tTip.y, bTipBack.y, tTipBack.y) + 10;
+    const oMinX = Math.min(bHinge.x, bTip.x, tTip.x, tHinge.x, bTipBack.x, tTipBack.x) - 8;
+    const oMinY = Math.min(bHinge.y, bTip.y, tTip.y, tHinge.y, bTipBack.y, tTipBack.y) - 8;
+    const oMaxX = Math.max(bHinge.x, bTip.x, tTip.x, tHinge.x, bTipBack.x, tTipBack.x) + 8;
+    const oMaxY = Math.max(bHinge.y, bTip.y, tTip.y, tHinge.y, bTipBack.y, tTipBack.y) + 8;
     const oW = Math.max(1, Math.ceil(oMaxX - oMinX));
     const oH = Math.max(1, Math.ceil(oMaxY - oMinY));
 
-    const openKey = `door_open_aff_${opening.id}`;
-    if (scene.textures.exists(openKey)) scene.textures.remove(openKey);
-    const openCanvas = scene.textures.createCanvas(openKey, oW, oH);
-    if (openCanvas && scene.textures.exists('gen_door_frame')) {
-      const ctx = openCanvas.getContext();
-
-      // Static frame in doorway (identical position, zero movement!)
-      const a = (pTR.x - pTL.x) / 256;
-      const b = (pTR.y - pTL.y) / 256;
-      const c = (pBL.x - pTL.x) / 512;
-      const d = (pBL.y - pTL.y) / 512;
-      ctx.setTransform(a, b, c, d, pTL.x - oMinX, pTL.y - oMinY);
-      const frameImg = scene.textures.get('gen_door_frame').getSourceImage() as HTMLImageElement;
-      ctx.drawImage(frameImg, 0, 0, 256, 512);
-
-      // Reset transform to 1:1 pixel coords for 3D door leaf & shadow
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const openLeafKey = `door_open_leaf_${opening.id}`;
+    if (scene.textures.exists(openLeafKey)) scene.textures.remove(openLeafKey);
+    const openLeafCanvas = scene.textures.createCanvas(openLeafKey, oW, oH);
+    if (openLeafCanvas) {
+      const ctx = openLeafCanvas.getContext();
 
       // Floor contact shadow under the swung open door leaf
       ctx.fillStyle = 'rgba(12, 10, 8, 0.45)';
@@ -463,7 +501,6 @@ class DoorView {
         const ld = dyV / 472;
         ctx.setTransform(la, lb, lc, ld, tHinge.x - oMinX, tHinge.y - oMinY);
         ctx.drawImage(leafImg, 0, 0, 204, 472);
-        // Subtle ambient interior shading
         ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
         ctx.fillRect(0, 0, 204, 472);
         ctx.restore();
@@ -510,9 +547,13 @@ class DoorView {
       ctx.arc(knobScr.x - oMinX, knobScr.y - oMinY, 4, 0, Math.PI * 2);
       ctx.fill();
 
-      openCanvas.refresh();
-      this.openImage = scene.add.image(oMinX, oMinY, openKey).setOrigin(0, 0).setDepth(this.depth + 0.05);
-      this.openImage.setVisible(false);
+      openLeafCanvas.refresh();
+      // True 3D depth of inward swung leaf: strictly behind the south wall!
+      const leafMidX = (hx + tx) / 2;
+      const leafMidY = (hy + ty) / 2;
+      const leafDepth = leafMidX + leafMidY + FLOOR_BAND * floor.level + 0.20;
+      this.openImageLeaf = scene.add.image(oMinX, oMinY, openLeafKey).setOrigin(0, 0).setDepth(leafDepth);
+      this.openImageLeaf.setVisible(false);
     }
 
     this.draw();
@@ -522,6 +563,7 @@ class DoorView {
     if (this.cutVisible) {
       this.closedImage?.setVisible(false);
       this.openImage?.setVisible(false);
+      this.openImageLeaf?.setVisible(false);
       this.cutawayImage?.setVisible(false);
       this.graphics.setVisible(true);
       const g = this.graphics;
@@ -535,6 +577,7 @@ class DoorView {
     if (this.closedImage && this.openImage) {
       this.closedImage.setVisible(!this.state.open);
       this.openImage.setVisible(this.state.open);
+      this.openImageLeaf?.setVisible(this.state.open);
       this.graphics.setVisible(false);
       return;
     }
@@ -567,6 +610,7 @@ class DoorView {
     if (!active) {
       this.closedImage?.setVisible(false);
       this.openImage?.setVisible(false);
+      this.openImageLeaf?.setVisible(false);
       this.cutawayImage?.setVisible(false);
       this.graphics.setVisible(false);
     } else {
@@ -578,6 +622,7 @@ class DoorView {
     if (this.cutVisible) return false;
     return imageOccludes(this.closedImage, sx, sy, depth) ||
       imageOccludes(this.openImage, sx, sy, depth) ||
+      imageOccludes(this.openImageLeaf, sx, sy, depth) ||
       imageOccludes(this.cutawayImage, sx, sy, depth);
   }
 
@@ -585,6 +630,7 @@ class DoorView {
     this.graphics.destroy();
     this.closedImage?.destroy();
     this.openImage?.destroy();
+    this.openImageLeaf?.destroy();
     this.cutawayImage?.destroy();
   }
 }
@@ -605,10 +651,8 @@ class WindowView {
     this.run = run;
     this.opening = opening;
     this.state = state;
-    const runDepth = run.axis === 'h'
-      ? (run.from + run.to) / 2 + run.fixed
-      : run.fixed + (run.from + run.to) / 2;
-    this.depth = runDepth + FLOOR_BAND * floor.level + 0.5;
+    const center = openingCenter(run, opening);
+    this.depth = center.x + center.y + FLOOR_BAND * floor.level + 0.36;
     this.graphics = scene.add.graphics().setDepth(this.depth + 0.05);
 
     const sillZ = floor.elevationM + opening.sillM;
@@ -652,9 +696,29 @@ class WindowView {
 
     if (canvas && scene.textures.exists('gen_window_unit')) {
       const ctx = canvas.getContext();
-      const source = scene.textures.get('gen_window_unit').getSourceImage() as HTMLImageElement;
 
-      // Affine transform mapping 100% to wall's isometric plane & slope
+      // 1. Warm interior backplate so windows never read as empty black voids
+      ctx.fillStyle = '#26221c';
+      ctx.beginPath();
+      ctx.moveTo(pTL.x - minX, pTL.y - minY);
+      ctx.lineTo(pTR.x - minX, pTR.y - minY);
+      ctx.lineTo(pBR.x - minX, pBR.y - minY);
+      ctx.lineTo(pBL.x - minX, pBL.y - minY);
+      ctx.closePath();
+      ctx.fill();
+
+      // Subtle warm ambient glow from inside the room
+      const intGlow = ctx.createLinearGradient(
+        (pBL.x + pBR.x) / 2 - minX, (pBL.y + pBR.y) / 2 - minY,
+        (pTL.x + pTR.x) / 2 - minX, (pTL.y + pTR.y) / 2 - minY,
+      );
+      intGlow.addColorStop(0, 'rgba(84, 68, 48, 0.75)');
+      intGlow.addColorStop(1, 'rgba(34, 30, 24, 0.95)');
+      ctx.fillStyle = intGlow;
+      ctx.fill();
+
+      // 2. Window unit sprite mapped onto wall quad
+      const source = scene.textures.get('gen_window_unit').getSourceImage() as HTMLImageElement;
       ctx.save();
       const a = (pTR.x - pTL.x) / source.width;
       const b = (pTR.y - pTL.y) / source.width;
@@ -1046,7 +1110,8 @@ export class BuildingView {
       g.strokePath();
     };
 
-    // Plinth is generated from the same ground-floor wall runs as collision.
+    // Plinth is segmented by 1.6m steps matching WallPiece so each section has its exact local depth!
+    // This prevents long 12m walls from drawing in front of the plinth on one end and behind on the other.
     for (const run of groundFloor?.wallRuns ?? []) {
       const exterior =
         run.axis === 'h'
@@ -1057,14 +1122,21 @@ export class BuildingView {
         run.axis === 'h'
           ? run.fixed <= bMinY + 1e-6 ? 'north' : 'south'
           : run.fixed <= bMinX + 1e-6 ? 'west' : 'east';
-      const wallDepth = (run.axis === 'h' ? (run.from + run.to) / 2 + run.fixed : run.fixed + (run.from + run.to) / 2) + 0.35;
-      // Near (south/east) plinth sections protrude toward the camera and must
-      // draw in front of their wall; far sections sit behind it.
       const near = facing === 'south' || facing === 'east';
-      const depth = wallDepth + (near ? 0.02 : -0.02);
-      const g = scene.add.graphics().setDepth(depth);
-      this.foundationCurbs.push(g);
-      drawPlinthSegment(g, run.axis, run.fixed, run.from, run.to, facing);
+
+      const step = 1.6;
+      const totalLen = (run.to - run.from) * 1.6;
+      for (let s = 0; s < totalLen - 1e-4; s += step) {
+        const e = Math.min(totalLen, s + step);
+        const fromTile = run.from + s / 1.6;
+        const toTile = run.from + e / 1.6;
+        const midTile = (fromTile + toTile) / 2;
+        const localWallDepth = (run.axis === 'h' ? midTile + run.fixed : run.fixed + midTile) + 0.35;
+        const depth = localWallDepth + (near ? 0.02 : -0.02);
+        const g = scene.add.graphics().setDepth(depth);
+        this.foundationCurbs.push(g);
+        drawPlinthSegment(g, run.axis, run.fixed, fromTile, toTile, facing);
+      }
     }
     for (const opening of groundFloor?.openings ?? []) {
       if (opening.kind !== 'door') continue;
@@ -1072,7 +1144,8 @@ export class BuildingView {
       if (!run || run.axis !== 'h') continue;
       const x0 = run.from + opening.startM / 1.6;
       const x1 = run.from + (opening.startM + opening.widthM) / 1.6;
-      const g = scene.add.graphics().setDepth((run.from + run.to) / 2 + run.fixed + 0.37);
+      const doorstepDepth = (x0 + x1) / 2 + run.fixed + 0.37;
+      const g = scene.add.graphics().setDepth(doorstepDepth);
       this.foundationCurbs.push(g);
       drawDoorstep(g, x0, x1, run.fixed);
     }
@@ -1295,7 +1368,8 @@ export class BuildingView {
     const lowerZ = lowerFloor?.elevationM ?? floor.elevationM - 3.0;
     const shafts = stairHoles.map((hole) => new StairShaftView(this.scene, floor, hole, lowerZ));
 
-    // Cover the bright texture seam where two exterior wall canvases meet.
+    // Fill texture seam where two exterior wall canvases meet at building corners.
+    // Kept strictly beneath the wall face (+0.34 < +0.35) so it never paints over exterior corner pilasters!
     const joints: Phaser.GameObjects.Graphics[] = [];
     if (floor.level >= 0) {
       const seen = new Set<string>();
@@ -1309,17 +1383,16 @@ export class BuildingView {
           if (seen.has(key)) continue;
           seen.add(key);
           const g = this.scene.add.graphics()
-            .setDepth(point.x + point.y + FLOOR_BAND * floor.level + 0.45);
+            .setDepth(point.x + point.y + FLOOR_BAND * floor.level + 0.34);
           const z0 = floor.elevationM;
           const z1 = z0 + run.heightM;
           const half = run.thicknessM / 2;
           const p = (px: number, py: number, pz: number) => worldToScreen(px, py, pz);
-          // Wall end face across the thickness. Without it the bright street
-          // background leaks through the 0.2 m seam at every exterior corner.
+          // Brick corner seam filler: uses wall brick/mortar tone, never black!
           if (run.axis === 'h') {
-            fillQuad(g, p(point.x, point.y - half, z0), p(point.x, point.y + half, z0), p(point.x, point.y + half, z1), p(point.x, point.y - half, z1), 0x3b2b22);
+            fillQuad(g, p(point.x, point.y - half, z0), p(point.x, point.y + half, z0), p(point.x, point.y + half, z1), p(point.x, point.y - half, z1), 0x5a483e);
           } else {
-            fillQuad(g, p(point.x - half, point.y, z0), p(point.x + half, point.y, z0), p(point.x + half, point.y, z1), p(point.x - half, point.y, z1), 0x33251d);
+            fillQuad(g, p(point.x - half, point.y, z0), p(point.x + half, point.y, z0), p(point.x + half, point.y, z1), p(point.x - half, point.y, z1), 0x524238);
           }
           joints.push(g);
         }
@@ -1474,15 +1547,42 @@ export class BuildingView {
         ctx.fill();
       }
 
-      // Parapet stone coping cap
-      ctx.strokeStyle = '#5a544a';
+      // Parapet stone coping cap on outer edges
+      ctx.strokeStyle = '#5a5448';
       ctx.lineWidth = 3.5;
       ctx.beginPath();
-      ctx.moveTo(roofP0.x - minScrX, roofP0.y - minScrY);
-      ctx.lineTo(roofP1.x - minScrX, roofP1.y - minScrY);
+      if (withDetails) {
+        // Mansard roof: all four sides
+        ctx.moveTo(roofP0.x - minScrX, roofP0.y - minScrY);
+        ctx.lineTo(roofP1.x - minScrX, roofP1.y - minScrY);
+        ctx.lineTo(roofP2.x - minScrX, roofP2.y - minScrY);
+        ctx.lineTo(roofP3.x - minScrX, roofP3.y - minScrY);
+        ctx.closePath();
+      } else {
+        // Terrace: only exterior edges (West -> South -> East), omitting the North edge touching the brick wall!
+        ctx.moveTo(roofP0.x - minScrX, roofP0.y - minScrY);
+        ctx.lineTo(roofP3.x - minScrX, roofP3.y - minScrY);
+        ctx.lineTo(roofP2.x - minScrX, roofP2.y - minScrY);
+        ctx.lineTo(roofP1.x - minScrX, roofP1.y - minScrY);
+      }
+      ctx.stroke();
+
+      // Stone coping outer bevel highlight
+      ctx.strokeStyle = '#7c7465';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(roofP3.x - minScrX, roofP3.y - minScrY);
       ctx.lineTo(roofP2.x - minScrX, roofP2.y - minScrY);
-      ctx.lineTo(roofP3.x - minScrX, roofP3.y - minScrY);
-      ctx.closePath();
+      ctx.lineTo(roofP1.x - minScrX, roofP1.y - minScrY);
+      ctx.stroke();
+
+      // Lower fascia drip edge shadow
+      ctx.strokeStyle = '#100f0e';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(s3.x - minScrX, s3.y - minScrY);
+      ctx.lineTo(s2.x - minScrX, s2.y - minScrY);
+      ctx.lineTo(e2.x - minScrX, e2.y - minScrY);
       ctx.stroke();
 
       roofCanvas.refresh();
@@ -1521,6 +1621,7 @@ export class BuildingView {
       if (mansardRoof) this.mansardRoofObjects.push(mansardRoof);
 
       // Raised open surfaces (the terrace) are data, not a second hardcoded roof.
+      // Must have depth above level 0 stairs (10064) so rising stairs NEVER poke through terrace floor!
       (mansardFloor.walkable ?? []).forEach((region, index) => {
         const key = index === 0 ? 'terrace_front' : `terrace_${index}`;
         const base = region.elevationM - (region.thicknessM ?? 0.25);
@@ -1532,26 +1633,51 @@ export class BuildingView {
           region.y + region.h,
           base,
           region.elevationM,
-          FLOOR_BAND * 0 + 8000,
+          FLOOR_BAND * 1 + 8000,
           false,
         );
         if (terrace) this.terraceRoofObjects.push(terrace);
       });
 
-      // Roof equipment is data-driven too, so its support height and depth
-      // cannot drift away from the terrace surface.
+      // Roof equipment: HVAC unit firmly grounded on mounting rails with contact shadow
       for (const fixture of this.building.fixtures ?? []) {
         const pos = worldToScreen(fixture.x, fixture.y, fixture.elevationM);
-        const fixtureDepth = FLOOR_BAND * fixture.level + fixture.x + fixture.y;
+        const fixtureDepth = FLOOR_BAND * fixture.level + 8050 + fixture.x + fixture.y;
         const shadow = this.scene.add.graphics().setDepth(fixtureDepth - 1);
-        shadow.fillStyle(0x080706, 0.32);
-        shadow.fillEllipse(pos.x, pos.y - 2, 52, 16);
+
+        // Dark rectangular footprint contact shadow on tar surface
+        const halfW = (fixture.widthM ?? 1.0) * 0.55 / 1.6;
+        const halfD = (fixture.depthM ?? 0.9) * 0.55 / 1.6;
+        const pR0 = worldToScreen(fixture.x - halfW, fixture.y - halfD, fixture.elevationM);
+        const pR1 = worldToScreen(fixture.x + halfW, fixture.y - halfD, fixture.elevationM);
+        const pR2 = worldToScreen(fixture.x + halfW, fixture.y + halfD, fixture.elevationM);
+        const pR3 = worldToScreen(fixture.x - halfW, fixture.y + halfD, fixture.elevationM);
+        shadow.fillStyle(0x060605, 0.45);
+        shadow.fillPoints([pR0, pR1, pR2, pR3], true);
+
+        // Two steel mounting channel rails directly under unit feet
+        shadow.fillStyle(0x282b29, 0.95);
+        const rW = 0.08 / 1.6;
+        // Left mounting rail
+        const l0 = worldToScreen(fixture.x - halfW * 0.75, fixture.y - halfD * 0.9, fixture.elevationM);
+        const l1 = worldToScreen(fixture.x - halfW * 0.75 + rW, fixture.y - halfD * 0.9, fixture.elevationM);
+        const l2 = worldToScreen(fixture.x - halfW * 0.75 + rW, fixture.y + halfD * 0.9, fixture.elevationM);
+        const l3 = worldToScreen(fixture.x - halfW * 0.75, fixture.y + halfD * 0.9, fixture.elevationM);
+        shadow.fillPoints([l0, l1, l2, l3], true);
+
+        // Right mounting rail
+        const r0 = worldToScreen(fixture.x + halfW * 0.75 - rW, fixture.y - halfD * 0.9, fixture.elevationM);
+        const r1 = worldToScreen(fixture.x + halfW * 0.75, fixture.y - halfD * 0.9, fixture.elevationM);
+        const r2 = worldToScreen(fixture.x + halfW * 0.75, fixture.y + halfD * 0.9, fixture.elevationM);
+        const r3 = worldToScreen(fixture.x + halfW * 0.75 - rW, fixture.y + halfD * 0.9, fixture.elevationM);
+        shadow.fillPoints([r0, r1, r2, r3], true);
+
         this.terraceRoofObjects.push(shadow);
 
         const fixtureImage = artImage(this.scene, pos.x, pos.y, fixture.textureKey)
           .setOrigin(0.5, 0.98)
           .setDepth(fixtureDepth)
-          .setDisplaySize(fixture.widthPx ?? 64, fixture.heightPx ?? 54);
+          .setDisplaySize(fixture.widthPx ?? 80, fixture.heightPx ?? 80);
         this.terraceRoofObjects.push(fixtureImage);
       }
     }
@@ -1613,10 +1739,10 @@ export class BuildingView {
     this.activeFloor = floor;
     this.inside = isInside && this.roomHere(x, y, floor);
 
-    // Plinth (curb) & subfloor: strictly visible when activeFloor >= 0, completely hidden in basement
-    const curbVisible = floor >= 0 && (!this.inside || floor === 0 || floor === 1);
+    // Plinth (curb) & subfloor: strictly visible when activeFloor >= 0 AND player is outside; completely hidden inside and in basement
+    const curbVisible = floor >= 0 && !this.inside;
     for (const curb of this.foundationCurbs) curb.setVisible(curbVisible);
-    this.subfloor?.setVisible(foundationVisible(floor));
+    this.subfloor?.setVisible(foundationVisible(floor) && !this.inside);
 
     for (const [level, entry] of this.floors) {
       if (level === -1) {
@@ -1660,8 +1786,14 @@ export class BuildingView {
             wall.setActive(isExterior);
             if (isExterior) wall.setCut(false);
           }
-          for (const door of entry.doors) door.setActive(true);
-          for (const window of entry.windows) window.setActive(true);
+          for (const door of entry.doors) {
+            door.setActive(true);
+            door.setCut(false);
+          }
+          for (const window of entry.windows) {
+            window.setActive(true);
+            window.setCut(false);
+          }
           for (const furniture of entry.furniture) furniture.setVisible(false);
           for (const stair of entry.stairs) stair.setActive(this.stairVisibilityFloor(floor));
         }
@@ -1736,7 +1868,9 @@ export class BuildingView {
       }
       for (const [id, furniture] of this.furnitureViews) {
         const object = furniture.object;
-        const cut = object.placement.mount === 'wall' && cutWalls.has(object.placement.wallRunId);
+        const cut = object.placement.mount === 'wall'
+          ? cutWalls.has(object.placement.wallRunId)
+          : (object.placement.mount === 'ceiling' && this.inside);
         furniture.setWallCut(cut);
       }
     } else {

@@ -9,7 +9,7 @@ fs.mkdirSync(cropDir, { recursive: true });
 const crops = [
   { name: '01-outside', x: 500, y: 250, w: 500, h: 420 },
   { name: '01-outside-door', file: '01-outside', x: 250, y: 450, w: 350, h: 400 },
-  { name: '02-outside-door', file: '02-outside-door', x: 250, y: 450, w: 350, h: 400 },
+  { name: '02-outside-door', file: '02-outside-door', x: 250, y: 400, w: 400, h: 420 },
   { name: '03-inside-west', x: 450, y: 300, w: 550, h: 420 },
   { name: '04-inside-east', x: 480, y: 300, w: 550, h: 420 },
   { name: '05-basement', x: 450, y: 260, w: 550, h: 420 },

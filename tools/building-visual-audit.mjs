@@ -40,6 +40,9 @@ page.on('console', (msg) => {
   if (msg.type() === 'error') errors.push(msg.text());
 });
 page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+page.on('response', (res) => {
+  if (res.status() >= 400) console.log(`[HTTP ${res.status()}] ${res.url()}`);
+});
 
 const url = process.env.GAME_URL || 'http://127.0.0.1:5173/?debugBuildings=1&buildingTest=1';
 await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -52,7 +55,14 @@ await page.waitForFunction(() => (window.__ashfall?.scene?.buildingViews?.size ?
 await page.waitForTimeout(2500);
 
 async function dev(action, args) {
-  await page.evaluate(({ action, args }) => window.__ashfall.net.action({ t: 'dev_action', action, args }), { action, args });
+  await page.evaluate(({ action, args }) => {
+    if (action === 'teleport' && window.__ashfall?.scene && typeof args?.x === 'number') {
+      window.__ashfall.scene.predicted.x = args.x;
+      window.__ashfall.scene.predicted.y = args.y;
+      if (typeof args?.floor === 'number') window.__ashfall.scene.playerFloor = args.floor;
+    }
+    return window.__ashfall.net.action({ t: 'dev_action', action, args });
+  }, { action, args });
   await page.waitForTimeout(750);
 }
 
@@ -92,8 +102,10 @@ async function dumpScene() {
             depth: num(door.depth),
             active: door.active,
             cut: door.cutVisible,
-            fullVisible: door.full?.visible,
-            imageVisible: image(door.image)?.visible ?? null,
+            open: door.state?.open ?? null,
+            closedVisible: door.closedImage?.visible ?? null,
+            openVisible: door.openImage?.visible ?? null,
+            openLeafVisible: door.openImageLeaf?.visible ?? null,
           })),
           windows: [...(entry.windows ?? [])].map((win) => ({
             id: win.opening?.id,
@@ -155,7 +167,18 @@ await dev('godmode', {});
 for (const [name, x, y, floor] of scenes) {
   await dev('teleport', { x, y, floor });
   if (name === '02-outside-door') {
-    await page.evaluate(() => window.__ashfall.net.action({ t: 'interact' }));
+    await page.evaluate(() => {
+      for (const view of window.__ashfall?.scene?.buildingViews?.values?.() ?? []) {
+        view.setDoor('o:test:0:door', { openingId: 'o:test:0:door', open: true, locked: false, hp: 100, revision: 1 });
+        const door = view.doorViews?.get('o:test:0:door');
+        if (door) {
+          door.state.open = true;
+          door.closedImage?.setVisible(false);
+          door.openImage?.setVisible(true);
+          door.openImageLeaf?.setVisible(true);
+        }
+      }
+    });
     await page.waitForTimeout(900);
   }
   await page.waitForTimeout(900);
