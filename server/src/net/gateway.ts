@@ -137,10 +137,15 @@ export class Gateway {
       }
       clearTimeout(state.authTimer);
       try {
-        const playerId = await this.sim.join(session.userId, session.username, {
-          send: (m) => send(ws, m),
-          close: (code, reason) => ws.close(code ?? 1000, reason),
-        });
+        const playerId = await this.sim.join(
+          session.userId,
+          session.username,
+          {
+            send: (m) => send(ws, m),
+            close: (code, reason) => ws.close(code ?? 1000, reason),
+          },
+          session.isAdmin,
+        );
         if (playerId === null) {
           error(ws, 'JOIN_FAILED', 'Не удалось войти в мир');
           ws.close(4005, 'join failed');

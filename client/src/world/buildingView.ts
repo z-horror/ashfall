@@ -1358,11 +1358,17 @@ export class BuildingView {
 
     // 3. Rooftop Industrial AC Unit: Firmly grounded on the front roof terrace at (38.0, 35.0)!
     if (this.scene.textures.exists('gen_roof_ac_unit')) {
+      const acX = 38.0;
+      const acY = 35.0;
       const zTerraceTop = 3.05;
-      const acPos = worldToScreen(38.0, 35.0, zTerraceTop);
+      const acPos = worldToScreen(acX, acY, zTerraceTop);
+      // The unit stands on the lower terrace, south of the mansard facade.
+      // Its isometric depth must sort against the floor-1 band, otherwise the
+      // floor-1 slab/south wall (depth 9000/10068+) hides its right side.
+      const acDepth = FLOOR_BAND * 1 + acX + acY;
 
       // Steel mounting rails resting directly on tar paper
-      const railsG = this.scene.add.graphics().setDepth(FLOOR_BAND * 0 + 8001);
+      const railsG = this.scene.add.graphics().setDepth(acDepth - 1);
       const r0 = worldToScreen(37.6, 34.8, zTerraceTop);
       const r1 = worldToScreen(38.4, 34.8, zTerraceTop);
       const r2 = worldToScreen(37.6, 35.2, zTerraceTop);
@@ -1383,7 +1389,7 @@ export class BuildingView {
       // AC Unit Sprite firmly anchored on the roof surface
       const acSprite = this.scene.add.image(acPos.x, acPos.y, 'gen_roof_ac_unit')
         .setOrigin(0.5, 0.98)
-        .setDepth(FLOOR_BAND * 0 + 8002)
+        .setDepth(acDepth)
         .setDisplaySize(80, 80);
       this.terraceRoofObjects.push(acSprite);
     }

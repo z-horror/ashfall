@@ -7,6 +7,7 @@ import {
   PICKUP_RANGE,
   TILE,
   chunkOf,
+  floorElevationM,
   moveCircle,
   raycast,
   type ContainerView,
@@ -422,6 +423,10 @@ export class GameScene extends Phaser.Scene {
 
   private attackAim = 0;
 
+  private floorElevationFor(level: number): number {
+    return floorElevationM([...this.world.buildings.values()].flatMap((building) => building.floors), level);
+  }
+
   private ensureSelfView(s: {
     id: number;
     x: number;
@@ -439,6 +444,7 @@ export class GameScene extends Phaser.Scene {
       x: s.x,
       y: s.y,
       floor: s.floor ?? 0,
+      elevationM: this.floorElevationFor(s.floor ?? 0),
       aim: s.aim,
       hp: s.hp,
       maxHp: s.maxHp,
@@ -661,7 +667,7 @@ export class GameScene extends Phaser.Scene {
     this.selfSnapshot = msg.self;
     this.lastOnline = msg.online;
     this.playerFloor = msg.self.floor;
-    this.selfView?.setFloor(msg.self.floor);
+    this.selfView?.setFloor(msg.self.floor, this.floorElevationFor(msg.self.floor));
 
     if (msg.self.status === 'alive') {
       if (prevStatus === 'dead' || !this.selfView) {
@@ -727,10 +733,11 @@ export class GameScene extends Phaser.Scene {
           maxHp: p.maxHp,
           name: p.name,
           floor: p.floor,
+          elevationM: this.floorElevationFor(p.floor),
         });
         this.playerViews.set(p.id, view);
       }
-      view.setFloor(p.floor);
+      view.setFloor(p.floor, this.floorElevationFor(p.floor));
       view.applyPlayer(p);
     }
     for (const [id, view] of [...this.playerViews]) {
@@ -755,10 +762,11 @@ export class GameScene extends Phaser.Scene {
           hp: z.hp,
           maxHp: z.maxHp,
           floor: z.floor,
+          elevationM: this.floorElevationFor(z.floor),
         });
         this.zombieViews.set(z.id, view);
       }
-      view.setFloor(z.floor);
+      view.setFloor(z.floor, this.floorElevationFor(z.floor));
       view.applyZombie(z);
     }
     for (const [id, view] of [...this.zombieViews]) {
@@ -955,7 +963,7 @@ export class GameScene extends Phaser.Scene {
       }
       case 'stair': {
         this.playerFloor = Number(ev.floor ?? ev.toLevel ?? 0);
-        this.selfView?.setFloor(this.playerFloor);
+        this.selfView?.setFloor(this.playerFloor, this.floorElevationFor(this.playerFloor));
         this.updateBuildingVisibility();
         break;
       }

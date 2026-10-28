@@ -7,10 +7,6 @@ import { artImage } from '../art/textures.js';
 
 const FLOOR_BAND = 10_000;
 
-function floorElevationM(floor: number): number {
-  return floor < 0 ? -3.0 : floor * 3.2;
-}
-
 function lerpAngle(a: number, b: number, t: number): number {
   let diff = b - a;
   while (diff > Math.PI) diff -= Math.PI * 2;
@@ -49,6 +45,7 @@ export class CharacterView {
   private local = false;
   private facingDir = 2;
   private floor = 0;
+  private elevationM = 0;
   private moveDir: number | null = null;
 
   constructor(
@@ -59,6 +56,7 @@ export class CharacterView {
       x: number;
       y: number;
       floor?: number;
+      elevationM?: number;
       aim: number;
       hp: number;
       maxHp: number;
@@ -74,6 +72,7 @@ export class CharacterView {
     this.x = opts.x;
     this.y = opts.y;
     this.floor = opts.floor ?? 0;
+    this.elevationM = opts.elevationM ?? 0;
     this.tx = opts.x;
     this.ty = opts.y;
     this.aim = opts.aim;
@@ -120,8 +119,9 @@ export class CharacterView {
     return this.dead;
   }
 
-  setFloor(floor: number): void {
+  setFloor(floor: number, elevationM?: number): void {
     this.floor = floor;
+    if (elevationM !== undefined) this.elevationM = elevationM;
   }
 
   setLocal(local: boolean): void {
@@ -133,7 +133,7 @@ export class CharacterView {
     if (this.kind !== 'player') return;
     if (!this.weaponSprite && this.scene && key && this.scene.textures.exists(`weapon_${key}`)) {
       const p = iso(this.x, this.y);
-      const floorY = p.y - floorElevationM(this.floor) * PX_PER_METER;
+      const floorY = p.y - this.elevationM * PX_PER_METER;
       this.weaponSprite = this.scene.add.image(p.x, floorY, `weapon_${key}`).setOrigin(0.2, 0.5).setVisible(!this.dead);
     }
     if (this.weaponSprite) {
@@ -306,7 +306,7 @@ export class CharacterView {
     }
 
     const p = iso(this.x, this.y);
-    const floorY = p.y - floorElevationM(this.floor) * PX_PER_METER;
+    const floorY = p.y - this.elevationM * PX_PER_METER;
     this.sprite.setPosition(p.x, floorY);
     this.shadow.setPosition(p.x, floorY + 2);
     this.hpBg.setPosition(p.x, floorY - (this.kind === 'player' ? 72 : 64));

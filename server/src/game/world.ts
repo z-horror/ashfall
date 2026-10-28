@@ -1,5 +1,6 @@
 import {
   CHUNK_TILES,
+  COLLISION_SCALE,
   CONTAINER_LABELS,
   ITEMS,
   LOOT_TABLES,
@@ -16,6 +17,7 @@ import {
   circleHits,
   createGrid,
   encodeRLE,
+  nearestStairAt,
   type BuildingSpec,
   type CollisionGrid,
   type ContainerInfo,
@@ -136,7 +138,6 @@ export class World {
   private readonly buildingById = new Map<string, BuildingSpec>();
   private readonly objectById = new Map<string, ObjectInstance>();
   private readonly doorsByFloor = new Map<number, Door[]>();
-  private readonly stairsByFloor = new Map<number, StairSpec[]>();
 
   constructor(seed: string) {
     this.seed = seed;
@@ -150,7 +151,6 @@ export class World {
     for (const state of createInitialObjectStates()) this.objectStates.set(state.objectId, state);
 
     for (const floor of TEST_BUILDING.floors) {
-      this.stairsByFloor.set(floor.level, floor.stairs);
       for (const room of floor.rooms) {
         this.roomGeometry.set(room.id, buildRoomGeometry(room));
       }
@@ -236,7 +236,7 @@ export class World {
   }
 
   getCollisionGrid(level: number): CollisionGrid {
-    return this.collisionGrids.get(level) ?? createGrid(WORLD_TILES, WORLD_TILES, 8);
+    return this.collisionGrids.get(level) ?? createGrid(WORLD_TILES, WORLD_TILES, COLLISION_SCALE);
   }
 
   getFloor(level: number): FloorSpec | undefined {
@@ -289,8 +289,9 @@ export class World {
 
   private rebuildCollision(): void {
     this.collision.fill(0);
+    const stairs = this.buildings.flatMap((building) => building.floors.flatMap((floor) => floor.stairs));
     for (const floor of this.buildings.flatMap((building) => building.floors)) {
-      const grid = buildFloorCollision(floor, this.getOpeningStates(), this.objects, OBJECT_TEMPLATES, this.getObjectStateRecord());
+      const grid = buildFloorCollision(floor, this.getOpeningStates(), this.objects, OBJECT_TEMPLATES, this.getObjectStateRecord(), stairs);
       this.collisionGrids.set(floor.level, grid);
       if (floor.level === 0) {
         for (let y = 0; y < WORLD_TILES; y++) {
@@ -415,17 +416,12 @@ export class World {
   }
 
   nearestStair(x: number, y: number, level = 0): StairSpec | null {
-    for (const stair of this.stairsByFloor.get(level) ?? []) {
-      if (
-        x >= stair.entry.x &&
-        x < stair.entry.x + stair.entry.w &&
-        y >= stair.entry.y &&
-        y < stair.entry.y + stair.entry.h
-      ) {
-        return stair;
-      }
-    }
-    return null;
+    return nearestStairAt(
+      this.buildings.flatMap((building) => building.floors),
+      x,
+      y,
+      level,
+    );
   }
 
   propAt(_x: number, _y: number): Prop | null {

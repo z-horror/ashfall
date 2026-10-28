@@ -77,6 +77,7 @@ interface SimPlayer {
   lastSubCheck: number;
   lastChatAt: number;
   lastStairAt: number;
+  isAdmin?: boolean;
   godmode?: boolean;
   craftingLock?: boolean;
 }
@@ -334,7 +335,7 @@ export class Simulation {
     this.send(p, { t: 'notice', text });
   }
 
-  async join(userId: number, name: string, conn: Conn): Promise<number | null> {
+  async join(userId: number, name: string, conn: Conn, isAdmin = false): Promise<number | null> {
     let character = await repo.loadCharacter(userId);
     if (!character) {
       character = await repo.getOrCreateCharacter(userId, name, this.world.spawn);
@@ -347,6 +348,7 @@ export class Simulation {
         } catch {}
       }
       existing.conn = conn;
+      existing.isAdmin = isAdmin;
       existing.offlineAt = null;
       existing.input = { mx: 0, my: 0, sprint: false, seq: 0 };
       if (existing.status === 'dead' && existing.deadUntil && existing.deadUntil <= Date.now()) {
@@ -424,6 +426,7 @@ export class Simulation {
       lastSubCheck: 0,
       lastChatAt: 0,
       lastStairAt: 0,
+      isAdmin,
     };
     this.players.set(p.id, p);
     this.sendWelcome(p);
@@ -1126,6 +1129,7 @@ export class Simulation {
   }
 
   public isPlayerAdmin(p: SimPlayer): boolean {
+    if (p.isAdmin) return true;
     if (config.allowDevActions) return true;
     if (config.adminUsers.length > 0 && config.adminUsers.includes(p.name.toLowerCase())) return true;
     return false;

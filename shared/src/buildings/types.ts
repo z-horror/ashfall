@@ -100,6 +100,11 @@ export interface FloorSpec {
   elevationM: number;
   clearHeightM: number;
   floor: SurfaceSpec;
+  /**
+   * Extra walkable surfaces outside floor.cells, e.g. an open roof terrace.
+   * They are supported by this floor and bounded by its collision mask.
+   */
+  walkable?: TileRect[];
   rooms: RoomSpec[];
   wallRuns: WallRun[];
   openings: OpeningSpec[];

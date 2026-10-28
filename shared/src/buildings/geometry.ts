@@ -1,5 +1,5 @@
 import { metersToTiles, tileToMeters, type Vec2 } from '../geometry/units.js';
-import type { OpeningSpec, WallRun } from './types.js';
+import type { FloorIndex, FloorSpec, OpeningSpec, StairSpec, WallRun } from './types.js';
 
 export interface IntervalM {
   startM: number;
@@ -76,4 +76,57 @@ export function sideOfWall(run: WallRun, point: Vec2): number {
   const start = runStart(run);
   if (run.axis === 'h') return point.y - start.y;
   return start.x - point.x;
+}
+
+/** Elevation of a floor comes from the building data, never from a hard-coded floor height. */
+export function floorElevationM(floors: readonly FloorSpec[], level: FloorIndex): number {
+  return floors.find((floor) => floor.level === level)?.elevationM ?? (level < 0 ? -3.0 : 0);
+}
+
+/**
+ * One StairSpec describes a connection from its source floor to its target
+ * floor. This resolves the same physical staircase for either endpoint,
+ * swapping the landing so interaction works in both directions.
+ */
+export function stairForLevel(stair: StairSpec, level: FloorIndex): StairSpec | null {
+  if (stair.fromLevel === level) return stair;
+  if (stair.toLevel !== level) return null;
+  return {
+    ...stair,
+    fromLevel: stair.toLevel,
+    toLevel: stair.fromLevel,
+    entry: stair.exit,
+    exit: stair.entry,
+    direction: stair.direction === 'up' ? 'down' : 'up',
+  };
+}
+
+export function stairsForLevel(floors: readonly FloorSpec[], level: FloorIndex): StairSpec[] {
+  const out: StairSpec[] = [];
+  for (const floor of floors) {
+    for (const stair of floor.stairs) {
+      const resolved = stairForLevel(stair, level);
+      if (resolved) out.push(resolved);
+    }
+  }
+  return out;
+}
+
+export function nearestStairAt(
+  floors: readonly FloorSpec[],
+  x: number,
+  y: number,
+  level: FloorIndex,
+): StairSpec | null {
+  for (const stair of stairsForLevel(floors, level)) {
+    if (
+      x >= stair.entry.x &&
+      x < stair.entry.x + stair.entry.w &&
+      y >= stair.entry.y &&
+      y < stair.entry.y + stair.entry.h
+    ) {
+      return stair;
+    }
+  }
+  return null;
 }

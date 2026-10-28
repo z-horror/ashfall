@@ -92,6 +92,23 @@ export async function getUserByUsername(username: string): Promise<UserRow | nul
   return res.rows[0] ?? null;
 }
 
+export async function getUserById(id: number): Promise<UserRow | null> {
+  const res = await query<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
+  return res.rows[0] ?? null;
+}
+
+export async function setUserAdmin(
+  userId: number,
+  isAdmin: boolean,
+): Promise<{ id: number; username: string; isAdmin: boolean } | null> {
+  const res = await query<{ id: number; username: string; is_admin: boolean }>(
+    'UPDATE users SET is_admin = $1 WHERE id = $2 RETURNING id, username, is_admin',
+    [isAdmin, userId],
+  );
+  const row = res.rows[0];
+  return row ? { id: row.id, username: row.username, isAdmin: row.is_admin } : null;
+}
+
 export async function createSession(userId: number, tokenHash: string, expiresAt: Date): Promise<void> {
   await query('INSERT INTO sessions(token_hash, user_id, expires_at) VALUES ($1, $2, $3)', [
     tokenHash,

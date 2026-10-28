@@ -8,6 +8,7 @@ import {
   buildRoomGeometry,
   canAttackAcrossFloor,
   circleHits,
+  floorElevationM,
   hasFloorSight,
   moveCircle,
   openingCenter,
@@ -187,6 +188,74 @@ test('furniture has collision and basement stair exit is usable', () => {
   assert.equal(world.isWalkable(37.5, 33.5, -1), true, 'basement stair exit must be clear');
 });
 
+function reachable(
+  grid: ReturnType<World['getCollisionGrid']>,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  step = 0.0625,
+): boolean {
+  if (circleHits(grid, from.x, from.y, PLAYER_RADIUS) || circleHits(grid, to.x, to.y, PLAYER_RADIUS)) return false;
+  const q: Array<{ x: number; y: number }> = [from];
+  const seen = new Set<string>([`${Math.round(from.x / step)},${Math.round(from.y / step)}`]);
+  while (q.length) {
+    const p = q.shift()!;
+    if (Math.hypot(p.x - to.x, p.y - to.y) < step * 0.5) return true;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = p.x + dx * step;
+        const y = p.y + dy * step;
+        const key = `${Math.round(x / step)},${Math.round(y / step)}`;
+        if (x < 0 || y < 0 || x >= 128 || y >= 128 || seen.has(key)) continue;
+        if (circleHits(grid, x, y, PLAYER_RADIUS)) continue;
+        seen.add(key);
+        q.push({ x, y });
+      }
+    }
+  }
+  return false;
+}
+
+test('floor support mask keeps the terrace and blocks its edges', () => {
+  const world = new World('test-support-mask');
+  assert.equal(world.isWalkable(35.5, 30.5, 1), true, 'mansard interior must stay walkable');
+  assert.equal(world.isWalkable(35.5, 35.5, 1), true, 'terrace surface must be walkable');
+  assert.equal(world.isWalkable(40.5, 35.5, 1), false, 'east edge of terrace must be blocked');
+  assert.equal(world.isWalkable(35.5, 37.5, 1), false, 'south edge of terrace must be blocked');
+  assert.equal(world.isWalkable(34.5, 30.5, 1), false, 'stairwell hole must be blocked');
+  assert.equal(world.isWalkable(34.5, 29.5, 1), true, 'upper stair landing must be usable');
+  assert.equal(world.isWalkable(35.5, 41.0, 0), true, 'ground outside the manor is still walkable');
+  assert.equal(world.isWalkable(37.5, 30.5, 0), false, 'lower stairwell hole must be blocked');
+  assert.equal(world.isWalkable(37.5, 29.5, 0), true, 'basement stair entry must be usable');
+});
+
+test('player-sized routes remain open around furniture and through arches', () => {
+  const world = new World('test-routes');
+  world.setDoorOpen('o:test:1:door_terrace', true);
+  assert.equal(
+    circleHits(world.getCollisionGrid(0), 33.7, 28.6, PLAYER_RADIUS),
+    true,
+    'nightstand/partition gap is narrower than the player and must stay blocked',
+  );
+  assert.equal(reachable(world.getCollisionGrid(0), { x: 31, y: 33 }, { x: 38, y: 33 }), true, 'bedroom to kitchen');
+  assert.equal(reachable(world.getCollisionGrid(0), { x: 31, y: 33 }, { x: 37.5, y: 29.5 }), true, 'bedroom to basement stair');
+  assert.equal(reachable(world.getCollisionGrid(0), { x: 31, y: 33 }, { x: 34.5, y: 32.5 }), true, 'bedroom to mansard stair');
+  const archWest = moveCircle(world.getCollisionGrid(0), 33.0, 33.32, 2.0, 0, PLAYER_RADIUS);
+  assert.ok(archWest.x > 34.5, 'player-sized movement must pass the west partition arch');
+  const archEast = moveCircle(world.getCollisionGrid(0), 35.0, 33.32, 2.0, 0, PLAYER_RADIUS);
+  assert.ok(archEast.x > 36.5, 'player-sized movement must pass the east partition arch');
+  assert.equal(reachable(world.getCollisionGrid(1), { x: 32, y: 31 }, { x: 35.5, y: 35.5 }), true, 'mansard to terrace');
+  assert.equal(reachable(world.getCollisionGrid(1), { x: 32, y: 31 }, { x: 35.5, y: 37.5 }), false, 'terrace edge is not walkable');
+});
+
+test('floor elevation comes from FloorSpec data, including the basement and mansard', () => {
+  const world = new World('test-floor-elevation');
+  const floors = world.buildings.flatMap((building) => building.floors);
+  assert.equal(floorElevationM(floors, 0), 0);
+  assert.equal(floorElevationM(floors, -1), -3.0);
+  assert.equal(floorElevationM(floors, 1), 2.8);
+});
+
 test('test building objects are inside rooms and do not overlap', () => {
   const world = new World('test-interior');
   const floorObjects = world.objects.filter((object) => object.level === 0 && object.placement.mount === 'floor');
@@ -237,18 +306,14 @@ test('test building geometry is deterministic', () => {
 });
 
 
-test('server stair transition changes floor only through an explicit stair interaction', async () => {
-  await waitForDatabase();
-  const world = new World('test-stairs');
-  const sim = new Simulation(world);
-  await sim.init();
-  const player = {
+function makeStairPlayer(x: number, y: number, floor: number) {
+  return {
     id: 999,
     userId: 999,
     name: 'StairTester',
-    x: 37.5,
-    y: 29.5,
-    floor: 0,
+    x,
+    y,
+    floor,
     aim: 0,
     hp: 100,
     stamina: 100,
@@ -273,6 +338,14 @@ test('server stair transition changes floor only through an explicit stair inter
     lastChatAt: 0,
     lastStairAt: 0,
   };
+}
+
+test('server stair transition changes floor only through an explicit stair interaction', async () => {
+  await waitForDatabase();
+  const world = new World('test-stairs');
+  const sim = new Simulation(world);
+  await sim.init();
+  const player = makeStairPlayer(37.5, 29.5, 0);
   sim.players.set(999, player);
   sim.handleMessage(999, { t: 'use_stairs', seq: 1, id: 's:test:0:-1' });
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -282,13 +355,50 @@ test('server stair transition changes floor only through an explicit stair inter
 });
 
 
+
+test('stairs can be traversed in both directions on every floor', async () => {
+  await waitForDatabase();
+  const world = new World('test-stairs');
+  const sim = new Simulation(world);
+  await sim.init();
+  const player = makeStairPlayer(34.5, 32.5, 0);
+  sim.players.set(999, player);
+
+  sim.handleMessage(999, { t: 'use_stairs', seq: 1, id: 's:test:0:1' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(player.floor, 1, 'mansard ascent must reach floor 1');
+  assert.ok(Math.abs(player.x - 34.5) < 1e-9);
+  assert.ok(Math.abs(player.y - 29.5) < 1e-9);
+
+  player.lastStairAt = 0;
+  sim.handleMessage(999, { t: 'use_stairs', seq: 2, id: 's:test:0:1' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(player.floor, 0, 'return from mansard must reach floor 0');
+  assert.ok(Math.abs(player.x - 34.5) < 1e-9);
+  assert.ok(Math.abs(player.y - 32.5) < 1e-9);
+
+  player.x = 37.5;
+  player.y = 29.5;
+  player.lastStairAt = 0;
+  sim.handleMessage(999, { t: 'use_stairs', seq: 3, id: 's:test:0:-1' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(player.floor, -1, 'basement descent must reach floor -1');
+
+  player.lastStairAt = 0;
+  sim.handleMessage(999, { t: 'use_stairs', seq: 4, id: 's:test:0:-1' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(player.floor, 0, 'return from basement must reach floor 0');
+  assert.ok(Math.abs(player.x - 37.5) < 1e-9);
+  assert.ok(Math.abs(player.y - 29.5) < 1e-9);
+});
+
 test('server and client build identical per-floor collision from the same chunk data', () => {
   const world = new World('test-parity');
   const client = new ClientWorld();
   for (let cy = 0; cy <= 1; cy++) {
     for (let cx = 0; cx <= 1; cx++) client.loadChunk(world.chunkData(cx, cy));
   }
-  for (const floor of [0, -1]) {
+  for (const floor of [0, -1, 1]) {
     const serverGrid = world.getCollisionGrid(floor);
     const clientGrid = client.getCollisionGrid(floor);
     assert.equal(serverGrid.cells.length, clientGrid.cells.length);

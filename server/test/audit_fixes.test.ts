@@ -89,6 +89,10 @@ test('P0: regular players cannot execute dev actions, admins can', async () => {
   const admin = makeMockPlayer(1002, 'SuperAdmin');
   sim.players.set(admin.id, admin);
   assert.equal(sim.isPlayerAdmin(admin), true, 'SuperAdmin must have admin privileges');
+
+  const dbAdmin = { ...makeMockPlayer(1003, 'DatabaseAdmin'), isAdmin: true };
+  sim.players.set(dbAdmin.id, dbAdmin);
+  assert.equal(sim.isPlayerAdmin(dbAdmin), true, 'users.is_admin must grant DEV permission');
 });
 
 // -------------------------------------------------------------

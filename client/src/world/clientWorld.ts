@@ -1,9 +1,11 @@
 import {
+  COLLISION_SCALE,
   OBJECT_TEMPLATES,
   WORLD_TILES,
   buildFloorCollision,
   buildRoomGeometry,
   decodeRLE,
+  nearestStairAt,
   openingCenter,
   createGrid,
   type BuildingSpec,
@@ -49,7 +51,7 @@ export class ClientWorld {
   private readonly collisionGrids = new Map<number, CollisionGrid>();
 
   constructor() {
-    this.collisionGrids.set(0, createGrid(WORLD_TILES, WORLD_TILES, 8));
+    this.collisionGrids.set(0, createGrid(WORLD_TILES, WORLD_TILES, COLLISION_SCALE));
   }
 
   key(cx: number, cy: number): string {
@@ -61,7 +63,7 @@ export class ClientWorld {
   }
 
   getCollisionGrid(level: number): CollisionGrid {
-    return this.collisionGrids.get(level) ?? createGrid(WORLD_TILES, WORLD_TILES, 8);
+    return this.collisionGrids.get(level) ?? createGrid(WORLD_TILES, WORLD_TILES, COLLISION_SCALE);
   }
 
   loadChunk(data: ChunkData): void {
@@ -171,9 +173,10 @@ export class ClientWorld {
     this.collisionGrids.clear();
     const stateRecord = Object.fromEntries(this.objectStates);
     for (const building of this.buildings.values()) {
+      const stairs = building.floors.flatMap((floor) => floor.stairs);
       for (const floor of building.floors) {
         const objects = [...this.objects.values()].filter((object) => object.buildingId === building.id && object.level === floor.level);
-        this.collisionGrids.set(floor.level, buildFloorCollision(floor, openingStates, objects, OBJECT_TEMPLATES, stateRecord));
+        this.collisionGrids.set(floor.level, buildFloorCollision(floor, openingStates, objects, OBJECT_TEMPLATES, stateRecord, stairs));
       }
     }
   }
@@ -277,15 +280,12 @@ export class ClientWorld {
   }
 
   nearestStair(x: number, y: number, level = 0) {
-    for (const building of this.buildings.values()) {
-      for (const floor of building.floors) {
-        if (floor.level !== level) continue;
-        for (const stair of floor.stairs) {
-          if (x >= stair.entry.x && x < stair.entry.x + stair.entry.w && y >= stair.entry.y && y < stair.entry.y + stair.entry.h) return stair;
-        }
-      }
-    }
-    return null;
+    return nearestStairAt(
+      [...this.buildings.values()].flatMap((building) => building.floors),
+      x,
+      y,
+      level,
+    );
   }
 
   tileAt(tx: number, ty: number): number {

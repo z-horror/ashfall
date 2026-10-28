@@ -57,6 +57,10 @@ export function isMemoryPool(db: unknown): boolean {
   return typeof db === 'object' && db !== null && (db as { [MEMORY_POOL]?: boolean })[MEMORY_POOL] === true;
 }
 
+export function isMemoryDatabase(): boolean {
+  return Boolean(memDb) || useMemoryDirectly;
+}
+
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params: unknown[] = [],

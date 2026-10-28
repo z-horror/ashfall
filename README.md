@@ -34,6 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/z-horror/ashfall/main/deploy/instal
 
 Подробная документация: [**Руководство по развёртыванию и администрированию**](docs/DEPLOYMENT.md).
 
+Права на игровую DEV-панель выдаются серверной CLI-командой по существующему пользователю:
+[**ADMIN.md**](docs/ADMIN.md).
+
 ## Локальный запуск (Docker)
 
 ```bash

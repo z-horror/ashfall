@@ -237,6 +237,8 @@ const mansardFloor: FloorSpec = {
   elevationM: 2.8,
   clearHeightM: 2.6,
   floor: { cells: MANSARD_CELLS, material: 'wood', thicknessM: 0.4, holes: [STAIR_HOLE_MANSARD] },
+  // Open roof terrace south of the mansard (the lower roof slab is walkable).
+  walkable: [{ x: 28, y: 33, w: 12, h: 4 }],
   rooms: [
     {
       id: 'room:test:1:mansard',
