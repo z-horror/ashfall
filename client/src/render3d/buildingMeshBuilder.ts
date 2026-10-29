@@ -575,7 +575,7 @@ function addPlinth(parent: THREE.Object3D, plinth: PlinthModel, material: THREE.
 }
 
 function addGroundOccluder(parent: THREE.Object3D, model: BuildingModel): THREE.Mesh {
-  const margin = 1.4;
+  const margin = 14.0;
   const x0 = model.footprint.x - margin;
   const y0 = model.footprint.y - margin;
   const x1 = model.footprint.x + model.footprint.w + margin;
@@ -607,6 +607,7 @@ function addGroundOccluder(parent: THREE.Object3D, model: BuildingModel): THREE.
       side: THREE.DoubleSide,
     }),
   );
+  mesh.position.z = -0.005;
   mesh.renderOrder = -1000;
   mesh.castShadow = false;
   mesh.receiveShadow = false;

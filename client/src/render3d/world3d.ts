@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { TILE_SIZE_M, sceneToWorld, type BuildingSpec } from '@ashfall/shared';
 import type { ClientWorld } from '../world/clientWorld.js';
 import type { CharacterView } from '../world/entityView.js';
@@ -174,7 +174,7 @@ export class World3D {
       CHARACTER_STYLES.forEach((style, index) => this.characterSheets.set(style, sheets[index]));
 
       window.addEventListener('resize', this.onResize);
-      this.scene.events.on('postrender', this.onPostRender);
+      this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
       this.readyResolved = true;
       this.readyResolve();
@@ -190,7 +190,7 @@ export class World3D {
   };
 
   private onShutdown = (): void => {
-    this.scene.events.off('postrender', this.onPostRender);
+    this.scene.game.events.off(Phaser.Core.Events.POST_RENDER, this.onPostRender);
     window.removeEventListener('resize', this.onResize);
   };
 
@@ -228,16 +228,18 @@ export class World3D {
       const inBasement = inside && state.playerFloor < 0;
       for (const [levelId, group] of entry.meshes.levelGroups) {
         const level = entry.model.levels.find((candidate) => candidate.id === levelId);
-        group.visible = !inside || !level || level.index <= state.playerFloor;
+        group.visible = !inside
+          ? !level || level.index >= 0
+          : !level || level.index <= state.playerFloor;
       }
       for (const wall of entry.meshes.nearWalls) wall.visible = !inside;
-      entry.meshes.plinth.visible = !inBasement;
+      entry.meshes.plinth.visible = false;
       entry.meshes.groundOccluder.visible = !inside || state.playerFloor >= 0;
       entry.meshes.exteriorClutter.visible = !inside;
       for (const stair of entry.meshes.stairs) {
         const low = Math.min(stair.fromIndex, stair.toIndex);
         const high = Math.max(stair.fromIndex, stair.toIndex);
-        stair.group.visible = !inside || (state.playerFloor >= low && state.playerFloor <= high);
+        stair.group.visible = !inside ? low >= 0 : (state.playerFloor >= low && state.playerFloor <= high);
       }
     }
   }
