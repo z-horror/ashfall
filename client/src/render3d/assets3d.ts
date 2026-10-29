@@ -1,5 +1,38 @@
 import * as THREE from 'three';
-import type { BuildingTextures } from './buildingMeshBuilder.js';
+import type { BuildingTextures, DecalAtlas } from './buildingMeshBuilder.js';
+
+export const CHARACTER_SHEET_COLS = 12;
+export const CHARACTER_SHEET_ROWS = 8;
+
+interface AtlasFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const IVY_FRAMES: AtlasFrame[] = [
+  { x: 520, y: 60, w: 280, h: 620 },
+  { x: 120, y: 200, w: 330, h: 760 },
+  { x: 540, y: 640, w: 250, h: 300 },
+  { x: 800, y: 60, w: 190, h: 350 },
+  { x: 700, y: 820, w: 160, h: 170 },
+];
+
+const BRICK_DAMAGE_FRAMES: AtlasFrame[] = [
+  { x: 150, y: 250, w: 350, h: 450 },
+  { x: 730, y: 60, w: 280, h: 230 },
+  { x: 680, y: 610, w: 210, h: 180 },
+];
+
+const PUDDLE_FRAMES: AtlasFrame[] = [{ x: 30, y: 140, w: 940, h: 750 }];
+
+const TAR_PATCH_FRAMES: AtlasFrame[] = [
+  { x: 6, y: 780, w: 494, h: 240 },
+  { x: 520, y: 600, w: 250, h: 220 },
+  { x: 700, y: 460, w: 270, h: 200 },
+  { x: 10, y: 360, w: 250, h: 200 },
+];
 
 function fallbackTexture(color: number): THREE.Texture {
   const surface = document.createElement('canvas');
@@ -39,15 +72,43 @@ async function loadCroppedTexture(
   sourceHeight: number,
 ): Promise<THREE.Texture> {
   const source = await loader.loadAsync(url);
+  return cropTexture(source, { x: sourceX, y: sourceY, w: sourceWidth, h: sourceHeight });
+}
+
+function cropTexture(source: THREE.Texture, frame: AtlasFrame): THREE.Texture {
   const canvas = document.createElement('canvas');
-  canvas.width = sourceWidth;
-  canvas.height = sourceHeight;
+  canvas.width = frame.w;
+  canvas.height = frame.h;
   const context = canvas.getContext('2d');
-  if (!context) throw new Error(`Cannot create 2D context for ${url}`);
-  context.drawImage(source.image as CanvasImageSource, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight);
+  if (!context) throw new Error('Cannot create 2D context for atlas crop');
+  context.drawImage(
+    source.image as CanvasImageSource,
+    frame.x,
+    frame.y,
+    frame.w,
+    frame.h,
+    0,
+    0,
+    frame.w,
+    frame.h,
+  );
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
+}
+
+async function loadAtlasFrames(
+  loader: THREE.TextureLoader,
+  url: string,
+  frames: AtlasFrame[],
+): Promise<THREE.Texture[]> {
+  try {
+    const source = await loader.loadAsync(url);
+    return frames.map((frame) => cropTexture(source, frame));
+  } catch (error) {
+    console.warn('[world3d] decal atlas fallback', url, error);
+    return [];
+  }
 }
 
 function makeWeedTexture(): THREE.Texture {
@@ -78,7 +139,7 @@ function makeWeedTexture(): THREE.Texture {
 
 export async function loadBuildingTextures(): Promise<BuildingTextures> {
   const loader = new THREE.TextureLoader();
-  const [brick, plaster, wood, concrete, tar, metal, ivy, brickDamage, puddle, tarPatch] = await Promise.all([
+  const [brick, plaster, wood, concrete, tar, metal, ivy, brickDamage, puddle, tarPatch, ivyFrames, damageFrames, puddleFrames, tarFrames] = await Promise.all([
     loadTexture(loader, '/assets/buildings/wall_brick_face.png', 0x6b3a2c),
     loadTexture(loader, '/assets/buildings/wall_interior_face.png', 0x7d725c),
     loadTexture(loader, '/assets/buildings/floor_wood.png', 0x6a4e35),
@@ -89,7 +150,18 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     loadTexture(loader, '/assets/buildings/brick_damage.png', 0x5a4030),
     loadTexture(loader, '/assets/buildings/decal_puddle.png', 0x2d3333),
     loadTexture(loader, '/assets/buildings/tar_patches.png', 0x262825),
+    loadAtlasFrames(loader, '/assets/buildings/ivy_decals_sheet.png', IVY_FRAMES),
+    loadAtlasFrames(loader, '/assets/buildings/brick_damage.png', BRICK_DAMAGE_FRAMES),
+    loadAtlasFrames(loader, '/assets/buildings/decal_puddle.png', PUDDLE_FRAMES),
+    loadAtlasFrames(loader, '/assets/buildings/tar_patches.png', TAR_PATCH_FRAMES),
   ]);
+
+  const decalAtlas: DecalAtlas = {
+    ivy: ivyFrames,
+    brickDamage: damageFrames,
+    puddle: puddleFrames,
+    tarPatch: tarFrames,
+  };
 
   return {
     brick,
@@ -103,6 +175,7 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     puddle,
     tarPatch,
     weeds: makeWeedTexture(),
+    decalAtlas,
   };
 }
 

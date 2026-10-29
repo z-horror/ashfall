@@ -7,6 +7,49 @@ import { artImage } from '../art/textures.js';
 
 const FLOOR_BAND = 10_000;
 
+const footAnchorCache = new Map<string, number>();
+
+function measureFootAnchor(textureKey: string, frame: Phaser.Textures.Frame): number {
+  const key = `${textureKey}:${frame.name}`;
+  const cached = footAnchorCache.get(key);
+  if (cached !== undefined) return cached;
+  const image = frame.source.image as CanvasImageSource | undefined;
+  if (!image || frame.cutWidth <= 0 || frame.cutHeight <= 0) return 0.932;
+  const canvas = document.createElement('canvas');
+  canvas.width = frame.cutWidth;
+  canvas.height = frame.cutHeight;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return 0.932;
+  context.drawImage(
+    image,
+    frame.cutX,
+    frame.cutY,
+    frame.cutWidth,
+    frame.cutHeight,
+    0,
+    0,
+    frame.cutWidth,
+    frame.cutHeight,
+  );
+  const data = context.getImageData(0, 0, frame.cutWidth, frame.cutHeight).data;
+  let anchor = 0.932;
+  for (let y = frame.cutHeight - 1; y >= 0; y--) {
+    let solid = false;
+    for (let x = 0; x < frame.cutWidth; x++) {
+      if (data[(y * frame.cutWidth + x) * 4 + 3] > 20) {
+        solid = true;
+        break;
+      }
+    }
+    if (solid) {
+      anchor = (y + 1) / frame.cutHeight;
+      break;
+    }
+  }
+  footAnchorCache.set(key, anchor);
+  return anchor;
+}
+
 function lerpAngle(a: number, b: number, t: number): number {
   let diff = b - a;
   while (diff > Math.PI) diff -= Math.PI * 2;
@@ -169,6 +212,10 @@ export class CharacterView {
 
   get frameName(): string {
     return this.sprite.frame.name;
+  }
+
+  get footAnchorFraction(): number {
+    return measureFootAnchor(this.sprite.texture.key, this.sprite.frame);
   }
 
   get displayWidth(): number {

@@ -1220,6 +1220,7 @@ export class GameScene extends Phaser.Scene {
   private activateWorld3D(): void {
     if (!this.world3d) return;
     this.world3dActive = true;
+    this.cameras.main.roundPixels = false;
     for (const view of [...this.buildingViews.values()]) view.destroy();
     this.buildingViews.clear();
     for (const view of this.getRenderableCharacters()) view.setRender3D(true);

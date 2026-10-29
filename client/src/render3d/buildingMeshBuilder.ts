@@ -14,6 +14,13 @@ import type {
   WallModel,
 } from './buildingModel.js';
 
+export interface DecalAtlas {
+  ivy: THREE.Texture[];
+  brickDamage: THREE.Texture[];
+  puddle: THREE.Texture[];
+  tarPatch: THREE.Texture[];
+}
+
 export interface BuildingTextures {
   brick: THREE.Texture;
   plaster: THREE.Texture;
@@ -26,6 +33,13 @@ export interface BuildingTextures {
   puddle: THREE.Texture;
   tarPatch: THREE.Texture;
   weeds: THREE.Texture;
+  decalAtlas?: DecalAtlas;
+}
+
+export interface StairMeshEntry {
+  group: THREE.Group;
+  fromIndex: number;
+  toIndex: number;
 }
 
 export interface BuildingMeshes {
@@ -33,6 +47,10 @@ export interface BuildingMeshes {
   levelGroups: Map<string, THREE.Group>;
   nearWalls: THREE.Object3D[];
   fixtures: FixtureModel[];
+  plinth: THREE.Object3D;
+  groundOccluder: THREE.Mesh;
+  exteriorClutter: THREE.Group;
+  stairs: StairMeshEntry[];
 }
 
 interface SceneMaterials extends Record<MaterialKey, THREE.Material> {
@@ -44,10 +62,10 @@ interface SceneMaterials extends Record<MaterialKey, THREE.Material> {
   acBody: THREE.Material;
   acDark: THREE.Material;
   acMetal: THREE.Material;
-  decalIvy: THREE.Material;
-  decalBrickDamage: THREE.Material;
-  decalPuddle: THREE.Material;
-  decalTarPatch: THREE.Material;
+  decalIvy: THREE.Material[];
+  decalBrickDamage: THREE.Material[];
+  decalPuddle: THREE.Material[];
+  decalTarPatch: THREE.Material[];
   weeds: THREE.Material;
   wallBrick: THREE.Material;
   wallBrickWeathered: THREE.Material;
@@ -93,6 +111,15 @@ function decalMaterial(source: THREE.Texture, options: { opacity?: number; alpha
   });
 }
 
+function decalMaterials(
+  frames: THREE.Texture[] | undefined,
+  fallback: THREE.Texture,
+  options: { opacity?: number; alphaTest?: number } = {},
+): THREE.Material[] {
+  if (frames && frames.length > 0) return frames.map((frame) => decalMaterial(frame, options));
+  return [decalMaterial(fallback, options)];
+}
+
 function makeMaterials(textures: BuildingTextures): SceneMaterials {
   return {
     brick: surfaceMaterial(textures.brick, 5, 1.2),
@@ -118,10 +145,10 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
     acBody: new THREE.MeshStandardMaterial({ color: 0xb9beb5, roughness: 0.62, metalness: 0.12, side: THREE.DoubleSide }),
     acDark: new THREE.MeshStandardMaterial({ color: 0x24292a, roughness: 0.7, metalness: 0.3, side: THREE.DoubleSide }),
     acMetal: surfaceMaterial(textures.metal, 1, 1, { color: 0x7e8584, roughness: 0.5, metalness: 0.55 }),
-    decalIvy: decalMaterial(textures.ivy, { alphaTest: 0.25 }),
-    decalBrickDamage: decalMaterial(textures.brickDamage, { alphaTest: 0.04 }),
-    decalPuddle: decalMaterial(textures.puddle, { alphaTest: 0.02, opacity: 0.88 }),
-    decalTarPatch: decalMaterial(textures.tarPatch, { alphaTest: 0.04 }),
+    decalIvy: decalMaterials(textures.decalAtlas?.ivy, textures.ivy, { alphaTest: 0.25 }),
+    decalBrickDamage: decalMaterials(textures.decalAtlas?.brickDamage, textures.brickDamage, { alphaTest: 0.04 }),
+    decalPuddle: decalMaterials(textures.decalAtlas?.puddle, textures.puddle, { alphaTest: 0.02, opacity: 0.88 }),
+    decalTarPatch: decalMaterials(textures.decalAtlas?.tarPatch, textures.tarPatch, { alphaTest: 0.04 }),
     weeds: new THREE.MeshStandardMaterial({
       map: textures.weeds,
       transparent: true,
@@ -378,9 +405,39 @@ function addWall(parent: THREE.Object3D, wall: WallModel, materials: SceneMateri
   return group;
 }
 
-function addStair(parent: THREE.Object3D, stair: StairModel, material: THREE.Material): void {
+function addSlopedBox(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  widthX: number,
+  length: number,
+  thickness: number,
+  angle: number,
+  material: THREE.Material,
+  castShadow = true,
+): void {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(widthX, length, thickness), material);
+  mesh.position.set(x, y, z);
+  mesh.rotation.x = angle;
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+}
+
+function addStair(parent: THREE.Object3D, stair: StairModel, materials: SceneMaterials): void {
   const width = stair.widthM;
   const x = stair.hole.x + (stair.hole.w - width) / 2;
+  const run = Math.min(stair.steps * stair.treadM, stair.hole.h);
+  const yStart = stair.direction === 'up' ? stair.hole.y + stair.hole.h : stair.hole.y;
+  const yEnd = yStart + (stair.direction === 'up' ? -run : run);
+  const zStart = stair.fromZ;
+  const zEnd = stair.toZ;
+  const angle = Math.atan2(zEnd - zStart, yEnd - yStart);
+  const slopeLength = Math.hypot(run, zEnd - zStart);
+  const midY = (yStart + yEnd) / 2;
+  const midZ = (zStart + zEnd) / 2;
+
   for (let i = 0; i < stair.steps; i++) {
     const zTop = stair.direction === 'up'
       ? stair.fromZ + (i + 1) * stair.riseM
@@ -388,8 +445,28 @@ function addStair(parent: THREE.Object3D, stair: StairModel, material: THREE.Mat
     const y = stair.direction === 'up'
       ? stair.hole.y + stair.hole.h - (i + 0.5) * stair.treadM
       : stair.hole.y + (i + 0.5) * stair.treadM;
-    addBox(parent, width, stair.treadM, stair.riseM, x + width / 2, y, zTop - stair.riseM / 2, material);
+    addBox(parent, width, stair.treadM, stair.riseM, x + width / 2, y, zTop - stair.riseM / 2, materials.wood);
   }
+
+  // Stringers under the treads and closed side cheeks hide the step undersides.
+  for (const sideX of [x + 0.08, x + width - 0.08]) {
+    addSlopedBox(parent, sideX, midY, midZ - 0.11, 0.08, slopeLength, 0.2, angle, materials.doorFrame);
+  }
+  for (const sideX of [x - 0.035, x + width + 0.035]) {
+    addSlopedBox(parent, sideX, midY, midZ - 0.14, 0.07, slopeLength, 0.28, angle, materials.wood);
+  }
+
+  // Handrail and posts on both sides.
+  for (const sideX of [x, x + width]) {
+    addSlopedBox(parent, sideX, midY, midZ + 0.92, 0.05, slopeLength, 0.05, angle, materials.metal, false);
+    for (const [py, pz] of [[yStart, zStart], [yEnd, zEnd]] as const) {
+      addBox(parent, 0.05, 0.05, 0.92, sideX, py, pz + 0.46, materials.metal, false);
+    }
+  }
+
+  // Small landings tie the flight to the slabs above and below.
+  addBox(parent, width, 0.3, 0.06, x + width / 2, yStart, zStart - 0.03, materials.wood, false);
+  addBox(parent, width, 0.3, 0.06, x + width / 2, yEnd, zEnd - 0.03, materials.wood, false);
 }
 
 function addAcUnit(parent: THREE.Object3D, fixture: FixtureModel, materials: SceneMaterials): void {
@@ -463,7 +540,7 @@ function addFixture(parent: THREE.Object3D, fixture: FixtureModel, materials: Sc
   }
 }
 
-function addPlinth(parent: THREE.Object3D, plinth: PlinthModel, material: THREE.Material): void {
+function addPlinth(parent: THREE.Object3D, plinth: PlinthModel, material: THREE.Material): THREE.Mesh {
   const { rect, heightM, thicknessM } = plinth;
   const outer = new THREE.Shape();
   const x0 = rect.x - thicknessM;
@@ -494,18 +571,60 @@ function addPlinth(parent: THREE.Object3D, plinth: PlinthModel, material: THREE.
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   parent.add(mesh);
+  return mesh;
+}
+
+function addGroundOccluder(parent: THREE.Object3D, model: BuildingModel): THREE.Mesh {
+  const margin = 1.4;
+  const x0 = model.footprint.x - margin;
+  const y0 = model.footprint.y - margin;
+  const x1 = model.footprint.x + model.footprint.w + margin;
+  const y1 = model.footprint.y + model.footprint.h + margin;
+  const shape = new THREE.Shape();
+  shape.moveTo(x0, y0);
+  shape.lineTo(x1, y0);
+  shape.lineTo(x1, y1);
+  shape.lineTo(x0, y1);
+  shape.closePath();
+
+  for (const stair of model.stairs) {
+    if (stair.toZ >= stair.fromZ || stair.toZ >= 0) continue;
+    const hole = new THREE.Path();
+    hole.moveTo(stair.hole.x, stair.hole.y);
+    hole.lineTo(stair.hole.x + stair.hole.w, stair.hole.y);
+    hole.lineTo(stair.hole.x + stair.hole.w, stair.hole.y + stair.hole.h);
+    hole.lineTo(stair.hole.x, stair.hole.y + stair.hole.h);
+    hole.closePath();
+    shape.holes.push(hole);
+  }
+
+  const mesh = new THREE.Mesh(
+    new THREE.ShapeGeometry(shape),
+    new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: true,
+      depthTest: true,
+      side: THREE.DoubleSide,
+    }),
+  );
+  mesh.renderOrder = -1000;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  parent.add(mesh);
+  return mesh;
 }
 
 function decalFor(decal: DecalModel, materials: SceneMaterials): THREE.Material {
+  const frame = Math.max(0, Math.floor(decal.frame ?? 0));
   switch (decal.texture) {
     case 'ivy':
-      return materials.decalIvy;
+      return materials.decalIvy[frame % materials.decalIvy.length];
     case 'brickDamage':
-      return materials.decalBrickDamage;
+      return materials.decalBrickDamage[frame % materials.decalBrickDamage.length];
     case 'puddle':
-      return materials.decalPuddle;
+      return materials.decalPuddle[frame % materials.decalPuddle.length];
     case 'tarPatch':
-      return materials.decalTarPatch;
+      return materials.decalTarPatch[frame % materials.decalTarPatch.length];
   }
 }
 
@@ -569,7 +688,8 @@ function addPipe(parent: THREE.Object3D, pipe: PipeModel, materials: SceneMateri
   parent.add(shoe);
 }
 
-function addProps(parent: THREE.Object3D, props: PropModel[], materials: SceneMaterials): void {
+function addProps(parent: THREE.Object3D, props: PropModel[], materials: SceneMaterials): THREE.Group {
+  const clutter = new THREE.Group();
   for (const prop of props) {
     const group = new THREE.Group();
     group.position.set(prop.xM, prop.yM, prop.zM);
@@ -616,8 +736,10 @@ function addProps(parent: THREE.Object3D, props: PropModel[], materials: SceneMa
       group.add(cross);
     }
 
-    parent.add(group);
+    clutter.add(group);
   }
+  parent.add(clutter);
+  return clutter;
 }
 
 export function buildBuildingMeshes(model: BuildingModel, textures: BuildingTextures): BuildingMeshes {
@@ -626,7 +748,16 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
   const nearWalls: THREE.Object3D[] = [];
   const wallGroups = new Map<string, THREE.Group>();
   const slabGroups = new Map<string, THREE.Group>();
+  const stairs: StairMeshEntry[] = [];
   const materials = makeMaterials(textures);
+  const levelIndexById = new Map(model.levels.map((level) => [level.id, level.index]));
+  const nearestIndexForZ = (z: number): number => {
+    let best = model.levels[0];
+    for (const level of model.levels) {
+      if (!best || Math.abs(level.elevation - z) < Math.abs(best.elevation - z)) best = level;
+    }
+    return best?.index ?? 0;
+  };
 
   for (const level of model.levels) {
     const levelGroup = new THREE.Group();
@@ -635,7 +766,8 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
   }
   const levelGroup = (id: string): THREE.Group => levelGroups.get(id) ?? group;
 
-  addPlinth(group, model.plinth, materials.concrete);
+  const plinth = addPlinth(group, model.plinth, materials.concrete);
+  const groundOccluder = addGroundOccluder(group, model);
 
   for (const slab of model.slabs) {
     const slabGroup = new THREE.Group();
@@ -656,8 +788,17 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
 
   for (const stair of model.stairs) {
     const stairGroup = new THREE.Group();
-    addStair(stairGroup, stair, materials.wood);
-    levelGroup(stair.levelId).add(stairGroup);
+    addStair(stairGroup, stair, materials);
+    group.add(stairGroup);
+    stairs.push({
+      group: stairGroup,
+      fromIndex: stair.fromLevelId !== undefined
+        ? levelIndexById.get(stair.fromLevelId) ?? nearestIndexForZ(stair.fromZ)
+        : nearestIndexForZ(stair.fromZ),
+      toIndex: stair.toLevelId !== undefined
+        ? levelIndexById.get(stair.toLevelId) ?? nearestIndexForZ(stair.toZ)
+        : nearestIndexForZ(stair.toZ),
+    });
   }
 
   for (const fixture of model.fixtures) {
@@ -685,7 +826,7 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
     if (host) addPipe(host, pipe, materials);
   }
 
-  addProps(group, model.props, materials);
+  const exteriorClutter = addProps(group, model.props, materials);
 
-  return { group, levelGroups, nearWalls, fixtures: model.fixtures };
+  return { group, levelGroups, nearWalls, fixtures: model.fixtures, plinth, groundOccluder, exteriorClutter, stairs };
 }

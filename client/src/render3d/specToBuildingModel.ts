@@ -230,6 +230,7 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       v0: eastWall.zBottom + 0.3,
       v1: Math.min(eastWall.zTop - 0.2, eastWall.zBottom + 2.7),
       texture: 'ivy',
+      frame: 0,
       offsetM: 0.016,
     });
   }
@@ -244,6 +245,7 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       v0: southWall.zBottom + 0.5,
       v1: Math.min(southWall.zTop - 0.2, southWall.zBottom + 1.85),
       texture: 'brickDamage',
+      frame: 0,
       offsetM: 0.014,
     });
   }
@@ -258,6 +260,7 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       v0: terrace.rect.y + terrace.rect.h * 0.32,
       v1: terrace.rect.y + terrace.rect.h * 0.32 + 2.2,
       texture: 'puddle',
+      frame: 0,
       offsetM: 0.006,
     });
   }
@@ -272,6 +275,7 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       v0: roof.rect.y + roof.rect.h * 0.2,
       v1: roof.rect.y + roof.rect.h * 0.2 + Math.min(4.5, roof.rect.h * 0.55),
       texture: 'tarPatch',
+      frame: 0,
       offsetM: 0.006,
     });
   }
@@ -418,6 +422,8 @@ export function specToBuildingModel(building: BuildingSpec): ConvertedBuilding {
       const converted: StairModel = {
         id: stair.id,
         levelId: levelId(stair.fromLevel),
+        fromLevelId: levelId(stair.fromLevel),
+        toLevelId: levelId(stair.toLevel),
         hole: tileRectToMeters(stair.hole, origin),
         fromZ,
         toZ,

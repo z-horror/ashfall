@@ -69,6 +69,8 @@ export interface WallModel {
 export interface StairModel {
   id: string;
   levelId: string;
+  fromLevelId?: string;
+  toLevelId?: string;
   hole: RectM;
   fromZ: number;
   toZ: number;
@@ -110,6 +112,8 @@ export interface DecalModel {
   v0: number;
   v1: number;
   texture: DecalTexture;
+  /** Atlas frame index; ignored when an atlas is not available. */
+  frame?: number;
   opacity?: number;
   offsetM?: number;
 }

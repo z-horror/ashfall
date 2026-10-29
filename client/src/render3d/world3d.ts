@@ -5,15 +5,36 @@ import type { ClientWorld } from '../world/clientWorld.js';
 import type { CharacterView } from '../world/entityView.js';
 import type { GameScene } from '../game/GameScene.js';
 import { buildBuildingMeshes, type BuildingMeshes, type BuildingTextures } from './buildingMeshBuilder.js';
-import { loadBuildingTextures, loadCharacterSheet } from './assets3d.js';
+import { CHARACTER_SHEET_COLS, CHARACTER_SHEET_ROWS, loadBuildingTextures, loadCharacterSheet } from './assets3d.js';
 import { specToBuildingModel } from './specToBuildingModel.js';
 
 const TILE = TILE_SIZE_M;
-const SHEET_COLS = 12;
-const SHEET_ROWS = 8;
+const SHEET_COLS = CHARACTER_SHEET_COLS;
+const SHEET_ROWS = CHARACTER_SHEET_ROWS;
 const CHARACTER_STYLES = ['p0', 'p1', 'p2', 'p3', 'z0', 'z1', 'z2'];
 
 const BILLBOARD_NORMAL = new THREE.Vector3(1, 1, 0.5).normalize();
+const CHARACTER_CAMERA_OFFSET = 0.14;
+
+let contactShadowTexture: THREE.CanvasTexture | null = null;
+
+function getContactShadowTexture(): THREE.CanvasTexture {
+  if (contactShadowTexture) return contactShadowTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  if (context) {
+    const gradient = context.createRadialGradient(64, 64, 4, 64, 64, 62);
+    gradient.addColorStop(0, 'rgba(0,0,0,0.62)');
+    gradient.addColorStop(0.55, 'rgba(0,0,0,0.34)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 128, 128);
+  }
+  contactShadowTexture = new THREE.CanvasTexture(canvas);
+  return contactShadowTexture;
+}
 
 function solveBillboardAxis(
   targetX: number,
@@ -153,6 +174,8 @@ export class World3D {
       CHARACTER_STYLES.forEach((style, index) => this.characterSheets.set(style, sheets[index]));
 
       window.addEventListener('resize', this.onResize);
+      this.scene.events.on('postrender', this.onPostRender);
+      this.scene.events.once('shutdown', this.onShutdown);
       this.readyResolved = true;
       this.readyResolve();
       this.syncBuildings(this.world);
@@ -164,6 +187,17 @@ export class World3D {
   private onResize = (): void => {
     if (!this.renderer) return;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+  };
+
+  private onShutdown = (): void => {
+    this.scene.events.off('postrender', this.onPostRender);
+    window.removeEventListener('resize', this.onResize);
+  };
+
+  private onPostRender = (): void => {
+    if (!this.readyResolved) return;
+    this.updateCamera();
+    this.renderer.render(this.scene3d, this.camera);
   };
 
   syncBuildings(world: ClientWorld): void {
@@ -191,11 +225,20 @@ export class World3D {
     const state = this.gameScene.getRender3DState();
     for (const [id, entry] of this.buildings) {
       const inside = id === state.currentBuilding;
+      const inBasement = inside && state.playerFloor < 0;
       for (const [levelId, group] of entry.meshes.levelGroups) {
         const level = entry.model.levels.find((candidate) => candidate.id === levelId);
         group.visible = !inside || !level || level.index <= state.playerFloor;
       }
       for (const wall of entry.meshes.nearWalls) wall.visible = !inside;
+      entry.meshes.plinth.visible = !inBasement;
+      entry.meshes.groundOccluder.visible = !inside || state.playerFloor >= 0;
+      entry.meshes.exteriorClutter.visible = !inside;
+      for (const stair of entry.meshes.stairs) {
+        const low = Math.min(stair.fromIndex, stair.toIndex);
+        const high = Math.max(stair.fromIndex, stair.toIndex);
+        stair.group.visible = !inside || (state.playerFloor >= low && state.playerFloor <= high);
+      }
     }
   }
 
@@ -204,8 +247,10 @@ export class World3D {
     const cam = this.scene.cameras.main;
     const state = this.gameScene.getRender3DState();
     const elevation = state.elevationM;
-    const mid = cam.midPoint;
-    const tile = sceneToWorld(mid.x, mid.y, elevation);
+    const view = cam.worldView;
+    const midX = view && view.width > 0 ? view.centerX : cam.midPoint.x;
+    const midY = view && view.height > 0 ? view.centerY : cam.midPoint.y;
+    const tile = sceneToWorld(midX, midY, elevation);
     const cx = tile.x * TILE;
     const cy = tile.y * TILE;
     const width = window.innerWidth;
@@ -257,6 +302,9 @@ export class World3D {
           side: THREE.DoubleSide,
           depthTest: true,
           depthWrite: true,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
           toneMapped: false,
         });
         const geometry = new THREE.PlaneGeometry(1, 1);
@@ -266,9 +314,18 @@ export class World3D {
         mesh.frustumCulled = false;
         this.scene3d.add(mesh);
         const shadow = new THREE.Mesh(
-          new THREE.CircleGeometry(0.45, 20),
-          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }),
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({
+            map: getContactShadowTexture(),
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+            depthTest: true,
+            toneMapped: false,
+            side: THREE.DoubleSide,
+          }),
         );
+        shadow.renderOrder = 1;
         this.scene3d.add(shadow);
         entry = { view, style, mesh, shadow, material };
         this.characters.set(key, entry);
@@ -282,19 +339,24 @@ export class World3D {
         );
       }
       const feet = new THREE.Vector3(view.x * TILE, view.y * TILE, view.elevationMeters + 0.02);
+      const base = feet.clone().addScaledVector(BILLBOARD_NORMAL, CHARACTER_CAMERA_OFFSET);
+      const anchorShift = -(1 - view.footAnchorFraction) * view.displayHeight;
       const matrix = new THREE.Matrix4().makeBasis(
         this.billboardX.clone().multiplyScalar(view.displayWidth),
         this.billboardY.clone().multiplyScalar(view.displayHeight),
         BILLBOARD_NORMAL,
       );
-      matrix.setPosition(feet);
+      matrix.setPosition(base.clone().addScaledVector(this.billboardY, anchorShift));
       entry.mesh.matrix.copy(matrix);
       entry.mesh.matrixWorldNeedsUpdate = true;
       entry.material.opacity = view.spriteAlpha;
       entry.material.color.setHex(view.spriteTint ?? 0xffffff);
       entry.mesh.visible = true;
+      const worldWidth = view.displayWidth * this.billboardX.length();
+      const shadowScale = Math.max(0.45, worldWidth * 0.34);
+      entry.shadow.scale.set(shadowScale, shadowScale * 0.72, 1);
       entry.shadow.visible = true;
-      entry.shadow.position.set(feet.x, feet.y, Math.max(0.01, view.elevationMeters + 0.012));
+      entry.shadow.position.set(base.x, base.y, Math.max(0.01, view.elevationMeters + 0.012));
     }
 
     for (const [key, entry] of [...this.characters]) {
@@ -312,9 +374,7 @@ export class World3D {
 
   update(): void {
     if (!this.readyResolved) return;
-    this.updateCamera();
     this.updateBuildingVisibility();
     this.syncCharacters();
-    this.renderer.render(this.scene3d, this.camera);
   }
 }
