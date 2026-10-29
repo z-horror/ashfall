@@ -66,16 +66,16 @@
 
 Критерий: в репозитории одна долгоживущая ветка; план и handoff читаются без истории чата.
 
-### M1. P0-стабилизация 3D-дома
+### M1. P0-стабилизация 3D-дома (ПРИНЯТО / Signoff)
 
-- Depth-only occluder земли (`colorWrite:false`, `depthWrite:true`) с отверстиями под шахты подвала.
+- Depth-only occluder земли (`colorWrite:false`, `depthWrite:true`) с отверстиями под шахты подвала (`margin = 14.0m`, `z = -0.005`).
 - Скрывать подвал/цоколь вне подвала; в подвале скрывать цоколь/плиту над головой.
 - Лестницы: отдельная видимость по паре уровней; косоуры, щёки, ограждения; примыкания к плитам.
 - Персонаж: точный feet-anchor по alpha-границе + контактная тень; offset биллборда к камере + depth bias + запас коллизии.
-- Камера: sync в post-update/post-render; единый transform; без рассинхрона округления.
+- Камера: sync в post-update/post-render (`Phaser.Core.Events.POST_RENDER`); единый transform; без рассинхрона округления.
 - Decal atlas: отдельные кадры для tar/ivy/damage/puddle; выбор подрегиона, не whole-sheet.
 - Внешний clutter скрывать при интерьере, если попадает в cutaway.
-- Приёмка: 4 пользовательских ракурса + подвал/лестница/стена/тень; `typecheck`, `test`, `build`; скриншоты до/после.
+- Приёмка: 4 пользовательских ракурса + подвал/лестница/стена/тень; `typecheck`, `test`, `build`; скриншоты приёмки: [`docs/reference/m1-acceptance/README.md`](reference/m1-acceptance/README.md).
 
 ### M2a. Анимационный каркас 3D-персонажей
 
