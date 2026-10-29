@@ -226,7 +226,7 @@ export function createTestBuildingModel(): BuildingModel {
         kind: 'roof',
         rect: { x: 0, y: 0, w: footprint.w, h: mansardSouth },
         zBottom: 5.4,
-        zTop: 5.8,
+        zTop: 5.55,
         material: 'tar',
       },
     ],
@@ -280,6 +280,25 @@ export function createTestBuildingModel(): BuildingModel {
       },
       { id: 'mf:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: 0, toM: mansardSouth, zBottom: 2.8, zTop: 5.4, thicknessM: 0.2, exterior: true, material: 'brick' },
       { id: 'mf:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: 0, toM: mansardSouth, zBottom: 2.8, zTop: 5.4, thicknessM: 0.2, exterior: true, material: 'brick' },
+
+      // Recessed upper roof: the parapet continues above the roof surface and
+      // hides the slab edge, so the roof does not sit on the walls like a layer.
+      { id: 'rf:parapet:north', levelId: 'roof', axis: 'h', fixedM: 0, fromM: 0, toM: footprint.w, zBottom: 5.4, zTop: 5.9, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'rf:parapet:south', levelId: 'roof', axis: 'h', fixedM: mansardSouth, fromM: 0, toM: footprint.w, zBottom: 5.4, zTop: 5.9, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'rf:parapet:west', levelId: 'roof', axis: 'v', fixedM: 0, fromM: 0, toM: mansardSouth, zBottom: 5.4, zTop: 5.9, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'rf:parapet:east', levelId: 'roof', axis: 'v', fixedM: eastWall, fromM: 0, toM: mansardSouth, zBottom: 5.4, zTop: 5.9, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'rf:cap:north', levelId: 'roof', axis: 'h', fixedM: 0, fromM: 0, toM: footprint.w, zBottom: 5.9, zTop: 5.96, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'rf:cap:south', levelId: 'roof', axis: 'h', fixedM: mansardSouth, fromM: 0, toM: footprint.w, zBottom: 5.9, zTop: 5.96, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'rf:cap:west', levelId: 'roof', axis: 'v', fixedM: 0, fromM: 0, toM: mansardSouth, zBottom: 5.9, zTop: 5.96, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'rf:cap:east', levelId: 'roof', axis: 'v', fixedM: eastWall, fromM: 0, toM: mansardSouth, zBottom: 5.9, zTop: 5.96, thicknessM: 0.24, exterior: true, material: 'concrete' },
+
+      // The lower roof terrace is recessed behind the same kind of parapet.
+      { id: 'tf:parapet:south', levelId: 'mansard', axis: 'h', fixedM: southWall, fromM: 0, toM: footprint.w, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'tf:parapet:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: mansardSouth, toM: southWall, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'tf:parapet:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: mansardSouth, toM: southWall, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'tf:cap:south', levelId: 'mansard', axis: 'h', fixedM: southWall, fromM: 0, toM: footprint.w, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'tf:cap:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: mansardSouth, toM: southWall, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'tf:cap:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: mansardSouth, toM: southWall, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
     ],
     stairs: [
       {
@@ -309,7 +328,7 @@ export function createTestBuildingModel(): BuildingModel {
     ],
     fixtures: [
       { id: 'fixture:ac', levelId: 'mansard', kind: 'ac', xM: mx(38), yM: my(35), zM: 3.05, widthM: 1.0, depthM: 0.9, heightM: 0.9, yaw: 0 },
-      { id: 'fixture:hatch', levelId: 'roof', kind: 'hatch', xM: mx(37), yM: my(30), zM: 5.8, widthM: 1.0, depthM: 1.0, heightM: 0.25 },
+      { id: 'fixture:hatch', levelId: 'roof', kind: 'hatch', xM: mx(37), yM: my(30), zM: 5.77, widthM: 1.0, depthM: 1.0, heightM: 0.25 },
     ],
     decals: [
       {
@@ -427,7 +446,7 @@ export function createVariantBuildingModel(): BuildingModel {
         material: 'wood',
         holes: [{ x: 10.8, y: 2.0, w: 1.2, h: 5.0 }],
       },
-      { id: 'roof:slab', levelId: 'roof', kind: 'roof', rect: { x: 0, y: 0, w: footprint.w, h: footprint.h }, zBottom: roofZ, zTop: roofZ + 0.3, material: 'tar' },
+      { id: 'roof:slab', levelId: 'roof', kind: 'roof', rect: { x: 0, y: 0, w: footprint.w, h: footprint.h }, zBottom: roofZ, zTop: roofZ + 0.25, material: 'tar' },
     ],
     walls: [
       {
@@ -497,10 +516,14 @@ export function createVariantBuildingModel(): BuildingModel {
       { id: 'upper2:east', levelId: 'upper2', axis: 'v', fixedM: east, fromM: 0, toM: south, zBottom: upper2Z, zTop: upper2Z + 2.7, thicknessM: 0.2, exterior: true, material: 'brick' },
       { id: 'upper2:partition', levelId: 'upper2', axis: 'v', fixedM: 8.0, fromM: 0, toM: south, zBottom: upper2Z, zTop: upper2Z + 2.7, thicknessM: 0.15, exterior: false, material: 'plaster' },
 
-      { id: 'roof:parapet-n', levelId: 'roof', axis: 'h', fixedM: 0, fromM: 0, toM: footprint.w, zBottom: roofZ + 0.3, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
-      { id: 'roof:parapet-s', levelId: 'roof', axis: 'h', fixedM: south, fromM: 0, toM: footprint.w, zBottom: roofZ + 0.3, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
-      { id: 'roof:parapet-w', levelId: 'roof', axis: 'v', fixedM: 0, fromM: 0, toM: south, zBottom: roofZ + 0.3, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
-      { id: 'roof:parapet-e', levelId: 'roof', axis: 'v', fixedM: east, fromM: 0, toM: south, zBottom: roofZ + 0.3, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
+      { id: 'roof:parapet-n', levelId: 'roof', axis: 'h', fixedM: 0, fromM: 0, toM: footprint.w, zBottom: roofZ, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
+      { id: 'roof:parapet-s', levelId: 'roof', axis: 'h', fixedM: south, fromM: 0, toM: footprint.w, zBottom: roofZ, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
+      { id: 'roof:parapet-w', levelId: 'roof', axis: 'v', fixedM: 0, fromM: 0, toM: south, zBottom: roofZ, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
+      { id: 'roof:parapet-e', levelId: 'roof', axis: 'v', fixedM: east, fromM: 0, toM: south, zBottom: roofZ, zTop: roofZ + 0.7, thicknessM: 0.2, exterior: true, material: 'concrete' },
+      { id: 'roof:cap-n', levelId: 'roof', axis: 'h', fixedM: 0, fromM: 0, toM: footprint.w, zBottom: roofZ + 0.7, zTop: roofZ + 0.76, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'roof:cap-s', levelId: 'roof', axis: 'h', fixedM: south, fromM: 0, toM: footprint.w, zBottom: roofZ + 0.7, zTop: roofZ + 0.76, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'roof:cap-w', levelId: 'roof', axis: 'v', fixedM: 0, fromM: 0, toM: south, zBottom: roofZ + 0.7, zTop: roofZ + 0.76, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'roof:cap-e', levelId: 'roof', axis: 'v', fixedM: east, fromM: 0, toM: south, zBottom: roofZ + 0.7, zTop: roofZ + 0.76, thicknessM: 0.24, exterior: true, material: 'concrete' },
     ],
     stairs: [
       {
@@ -529,7 +552,7 @@ export function createVariantBuildingModel(): BuildingModel {
       },
     ],
     fixtures: [
-      { id: 'fixture:roof-ac', levelId: 'roof', kind: 'ac', xM: 12.0, yM: 4.0, zM: roofZ + 0.3, widthM: 1.0, depthM: 0.9, heightM: 0.9, yaw: 0.35 },
+      { id: 'fixture:roof-ac', levelId: 'roof', kind: 'ac', xM: 12.0, yM: 4.0, zM: roofZ + 0.25, widthM: 1.0, depthM: 0.9, heightM: 0.9, yaw: 0.35 },
     ],
     decals: [
       {
