@@ -83,7 +83,8 @@ export class GameScene extends Phaser.Scene {
   private light: Phaser.GameObjects.Image | null = null;
   private debugOverlay: BuildingDebugOverlay | null = null;
   private world3d: World3D | null = null;
-  private render3dEnabled = false;
+  private render3dEnabled = true;
+  private world3dActive = false;
   private debugNext = 0;
   private aimWorld = { x: 0, y: 0 };
   private readyPromise: Promise<void>;
@@ -165,13 +166,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
-    this.render3dEnabled = new URLSearchParams(window.location.search).get('render3d') === '1';
+    this.render3dEnabled = new URLSearchParams(window.location.search).get('render3d') !== '0';
     if (this.render3dEnabled) {
       void import('../render3d/world3d.js').then(({ World3D }) => {
         this.world3d = new World3D(this, this.world);
-        void this.world3d.ready.then(() => this.world3d?.syncBuildings(this.world));
+        void this.world3d.ready.then(() => this.activateWorld3D());
       }).catch((error) => {
-        console.error('[world3d] failed to load', error);
+        console.error('[world3d] failed to load, keeping Phaser renderer', error);
       });
     }
 
@@ -463,7 +464,7 @@ export class GameScene extends Phaser.Scene {
       maxHp: s.maxHp,
       name: s.name,
     });
-    this.selfView.setRender3D(this.render3dEnabled);
+    this.selfView.setRender3D(this.world3dActive);
     this.selfView.setLocal(true);
     this.selfView.setWeapon(this.equippedKey);
     this.cameras.main.startFollow(this.selfView.sprite, true, 0.8, 0.8);
@@ -621,7 +622,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private syncBuildingViews(): void {
-    if (this.render3dEnabled) {
+    if (this.world3dActive) {
       this.world3d?.syncBuildings(this.world);
       return;
     }
@@ -758,7 +759,7 @@ export class GameScene extends Phaser.Scene {
           elevationM: this.surfaceElevationFor(p.x, p.y, p.floor),
         });
         this.playerViews.set(p.id, view);
-        view.setRender3D(this.render3dEnabled);
+        view.setRender3D(this.world3dActive);
       }
       view.setFloor(p.floor, this.surfaceElevationFor(p.x, p.y, p.floor));
       view.applyPlayer(p);
@@ -789,7 +790,7 @@ export class GameScene extends Phaser.Scene {
           elevationM: this.surfaceElevationFor(z.x, z.y, z.floor),
         });
         this.zombieViews.set(z.id, view);
-        view.setRender3D(this.render3dEnabled);
+        view.setRender3D(this.world3dActive);
       }
       view.setFloor(z.floor, this.surfaceElevationFor(z.x, z.y, z.floor));
       view.applyZombie(z);
@@ -1214,6 +1215,15 @@ export class GameScene extends Phaser.Scene {
       this.playerViews.size,
     );
     this.world3d?.update();
+  }
+
+  private activateWorld3D(): void {
+    if (!this.world3d) return;
+    this.world3dActive = true;
+    for (const view of [...this.buildingViews.values()]) view.destroy();
+    this.buildingViews.clear();
+    for (const view of this.getRenderableCharacters()) view.setRender3D(true);
+    this.world3d.syncBuildings(this.world);
   }
 
   getRender3DState(): { currentBuilding: string | null; playerFloor: number; elevationM: number } {

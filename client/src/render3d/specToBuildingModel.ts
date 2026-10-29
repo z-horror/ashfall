@@ -199,6 +199,110 @@ function fixtureKind(fixture: RoofFixtureSpec): FixtureModel['kind'] {
   return 'vent';
 }
 
+function largestGap(wall: WallModel, minLength: number): { u0: number; u1: number } | null {
+  const openings = [...(wall.openings ?? [])].sort((a, b) => a.x0 - b.x0);
+  const gaps: Array<{ u0: number; u1: number }> = [];
+  let cursor = wall.fromM;
+  for (const opening of openings) {
+    if (opening.x0 - cursor >= minLength) gaps.push({ u0: cursor, u1: opening.x0 });
+    cursor = Math.max(cursor, opening.x1);
+  }
+  if (wall.toM - cursor >= minLength) gaps.push({ u0: cursor, u1: wall.toM });
+  gaps.sort((a, b) => (b.u1 - b.u0) - (a.u1 - a.u0));
+  return gaps[0] ?? null;
+}
+
+function addAtmosphere(model: BuildingModel, roofElevation: number): void {
+  const groundWalls = model.walls.filter((wall) => wall.levelId === 'level:0' && wall.exterior && !wall.id.includes('parapet') && !wall.id.includes('cap'));
+  const walls = groundWalls.length > 0 ? groundWalls : model.walls.filter((wall) => wall.exterior && !wall.id.includes('parapet') && !wall.id.includes('cap'));
+  const eastWall = walls.find((wall) => wall.axis === 'v' && wall.fixedM >= model.footprint.w / 2)
+    ?? walls.find((wall) => wall.axis === 'v');
+  const southWall = walls.find((wall) => wall.axis === 'h' && wall.fixedM >= model.footprint.h / 2)
+    ?? walls.find((wall) => wall.axis === 'h');
+
+  const ivyGap = eastWall ? largestGap(eastWall, 3.5) : null;
+  if (eastWall && ivyGap) {
+    model.decals.push({
+      id: 'atmo:ivy',
+      host: { kind: 'wall', id: eastWall.id, side: 'front' },
+      u0: ivyGap.u0 + 0.45,
+      u1: Math.min(ivyGap.u1 - 0.45, ivyGap.u0 + 4.4),
+      v0: eastWall.zBottom + 0.3,
+      v1: Math.min(eastWall.zTop - 0.2, eastWall.zBottom + 2.7),
+      texture: 'ivy',
+      offsetM: 0.016,
+    });
+  }
+
+  const damageGap = southWall ? largestGap(southWall, 3.0) : null;
+  if (southWall && damageGap) {
+    model.decals.push({
+      id: 'atmo:damage',
+      host: { kind: 'wall', id: southWall.id, side: 'front' },
+      u0: damageGap.u0 + 0.4,
+      u1: Math.min(damageGap.u1 - 0.4, damageGap.u0 + 2.0),
+      v0: southWall.zBottom + 0.5,
+      v1: Math.min(southWall.zTop - 0.2, southWall.zBottom + 1.85),
+      texture: 'brickDamage',
+      offsetM: 0.014,
+    });
+  }
+
+  const terrace = model.slabs.find((slab) => slab.kind === 'terrace');
+  if (terrace) {
+    model.decals.push({
+      id: 'atmo:puddle',
+      host: { kind: 'slab', id: terrace.id },
+      u0: terrace.rect.x + terrace.rect.w * 0.28,
+      u1: terrace.rect.x + terrace.rect.w * 0.28 + 2.6,
+      v0: terrace.rect.y + terrace.rect.h * 0.32,
+      v1: terrace.rect.y + terrace.rect.h * 0.32 + 2.2,
+      texture: 'puddle',
+      offsetM: 0.006,
+    });
+  }
+
+  const roof = model.slabs.find((slab) => slab.kind === 'roof');
+  if (roof) {
+    model.decals.push({
+      id: 'atmo:tar',
+      host: { kind: 'slab', id: roof.id },
+      u0: roof.rect.x + roof.rect.w * 0.15,
+      u1: roof.rect.x + roof.rect.w * 0.15 + Math.min(5.5, roof.rect.w * 0.55),
+      v0: roof.rect.y + roof.rect.h * 0.2,
+      v1: roof.rect.y + roof.rect.h * 0.2 + Math.min(4.5, roof.rect.h * 0.55),
+      texture: 'tarPatch',
+      offsetM: 0.006,
+    });
+  }
+
+  if (eastWall) {
+    const x = eastWall.fixedM + eastWall.thicknessM / 2 + 0.16;
+    const y = eastWall.fromM + 1.0;
+    model.pipes.push({
+      id: 'atmo:downspout',
+      host: { kind: 'wall', id: eastWall.id, side: 'front' },
+      points: [
+        { x, y, z: Math.max(eastWall.zTop, roofElevation) },
+        { x, y, z: 0.36 },
+        { x: x + 0.18, y, z: 0.14 },
+      ],
+      radiusM: 0.055,
+      material: 'metal',
+    });
+  }
+
+  const southY = model.footprint.y + model.footprint.h + 1.6;
+  const maxX = model.footprint.x + model.footprint.w;
+  model.props.push(
+    { id: 'atmo:pallet', kind: 'pallet', xM: model.footprint.x + Math.min(4, model.footprint.w * 0.22), yM: southY, zM: 0, yaw: 0.22 },
+    { id: 'atmo:crate', kind: 'crate', xM: model.footprint.x + Math.min(7, model.footprint.w * 0.38), yM: southY - 0.4, zM: 0, yaw: -0.18 },
+    { id: 'atmo:trash', kind: 'trash', xM: Math.max(model.footprint.x + 2, maxX - 3.5), yM: southY - 0.3, zM: 0, yaw: 0.45 },
+    { id: 'atmo:weeds-a', kind: 'weeds', xM: model.footprint.x + 1.4, yM: southY - 0.9, zM: 0, yaw: 0.7 },
+    { id: 'atmo:weeds-b', kind: 'weeds', xM: maxX - 1.2, yM: southY - 0.8, zM: 0, yaw: 1.9 },
+  );
+}
+
 export function specToBuildingModel(building: BuildingSpec): ConvertedBuilding {
   const cells = collectCells(building);
   const origin = boundsOf(cells, building.origin);
@@ -362,6 +466,8 @@ export function specToBuildingModel(building: BuildingSpec): ConvertedBuilding {
       yaw: 0,
     });
   }
+
+  addAtmosphere(model, roofElevation);
 
   return {
     model,

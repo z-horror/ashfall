@@ -157,8 +157,7 @@ export class World3D {
       this.readyResolve();
       this.syncBuildings(this.world);
     } catch (error) {
-      console.error('[world3d] init failed', error);
-      this.readyResolve();
+      console.error('[world3d] init failed, keeping Phaser renderer', error);
     }
   }
 
