@@ -114,6 +114,24 @@ function addWall(
     material: mapWallMaterial(run.material),
     openings,
   });
+
+  if (floor.level === 0 && run.material !== 'interior') {
+    // Exterior concrete foundation plinth course (0.28m height, 2cm projection)
+    model.walls.push({
+      id: `${run.id}:base`,
+      levelId: levelId(run.level),
+      axis: run.axis,
+      fixedM: (run.fixed - axisOrigin) * TILE,
+      fromM: (run.from - axisOrigin) * TILE,
+      toM: (run.to - axisOrigin) * TILE,
+      zBottom: floor.elevationM,
+      zTop: floor.elevationM + 0.28,
+      thicknessM: run.thicknessM + 0.04,
+      exterior: true,
+      material: 'concrete',
+      openings: openings.filter((o) => o.kind === 'door'),
+    });
+  }
 }
 
 function addParapet(
@@ -235,15 +253,15 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
     });
   }
 
-  const damageGap = southWall ? largestGap(southWall, 3.0) : null;
+  const damageGap = southWall ? largestGap(southWall, 2.0) : null;
   if (southWall && damageGap) {
     model.decals.push({
       id: 'atmo:damage',
       host: { kind: 'wall', id: southWall.id, side: 'front' },
-      u0: damageGap.u0 + 0.4,
-      u1: Math.min(damageGap.u1 - 0.4, damageGap.u0 + 2.0),
-      v0: southWall.zBottom + 0.5,
-      v1: Math.min(southWall.zTop - 0.2, southWall.zBottom + 1.85),
+      u0: damageGap.u0 + 0.3,
+      u1: Math.min(damageGap.u1 - 0.3, damageGap.u0 + 2.2),
+      v0: southWall.zBottom + 0.35,
+      v1: Math.min(southWall.zTop - 0.15, southWall.zBottom + 1.85),
       texture: 'brickDamage',
       frame: 0,
       offsetM: 0.014,
@@ -263,6 +281,34 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       frame: 0,
       offsetM: 0.006,
     });
+
+    // Leaning pallet against the mansard wall on the terrace
+    model.props.push({
+      id: 'terrace:pallet-lean',
+      kind: 'pallet',
+      xM: terrace.rect.x + terrace.rect.w * 0.36,
+      yM: terrace.rect.y + 0.18,
+      zM: terrace.zTop,
+      yaw: 0.05,
+    });
+
+    // Downspout on the south-west terrace corner
+    const westWall = walls.find((wall) => wall.axis === 'v' && wall.fixedM <= model.footprint.w / 2) ?? walls[0];
+    if (westWall) {
+      const x = model.footprint.x + 0.12;
+      const y = southWall ? southWall.fixedM + southWall.thicknessM / 2 + 0.12 : terrace.rect.y + terrace.rect.h + 0.12;
+      model.pipes.push({
+        id: 'atmo:downspout-west',
+        host: { kind: 'wall', id: westWall.id, side: 'front' },
+        points: [
+          { x, y, z: terrace.zTop + 0.38 },
+          { x, y, z: 0.35 },
+          { x, y: y + 0.15, z: 0.12 },
+        ],
+        radiusM: 0.055,
+        material: 'metal',
+      });
+    }
   }
 
   const roof = model.slabs.find((slab) => slab.kind === 'roof');
@@ -281,15 +327,15 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
   }
 
   if (eastWall) {
-    const x = eastWall.fixedM + eastWall.thicknessM / 2 + 0.16;
-    const y = eastWall.fromM + 1.0;
+    const x = eastWall.fixedM + eastWall.thicknessM / 2 + 0.12;
+    const y = eastWall.toM - 0.22;
     model.pipes.push({
       id: 'atmo:downspout',
       host: { kind: 'wall', id: eastWall.id, side: 'front' },
       points: [
         { x, y, z: Math.max(eastWall.zTop, roofElevation) },
         { x, y, z: 0.36 },
-        { x: x + 0.18, y, z: 0.14 },
+        { x: x + 0.12, y: y + 0.14, z: 0.12 },
       ],
       radiusM: 0.055,
       material: 'metal',

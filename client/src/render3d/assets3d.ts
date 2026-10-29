@@ -52,9 +52,28 @@ async function loadTexture(
   loader: THREE.TextureLoader,
   url: string,
   fallbackColor: number,
+  filter?: string,
 ): Promise<THREE.Texture> {
   try {
     const texture = await loader.loadAsync(url);
+    if (filter && typeof document !== 'undefined') {
+      const img = texture.image as HTMLImageElement;
+      if (img && img.width > 0 && img.height > 0) {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.filter = filter;
+          ctx.drawImage(img, 0, 0);
+          const processed = new THREE.CanvasTexture(canvas);
+          processed.colorSpace = THREE.SRGBColorSpace;
+          processed.wrapS = THREE.RepeatWrapping;
+          processed.wrapT = THREE.RepeatWrapping;
+          return processed;
+        }
+      }
+    }
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
   } catch (error) {
@@ -139,17 +158,19 @@ function makeWeedTexture(): THREE.Texture {
 
 export async function loadBuildingTextures(): Promise<BuildingTextures> {
   const loader = new THREE.TextureLoader();
-  const [brick, plaster, wood, concrete, tar, metal, ivy, brickDamage, puddle, tarPatch, ivyFrames, damageFrames, puddleFrames, tarFrames] = await Promise.all([
-    loadTexture(loader, '/assets/buildings/wall_brick_face.png', 0x6b3a2c),
+  const [brick, plaster, wood, concrete, tar, metal, ivy, brickDamage, puddle, tarPatch, windowUnit, doorLeaf, ivyFrames, damageFrames, puddleFrames, tarFrames] = await Promise.all([
+    loadTexture(loader, '/assets/buildings/wall_brick_clean.jpg', 0x824c3a),
     loadTexture(loader, '/assets/buildings/wall_interior_face.png', 0x7d725c),
     loadTexture(loader, '/assets/buildings/floor_wood.png', 0x6a4e35),
     loadTexture(loader, '/assets/buildings/floor_concrete.png', 0x4c4f4c),
-    loadTexture(loader, '/assets/buildings/roof_tar.png', 0x2a2b28),
+    loadTexture(loader, '/assets/buildings/roof_tar.png', 0x2a2b28, 'brightness(1.55) contrast(1.08)'),
     loadTexture(loader, '/assets/buildings/floor_concrete.png', 0x777b77),
     loadCroppedTexture(loader, '/assets/buildings/ivy_decals_sheet.png', 360, 30, 300, 500),
     loadTexture(loader, '/assets/buildings/brick_damage.png', 0x5a4030),
     loadTexture(loader, '/assets/buildings/decal_puddle.png', 0x2d3333),
     loadTexture(loader, '/assets/buildings/tar_patches.png', 0x262825),
+    loadTexture(loader, '/assets/buildings/window_unit.png', 0x2e251e),
+    loadTexture(loader, '/assets/buildings/door_leaf.png', 0x3e454a),
     loadAtlasFrames(loader, '/assets/buildings/ivy_decals_sheet.png', IVY_FRAMES),
     loadAtlasFrames(loader, '/assets/buildings/brick_damage.png', BRICK_DAMAGE_FRAMES),
     loadAtlasFrames(loader, '/assets/buildings/decal_puddle.png', PUDDLE_FRAMES),
@@ -176,6 +197,8 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     tarPatch,
     weeds: makeWeedTexture(),
     decalAtlas,
+    windowUnit,
+    doorLeaf,
   };
 }
 
