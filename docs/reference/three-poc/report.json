@@ -1,0 +1,13 @@
+{
+  "url": "http://127.0.0.1:5176/render3d.html",
+  "outDir": "docs/reference/three-poc",
+  "errors": [],
+  "screenshots": [
+    "01-exterior.jpg",
+    "02-terrace.jpg",
+    "03-interior-cutaway.jpg",
+    "04-interior-no-cutaway.jpg",
+    "05-animation-a.jpg",
+    "06-animation-b.jpg"
+  ]
+}
