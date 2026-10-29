@@ -346,7 +346,12 @@ function addWindow(parent: THREE.Object3D, wall: WallModel, opening: OpeningMode
 function addWall(parent: THREE.Object3D, wall: WallModel, materials: SceneMaterials): THREE.Group {
   const group = new THREE.Group();
   const openings = [...(wall.openings ?? [])].sort((a, b) => a.x0 - b.x0);
-  let cursor = wall.fromM;
+  // Exterior boxes must overlap at corners. Otherwise the two boxes only touch
+  // by their inner faces and the outer corner is left open.
+  const cornerExtension = wall.exterior ? wall.thicknessM / 2 + 0.005 : 0;
+  const start = wall.fromM - cornerExtension;
+  const end = wall.toM + cornerExtension;
+  let cursor = start;
   for (const opening of openings) {
     if (opening.x0 > cursor) addWallSegment(group, wall, materials, cursor, opening.x0, wall.zBottom, wall.zTop);
     if (opening.z0 > wall.zBottom) addWallSegment(group, wall, materials, opening.x0, opening.x1, wall.zBottom, opening.z0);
@@ -355,7 +360,7 @@ function addWall(parent: THREE.Object3D, wall: WallModel, materials: SceneMateri
     else addWindow(group, wall, opening, materials);
     cursor = Math.max(cursor, opening.x1);
   }
-  if (cursor < wall.toM) addWallSegment(group, wall, materials, cursor, wall.toM, wall.zBottom, wall.zTop);
+  if (cursor < end) addWallSegment(group, wall, materials, cursor, end, wall.zBottom, wall.zTop);
   parent.add(group);
   return group;
 }

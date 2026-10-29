@@ -74,11 +74,14 @@ await page.evaluate(() => {
 });
 await shot('10-angle');
 
+await page.evaluate(() => window.__poc.setView('corner'));
+await shot('11-corner');
+
 const report = {
   url,
   outDir: relative(process.cwd(), outDir),
   errors,
-  screenshots: ['01-exterior.jpg', '02-terrace.jpg', '03-interior-cutaway.jpg', '04-interior-no-cutaway.jpg', '05-door.jpg', '06-animation-a.jpg', '07-animation-b.jpg', '08-layers.jpg', '09-variant.jpg', '10-angle.jpg'],
+  screenshots: ['01-exterior.jpg', '02-terrace.jpg', '03-interior-cutaway.jpg', '04-interior-no-cutaway.jpg', '05-door.jpg', '06-animation-a.jpg', '07-animation-b.jpg', '08-layers.jpg', '09-variant.jpg', '10-angle.jpg', '11-corner.jpg'],
 };
 writeFileSync(resolve(outDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));

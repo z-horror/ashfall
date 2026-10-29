@@ -7,7 +7,7 @@ declare global {
   interface Window {
     __pocReady?: boolean;
     __poc?: {
-      setView: (name: 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant') => void;
+      setView: (name: 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant' | 'corner') => void;
       setCamera: (azimuthDeg: number, elevationDeg: number) => void;
       setCutaway: (on: boolean) => void;
       setAnimation: (on: boolean) => void;
@@ -296,7 +296,7 @@ async function main(): Promise<void> {
     }
   }
 
-  function setView(name: 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant'): void {
+  function setView(name: 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant' | 'corner'): void {
     azimuth = DEFAULT_AZIMUTH;
     elevation = DEFAULT_ELEVATION;
     if (name === 'terrace') {
@@ -329,6 +329,11 @@ async function main(): Promise<void> {
       view.size = 24;
       applyCutaway(false);
       setCharacterVisibility([]);
+    } else if (name === 'corner') {
+      view.target.set(18.0, 13.0, 1.2);
+      view.size = 8;
+      applyCutaway(false);
+      setCharacterVisibility([]);
     } else {
       view.target.set(9.6, 7.2, 2.6);
       view.size = 26;
@@ -350,7 +355,7 @@ async function main(): Promise<void> {
   cutawayInput.addEventListener('change', () => applyCutaway(cutawayInput.checked));
   animateInput.addEventListener('change', () => setAnimation(animateInput.checked));
   document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((button) => {
-    button.addEventListener('click', () => setView(button.dataset.view as 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant'));
+    button.addEventListener('click', () => setView(button.dataset.view as 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant' | 'corner'));
   });
 
   let drag: { pointerId: number; x: number; y: number } | null = null;
