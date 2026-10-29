@@ -8,12 +8,12 @@ import { buildBuildingMeshes, type BuildingMeshes, type BuildingTextures } from 
 import { CHARACTER_SHEET_COLS, CHARACTER_SHEET_ROWS, loadBuildingTextures, loadCharacterSheet } from './assets3d.js';
 import { specToBuildingModel } from './specToBuildingModel.js';
 
+import { BILLBOARD_NORMAL, computeBillboardAxes } from './billboardAxes.js';
+
 const TILE = TILE_SIZE_M;
 const SHEET_COLS = CHARACTER_SHEET_COLS;
 const SHEET_ROWS = CHARACTER_SHEET_ROWS;
 const CHARACTER_STYLES = ['p0', 'p1', 'p2', 'p3', 'z0', 'z1', 'z2'];
-
-const BILLBOARD_NORMAL = new THREE.Vector3(1, 1, 0.5).normalize();
 const CHARACTER_CAMERA_OFFSET = 0.14;
 
 let contactShadowTexture: THREE.CanvasTexture | null = null;
@@ -34,40 +34,6 @@ function getContactShadowTexture(): THREE.CanvasTexture {
   }
   contactShadowTexture = new THREE.CanvasTexture(canvas);
   return contactShadowTexture;
-}
-
-function solveBillboardAxis(
-  targetX: number,
-  targetY: number,
-  e1: THREE.Vector3,
-  e2: THREE.Vector3,
-  inverse: { i11: number; i12: number; i21: number; i22: number },
-): THREE.Vector3 {
-  const a = inverse.i11 * targetX + inverse.i12 * targetY;
-  const b = inverse.i21 * targetX + inverse.i22 * targetY;
-  return e1.clone().multiplyScalar(a).add(e2.clone().multiplyScalar(b));
-}
-
-function computeBillboardAxes(): { x: THREE.Vector3; y: THREE.Vector3 } {
-  const gx = new THREE.Vector3(20, -20, 0);
-  const gy = new THREE.Vector3(10, 10, -40);
-  const e1 = new THREE.Vector3().crossVectors(BILLBOARD_NORMAL, new THREE.Vector3(0, 0, 1)).normalize();
-  const e2 = new THREE.Vector3().crossVectors(BILLBOARD_NORMAL, e1).normalize();
-  const a11 = gx.dot(e1);
-  const a12 = gx.dot(e2);
-  const a21 = gy.dot(e1);
-  const a22 = gy.dot(e2);
-  const det = a11 * a22 - a12 * a21;
-  const inverse = {
-    i11: a22 / det,
-    i12: -a12 / det,
-    i21: -a21 / det,
-    i22: a11 / det,
-  };
-  return {
-    x: solveBillboardAxis(1, 0, e1, e2, inverse),
-    y: solveBillboardAxis(0, -1, e1, e2, inverse),
-  };
 }
 
 interface BuildingEntry {
@@ -138,41 +104,45 @@ export class World3D {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.18;
+      this.renderer.toneMappingExposure = 1.45;
       this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
       this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
       this.camera.matrixAutoUpdate = false;
       this.camera.matrixWorld.identity();
       this.camera.matrixWorldInverse.identity();
 
-      this.scene3d.add(new THREE.HemisphereLight(0xb0c4d8, 0x483e32, 1.3));
-      this.scene3d.add(new THREE.AmbientLight(0xfff8f0, 0.35));
+      this.scene3d.add(new THREE.HemisphereLight(0x9cc2e6, 0x443a2e, 0.90));
+      this.scene3d.add(new THREE.AmbientLight(0xfff6ec, 0.28));
 
-      const sun = new THREE.DirectionalLight(0xfff0dc, 2.8);
-      sun.position.set(79, 82, 45);
-      sun.target.position.set(54.4, 52.0, 1.5);
+      // Sun target centered directly on building in world meters (54.4, 52.0, 1.8)
+      const sunTarget = new THREE.Object3D();
+      sunTarget.position.set(54.4, 52.0, 1.8);
+      this.scene3d.add(sunTarget);
+
+      const sun = new THREE.DirectionalLight(0xffeed6, 4.0);
+      sun.position.set(54.4 + 22, 52.0 + 26, 38);
+      sun.target = sunTarget;
       sun.castShadow = true;
-      sun.shadow.mapSize.width = 2048;
-      sun.shadow.mapSize.height = 2048;
-      sun.shadow.camera.near = 5;
-      sun.shadow.camera.far = 120;
-      sun.shadow.camera.left = -22;
-      sun.shadow.camera.right = 22;
-      sun.shadow.camera.top = 22;
-      sun.shadow.camera.bottom = -22;
-      sun.shadow.bias = -0.0004;
-      sun.shadow.normalBias = 0.02;
+      sun.shadow.mapSize.width = 4096;
+      sun.shadow.mapSize.height = 4096;
+      sun.shadow.camera.near = 10;
+      sun.shadow.camera.far = 110;
+      sun.shadow.camera.left = -16;
+      sun.shadow.camera.right = 16;
+      sun.shadow.camera.top = 16;
+      sun.shadow.camera.bottom = -16;
+      sun.shadow.camera.up.set(0, 0, 1);
+      sun.shadow.camera.updateProjectionMatrix();
+      sun.shadow.bias = -0.0003;
+      sun.shadow.normalBias = 0.015;
       this.scene3d.add(sun);
-      this.scene3d.add(sun.target);
 
-      const fill = new THREE.DirectionalLight(0x90a8c4, 0.65);
-      fill.position.set(25, 20, 35);
-      fill.target.position.set(54.4, 52.0, 1.5);
+      const fill = new THREE.DirectionalLight(0x8aa8c8, 0.70);
+      fill.position.set(54.4 - 20, 52.0 - 20, 28);
+      fill.target = sunTarget;
       this.scene3d.add(fill);
-      this.scene3d.add(fill.target);
-
 
       const axes = computeBillboardAxes();
       this.billboardX.copy(axes.x);
@@ -269,7 +239,7 @@ export class World3D {
         const isCurrentFloor = wallLevel === `level:${playerFloor}`;
         wall.visible = !inside || !isCurrentFloor;
       }
-      entry.meshes.plinth.visible = false;
+      entry.meshes.plinth.visible = !inside || playerFloor >= 0;
       entry.meshes.groundOccluder.visible = !inside || playerFloor >= 0;
       entry.meshes.exteriorClutter.visible = !inside;
       for (const stair of entry.meshes.stairs) {

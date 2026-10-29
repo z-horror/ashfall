@@ -259,18 +259,32 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
     });
   }
 
-  const damageGap = southWall ? largestGap(southWall, 2.0) : null;
-  if (southWall && damageGap) {
+  if (southWall) {
+    // Ivy on south wall corner next to downspout
     model.decals.push({
-      id: 'atmo:damage',
+      id: 'atmo:ivy-south-corner',
       host: { kind: 'wall', id: southWall.id, side: 'front' },
-      u0: damageGap.u0 + 0.2,
-      u1: Math.min(damageGap.u1 - 0.2, damageGap.u0 + 2.6),
-      v0: southWall.zBottom + 0.3,
-      v1: Math.min(southWall.zTop - 0.15, southWall.zBottom + 2.2),
-      texture: 'brickDamage',
-      frame: 0,
-      offsetM: 0.014,
+      u0: Math.max(0, model.footprint.w - 1.9),
+      u1: model.footprint.w - 0.1,
+      v0: southWall.zBottom + 0.2,
+      v1: Math.min(southWall.zTop - 0.1, southWall.zBottom + 2.7),
+      texture: 'ivy',
+      frame: 1,
+      offsetM: 0.016,
+    });
+  }
+
+  if (mansardWall) {
+    model.decals.push({
+      id: 'atmo:ivy-mansard',
+      host: { kind: 'wall', id: mansardWall.id, side: 'front' },
+      u0: Math.max(0, model.footprint.w - 1.9),
+      u1: model.footprint.w - 0.2,
+      v0: mansardWall.zBottom + 0.1,
+      v1: Math.min(roofElevation - 0.1, mansardWall.zBottom + 2.4),
+      texture: 'ivy',
+      frame: 2,
+      offsetM: 0.016,
     });
   }
 
@@ -290,6 +304,7 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
     // Leaning pallet against the mansard wall on the terrace
     model.props.push({
       id: 'terrace:pallet-lean',
+      levelId: 'level:1',
       kind: 'pallet',
       xM: terrace.rect.x + terrace.rect.w * 0.36,
       yM: terrace.rect.y + 0.18,
