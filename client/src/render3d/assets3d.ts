@@ -48,6 +48,18 @@ function fallbackTexture(color: number): THREE.Texture {
   return texture;
 }
 
+function configureTexture(texture: THREE.Texture): THREE.Texture {
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = 16;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 async function loadTexture(
   loader: THREE.TextureLoader,
   url: string,
@@ -67,15 +79,11 @@ async function loadTexture(
           ctx.filter = filter;
           ctx.drawImage(img, 0, 0);
           const processed = new THREE.CanvasTexture(canvas);
-          processed.colorSpace = THREE.SRGBColorSpace;
-          processed.wrapS = THREE.RepeatWrapping;
-          processed.wrapT = THREE.RepeatWrapping;
-          return processed;
+          return configureTexture(processed);
         }
       }
     }
-    texture.colorSpace = THREE.SRGBColorSpace;
-    return texture;
+    return configureTexture(texture);
   } catch (error) {
     console.warn('[world3d] texture fallback', url, error);
     return fallbackTexture(fallbackColor);
@@ -112,8 +120,7 @@ function cropTexture(source: THREE.Texture, frame: AtlasFrame): THREE.Texture {
     frame.h,
   );
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return configureTexture(texture);
 }
 
 async function loadAtlasFrames(
@@ -152,16 +159,36 @@ function makeWeedTexture(): THREE.Texture {
     }
   }
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return configureTexture(texture);
 }
 
 export async function loadBuildingTextures(): Promise<BuildingTextures> {
   const loader = new THREE.TextureLoader();
-  const [brick, plaster, wood, concrete, tar, metal, ivy, brickDamage, puddle, tarPatch, windowUnit, doorLeaf, ivyFrames, damageFrames, puddleFrames, tarFrames] = await Promise.all([
+  const [
+    brick,
+    plaster,
+    wood,
+    concrete,
+    tar,
+    metal,
+    ivy,
+    brickDamage,
+    puddle,
+    tarPatch,
+    windowUnit,
+    doorLeaf,
+    ivyFrames,
+    damageFrames,
+    puddleFrames,
+    tarFrames,
+    wallInteriorDamaged,
+    floorWoodClean,
+    floorWoodScuffed,
+    wallConcrete,
+  ] = await Promise.all([
     loadTexture(loader, '/assets/buildings/wall_brick_clean.jpg', 0x824c3a),
     loadTexture(loader, '/assets/buildings/wall_interior_face.png', 0x7d725c),
-    loadTexture(loader, '/assets/buildings/floor_wood.png', 0x6a4e35),
+    loadTexture(loader, '/assets/buildings/floor_wood_clean.png', 0x886b4e),
     loadTexture(loader, '/assets/buildings/floor_concrete.png', 0x4c4f4c),
     loadTexture(loader, '/assets/buildings/roof_tar.png', 0x2a2b28, 'brightness(1.55) contrast(1.08)'),
     loadTexture(loader, '/assets/buildings/floor_concrete.png', 0x777b77),
@@ -175,6 +202,10 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     loadAtlasFrames(loader, '/assets/buildings/brick_damage.png', BRICK_DAMAGE_FRAMES),
     loadAtlasFrames(loader, '/assets/buildings/decal_puddle.png', PUDDLE_FRAMES),
     loadAtlasFrames(loader, '/assets/buildings/tar_patches.png', TAR_PATCH_FRAMES),
+    loadTexture(loader, '/assets/buildings/wall_interior_damaged.png', 0x706555),
+    loadTexture(loader, '/assets/buildings/floor_wood_clean.png', 0x886b4e),
+    loadTexture(loader, '/assets/buildings/floor_wood_scuffed.png', 0x6e5238),
+    loadTexture(loader, '/assets/buildings/wall_concrete_face.png', 0x5e6260),
   ]);
 
   const decalAtlas: DecalAtlas = {
@@ -199,6 +230,10 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     decalAtlas,
     windowUnit,
     doorLeaf,
+    wallInteriorDamaged,
+    floorWoodClean,
+    floorWoodScuffed,
+    wallConcrete,
   };
 }
 

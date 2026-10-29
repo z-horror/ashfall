@@ -139,25 +139,37 @@ export class World3D {
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.renderer.toneMappingExposure = 1.18;
-      this.renderer.shadowMap.enabled = false;
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
       this.camera.matrixAutoUpdate = false;
       this.camera.matrixWorld.identity();
       this.camera.matrixWorldInverse.identity();
 
-      this.scene3d.add(new THREE.HemisphereLight(0xb5c8da, 0x443a2e, 1.6));
-      this.scene3d.add(new THREE.AmbientLight(0xfff6ee, 0.45));
+      this.scene3d.add(new THREE.HemisphereLight(0xb0c4d8, 0x483e32, 1.3));
+      this.scene3d.add(new THREE.AmbientLight(0xfff8f0, 0.35));
 
-      const sun = new THREE.DirectionalLight(0xfff1de, 2.7);
-      sun.position.set(114, 104, 150);
-      sun.target.position.set(54, 54, 0);
+      const sun = new THREE.DirectionalLight(0xfff0dc, 2.8);
+      sun.position.set(79, 82, 45);
+      sun.target.position.set(54.4, 52.0, 1.5);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 2048;
+      sun.shadow.mapSize.height = 2048;
+      sun.shadow.camera.near = 5;
+      sun.shadow.camera.far = 120;
+      sun.shadow.camera.left = -22;
+      sun.shadow.camera.right = 22;
+      sun.shadow.camera.top = 22;
+      sun.shadow.camera.bottom = -22;
+      sun.shadow.bias = -0.0004;
+      sun.shadow.normalBias = 0.02;
       this.scene3d.add(sun);
       this.scene3d.add(sun.target);
 
-      const fill = new THREE.DirectionalLight(0x95abc0, 0.55);
-      fill.position.set(-30, -40, 70);
-      fill.target.position.set(54, 54, 0);
+      const fill = new THREE.DirectionalLight(0x90a8c4, 0.65);
+      fill.position.set(25, 20, 35);
+      fill.target.position.set(54.4, 52.0, 1.5);
       this.scene3d.add(fill);
       this.scene3d.add(fill.target);
 
@@ -208,7 +220,8 @@ export class World3D {
     }
     for (const spec of world.buildings.values()) {
       if (this.buildings.has(spec.id)) continue;
-      const converted = specToBuildingModel(spec);
+      const buildingObjects = [...world.objects.values()].filter((object) => object.buildingId === spec.id);
+      const converted = specToBuildingModel(spec, buildingObjects);
       const meshes = buildBuildingMeshes(converted.model, this.textures);
       meshes.group.position.set(converted.worldPosition.x, converted.worldPosition.y, 0);
       this.scene3d.add(meshes.group);
@@ -222,21 +235,47 @@ export class World3D {
     const state = this.gameScene.getRender3DState();
     for (const [id, entry] of this.buildings) {
       const inside = id === state.currentBuilding;
-      const inBasement = inside && state.playerFloor < 0;
-      for (const [levelId, group] of entry.meshes.levelGroups) {
+      const playerFloor = state.playerFloor;
+
+      for (const [levelId, group] of entry.meshes.interiorGroups) {
         const level = entry.model.levels.find((candidate) => candidate.id === levelId);
-        group.visible = !inside
-          ? !level || level.index >= 0
-          : !level || level.index <= state.playerFloor;
+        if (!inside) {
+          group.visible = !level || level.index >= 0;
+        } else {
+          group.visible = level?.index === playerFloor;
+        }
       }
-      for (const wall of entry.meshes.nearWalls) wall.visible = !inside;
+
+      for (const [levelId, group] of entry.meshes.exteriorWallGroups) {
+        const level = entry.model.levels.find((candidate) => candidate.id === levelId);
+        if (!inside) {
+          group.visible = !level || level.index >= 0;
+        } else {
+          group.visible = level !== undefined && level.index >= 0 && level.index <= playerFloor;
+        }
+      }
+
+      for (const [levelId, group] of entry.meshes.fixtureGroups) {
+        const level = entry.model.levels.find((candidate) => candidate.id === levelId);
+        if (!inside) {
+          group.visible = !level || level.index >= 0;
+        } else {
+          group.visible = level !== undefined && level.index === playerFloor;
+        }
+      }
+
+      for (const wall of entry.meshes.nearWalls) {
+        const wallLevel = wall.userData.levelId as string | undefined;
+        const isCurrentFloor = wallLevel === `level:${playerFloor}`;
+        wall.visible = !inside || !isCurrentFloor;
+      }
       entry.meshes.plinth.visible = false;
-      entry.meshes.groundOccluder.visible = !inside || state.playerFloor >= 0;
+      entry.meshes.groundOccluder.visible = !inside || playerFloor >= 0;
       entry.meshes.exteriorClutter.visible = !inside;
       for (const stair of entry.meshes.stairs) {
         const low = Math.min(stair.fromIndex, stair.toIndex);
         const high = Math.max(stair.fromIndex, stair.toIndex);
-        stair.group.visible = !inside ? low >= 0 : (state.playerFloor >= low && state.playerFloor <= high);
+        stair.group.visible = !inside ? low >= 0 : (playerFloor >= low && playerFloor <= high);
       }
     }
   }

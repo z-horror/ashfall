@@ -2,6 +2,7 @@ import {
   TILE_SIZE_M,
   type BuildingSpec,
   type FloorSpec,
+  type ObjectInstance,
   type RoofFixtureSpec,
   type RoofSpec,
   type StairSpec,
@@ -18,6 +19,7 @@ import type {
   OpeningModel,
   PipeModel,
   PlinthModel,
+  PropKind,
   PropModel,
   RectM,
   SlabModel,
@@ -99,14 +101,15 @@ function addWall(
   origin: { x: number; y: number },
   openings: OpeningModel[],
 ): void {
-  const axisOrigin = run.axis === 'h' ? origin.x : origin.y;
+  const fixedOrigin = run.axis === 'h' ? origin.y : origin.x;
+  const spanOrigin = run.axis === 'h' ? origin.x : origin.y;
   model.walls.push({
     id: run.id,
     levelId: levelId(run.level),
     axis: run.axis,
-    fixedM: (run.fixed - axisOrigin) * TILE,
-    fromM: (run.from - axisOrigin) * TILE,
-    toM: (run.to - axisOrigin) * TILE,
+    fixedM: (run.fixed - fixedOrigin) * TILE,
+    fromM: (run.from - spanOrigin) * TILE,
+    toM: (run.to - spanOrigin) * TILE,
     zBottom: floor.elevationM,
     zTop: floor.elevationM + run.heightM,
     thicknessM: run.thicknessM,
@@ -121,9 +124,9 @@ function addWall(
       id: `${run.id}:base`,
       levelId: levelId(run.level),
       axis: run.axis,
-      fixedM: (run.fixed - axisOrigin) * TILE,
-      fromM: (run.from - axisOrigin) * TILE,
-      toM: (run.to - axisOrigin) * TILE,
+      fixedM: (run.fixed - fixedOrigin) * TILE,
+      fromM: (run.from - spanOrigin) * TILE,
+      toM: (run.to - spanOrigin) * TILE,
       zBottom: floor.elevationM,
       zTop: floor.elevationM + 0.28,
       thicknessM: run.thicknessM + 0.04,
@@ -231,12 +234,15 @@ function largestGap(wall: WallModel, minLength: number): { u0: number; u1: numbe
 }
 
 function addAtmosphere(model: BuildingModel, roofElevation: number): void {
-  const groundWalls = model.walls.filter((wall) => wall.levelId === 'level:0' && wall.exterior && !wall.id.includes('parapet') && !wall.id.includes('cap'));
+  const groundWalls = model.walls.filter((wall) => wall.levelId === 'level:0' && wall.exterior && !wall.id.includes('parapet') && !wall.id.includes('cap') && !wall.id.includes('base'));
   const walls = groundWalls.length > 0 ? groundWalls : model.walls.filter((wall) => wall.exterior && !wall.id.includes('parapet') && !wall.id.includes('cap'));
   const eastWall = walls.find((wall) => wall.axis === 'v' && wall.fixedM >= model.footprint.w / 2)
     ?? walls.find((wall) => wall.axis === 'v');
   const southWall = walls.find((wall) => wall.axis === 'h' && wall.fixedM >= model.footprint.h / 2)
     ?? walls.find((wall) => wall.axis === 'h');
+  const terrace = model.slabs.find((slab) => slab.kind === 'terrace');
+  const mansardWall = model.walls.find((wall) => wall.levelId === 'level:1' && wall.axis === 'h' && wall.fixedM <= model.footprint.h * 0.7 && !wall.id.includes('parapet') && !wall.id.includes('cap'));
+  const topZ = terrace ? terrace.zTop + 0.38 : (southWall ? southWall.zTop : 3.2);
 
   const ivyGap = eastWall ? largestGap(eastWall, 3.5) : null;
   if (eastWall && ivyGap) {
@@ -258,17 +264,16 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
     model.decals.push({
       id: 'atmo:damage',
       host: { kind: 'wall', id: southWall.id, side: 'front' },
-      u0: damageGap.u0 + 0.3,
-      u1: Math.min(damageGap.u1 - 0.3, damageGap.u0 + 2.2),
-      v0: southWall.zBottom + 0.35,
-      v1: Math.min(southWall.zTop - 0.15, southWall.zBottom + 1.85),
+      u0: damageGap.u0 + 0.2,
+      u1: Math.min(damageGap.u1 - 0.2, damageGap.u0 + 2.6),
+      v0: southWall.zBottom + 0.3,
+      v1: Math.min(southWall.zTop - 0.15, southWall.zBottom + 2.2),
       texture: 'brickDamage',
       frame: 0,
       offsetM: 0.014,
     });
   }
 
-  const terrace = model.slabs.find((slab) => slab.kind === 'terrace');
   if (terrace) {
     model.decals.push({
       id: 'atmo:puddle',
@@ -291,24 +296,6 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       zM: terrace.zTop,
       yaw: 0.05,
     });
-
-    // Downspout on the south-west terrace corner
-    const westWall = walls.find((wall) => wall.axis === 'v' && wall.fixedM <= model.footprint.w / 2) ?? walls[0];
-    if (westWall) {
-      const x = model.footprint.x + 0.12;
-      const y = southWall ? southWall.fixedM + southWall.thicknessM / 2 + 0.12 : terrace.rect.y + terrace.rect.h + 0.12;
-      model.pipes.push({
-        id: 'atmo:downspout-west',
-        host: { kind: 'wall', id: westWall.id, side: 'front' },
-        points: [
-          { x, y, z: terrace.zTop + 0.38 },
-          { x, y, z: 0.35 },
-          { x, y: y + 0.15, z: 0.12 },
-        ],
-        radiusM: 0.055,
-        material: 'metal',
-      });
-    }
   }
 
   const roof = model.slabs.find((slab) => slab.kind === 'roof');
@@ -326,16 +313,47 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
     });
   }
 
-  if (eastWall) {
-    const x = eastWall.fixedM + eastWall.thicknessM / 2 + 0.12;
-    const y = eastWall.toM - 0.22;
+  if (southWall) {
+    const yFront = southWall.fixedM + southWall.thicknessM / 2 + 0.06;
+    // Downspout on the south-east corner (runs terrace parapet to ground)
+    const xEast = model.footprint.w - 0.22;
     model.pipes.push({
       id: 'atmo:downspout',
-      host: { kind: 'wall', id: eastWall.id, side: 'front' },
+      host: { kind: 'wall', id: southWall.id, side: 'front' },
       points: [
-        { x, y, z: Math.max(eastWall.zTop, roofElevation) },
-        { x, y, z: 0.36 },
-        { x: x + 0.12, y: y + 0.14, z: 0.12 },
+        { x: xEast, y: yFront, z: topZ },
+        { x: xEast, y: yFront, z: 0.32 },
+        { x: xEast, y: yFront + 0.14, z: 0.10 },
+      ],
+      radiusM: 0.055,
+      material: 'metal',
+    });
+
+    // Downspout on the south-west corner (runs terrace parapet to ground)
+    const xWest = model.footprint.x + 0.22;
+    model.pipes.push({
+      id: 'atmo:downspout-west',
+      host: { kind: 'wall', id: southWall.id, side: 'front' },
+      points: [
+        { x: xWest, y: yFront, z: topZ },
+        { x: xWest, y: yFront, z: 0.32 },
+        { x: xWest, y: yFront + 0.14, z: 0.10 },
+      ],
+      radiusM: 0.055,
+      material: 'metal',
+    });
+  }
+
+  if (mansardWall && terrace) {
+    const xMansard = model.footprint.w - 0.22;
+    const yMansard = mansardWall.fixedM + mansardWall.thicknessM / 2 + 0.06;
+    model.pipes.push({
+      id: 'atmo:downspout-mansard',
+      host: { kind: 'wall', id: mansardWall.id, side: 'front' },
+      points: [
+        { x: xMansard, y: yMansard, z: roofElevation },
+        { x: xMansard, y: yMansard, z: terrace.zTop + 0.15 },
+        { x: xMansard, y: yMansard + 0.12, z: terrace.zTop + 0.04 },
       ],
       radiusM: 0.055,
       material: 'metal',
@@ -353,7 +371,7 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
   );
 }
 
-export function specToBuildingModel(building: BuildingSpec): ConvertedBuilding {
+export function specToBuildingModel(building: BuildingSpec, objects?: ObjectInstance[]): ConvertedBuilding {
   const cells = collectCells(building);
   const origin = boundsOf(cells, building.origin);
   const footprint = {
@@ -442,11 +460,11 @@ export function specToBuildingModel(building: BuildingSpec): ConvertedBuilding {
     }
 
     for (const run of floor.wallRuns) {
-      const axisOrigin = run.axis === 'h' ? origin.x : run.axis === 'v' ? origin.y : origin.x;
+      const spanOrigin = run.axis === 'h' ? origin.x : origin.y;
       const openings = floor.openings
         .filter((opening) => opening.wallRunId === run.id)
         .map<OpeningModel>((opening) => {
-          const start = (run.from - axisOrigin) * TILE + opening.startM;
+          const start = (run.from - spanOrigin) * TILE + opening.startM;
           return {
             x0: start,
             x1: start + opening.widthM,
@@ -517,6 +535,41 @@ export function specToBuildingModel(building: BuildingSpec): ConvertedBuilding {
       heightM: fixtureKind(fixture) === 'ac' ? 0.9 : 0.45,
       yaw: 0,
     });
+  }
+
+  for (const obj of objects ?? []) {
+    if (obj.placement.mount !== 'floor') continue;
+    const floor = floors.find((f) => f.level === obj.level);
+    const zBase = floor ? floor.elevationM : 0;
+    const xM = (obj.placement.x - origin.x) * TILE;
+    const yM = (obj.placement.y - origin.y) * TILE;
+    const zM = zBase;
+    const yaw = (obj.placement.rotation * Math.PI) / 180;
+
+    let kind: PropKind | null = null;
+    if (obj.templateId === 'bed_double' || obj.templateId === 'bed_single') kind = 'bed';
+    else if (obj.templateId === 'wardrobe') kind = 'wardrobe';
+    else if (obj.templateId === 'nightstand') kind = 'nightstand';
+    else if (obj.templateId === 'counter') kind = 'counter';
+    else if (obj.templateId === 'fridge') kind = 'fridge';
+    else if (obj.templateId === 'table') kind = 'table';
+    else if (obj.templateId === 'chair') kind = 'chair';
+    else if (obj.templateId === 'shelf') kind = 'shelf';
+    else if (obj.templateId === 'crate') kind = 'crate';
+    else if (obj.templateId === 'utility_box') kind = 'utility_box';
+    else if (obj.templateId === 'rug') kind = 'rug';
+
+    if (kind) {
+      model.props.push({
+        id: obj.id,
+        kind,
+        xM,
+        yM,
+        zM,
+        yaw,
+        levelId: levelId(obj.level),
+      });
+    }
   }
 
   addAtmosphere(model, roofElevation);

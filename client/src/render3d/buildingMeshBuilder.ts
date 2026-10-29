@@ -36,6 +36,10 @@ export interface BuildingTextures {
   decalAtlas?: DecalAtlas;
   windowUnit?: THREE.Texture;
   doorLeaf?: THREE.Texture;
+  wallInteriorDamaged?: THREE.Texture;
+  floorWoodClean?: THREE.Texture;
+  floorWoodScuffed?: THREE.Texture;
+  wallConcrete?: THREE.Texture;
 }
 
 export interface StairMeshEntry {
@@ -47,6 +51,9 @@ export interface StairMeshEntry {
 export interface BuildingMeshes {
   group: THREE.Group;
   levelGroups: Map<string, THREE.Group>;
+  interiorGroups: Map<string, THREE.Group>;
+  exteriorWallGroups: Map<string, THREE.Group>;
+  fixtureGroups: Map<string, THREE.Group>;
   nearWalls: THREE.Object3D[];
   fixtures: FixtureModel[];
   plinth: THREE.Object3D;
@@ -78,7 +85,16 @@ interface SceneMaterials extends Record<MaterialKey, THREE.Material> {
   wallBrick: THREE.Material;
   wallBrickWeathered: THREE.Material;
   wallPlaster: THREE.Material;
+  wallInteriorDamaged: THREE.Material;
   wallConcrete: THREE.Material;
+  baseboardWood: THREE.Material;
+  furnitureWood: THREE.Material;
+  counterStone: THREE.Material;
+  applianceWhite: THREE.Material;
+  applianceSteel: THREE.Material;
+  bedSheet: THREE.Material;
+  bedBlanket: THREE.Material;
+  rugMat: THREE.Material;
 }
 
 function repeatedTexture(source: THREE.Texture, repeatX: number, repeatY: number): THREE.Texture {
@@ -151,12 +167,14 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
       })
     : undefined;
 
+  const woodTexture = textures.floorWoodClean ?? textures.wood;
+
   return {
-    brick: surfaceMaterial(textures.brick, 5, 1.2, { roughness: 0.86 }),
-    brickWeathered: surfaceMaterial(textures.brick, 5, 1.2, { color: 0xdfd4c8, roughness: 0.9 }),
-    plaster: surfaceMaterial(textures.plaster, 2, 2, { roughness: 0.95 }),
-    wood: surfaceMaterial(textures.wood, 10, 8, { roughness: 0.82 }),
-    concrete: surfaceMaterial(textures.concrete, 4, 4, { color: 0xdfdad2, roughness: 0.95 }),
+    brick: surfaceMaterial(textures.brick, 1, 1, { roughness: 0.86 }),
+    brickWeathered: surfaceMaterial(textures.brick, 1, 1, { color: 0xdfd4c8, roughness: 0.9 }),
+    plaster: surfaceMaterial(textures.plaster, 1, 1, { roughness: 0.92 }),
+    wood: surfaceMaterial(woodTexture, 1, 1, { roughness: 0.78, color: 0xded6cc }),
+    concrete: surfaceMaterial(textures.concrete, 1, 1, { color: 0xdfdad2, roughness: 0.95 }),
     stoneSill: new THREE.MeshStandardMaterial({ color: 0xd8d4cb, roughness: 0.88, metalness: 0.05, side: THREE.DoubleSide }),
     stoneParapet: new THREE.MeshStandardMaterial({ color: 0xded9d2, roughness: 0.88, metalness: 0.04, side: THREE.DoubleSide }),
     tar: surfaceMaterial(textures.tar, 1, 1, { color: 0xd0d0cd, roughness: 0.65, metalness: 0.08 }),
@@ -196,7 +214,16 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
     wallBrick: surfaceMaterial(textures.brick, 1, 1, { roughness: 0.86 }),
     wallBrickWeathered: surfaceMaterial(textures.brick, 1, 1, { color: 0xdfd4c8, roughness: 0.9 }),
     wallPlaster: surfaceMaterial(textures.plaster, 1, 1, { roughness: 0.95 }),
-    wallConcrete: surfaceMaterial(textures.concrete, 1, 1, { color: 0xdfdad2, roughness: 0.95 }),
+    wallInteriorDamaged: surfaceMaterial(textures.wallInteriorDamaged ?? textures.plaster, 1, 1, { roughness: 0.95 }),
+    wallConcrete: surfaceMaterial(textures.wallConcrete ?? textures.concrete, 1, 1, { color: 0xdfdad2, roughness: 0.95 }),
+    baseboardWood: new THREE.MeshStandardMaterial({ color: 0x3a281a, roughness: 0.75, metalness: 0.05, side: THREE.DoubleSide }),
+    furnitureWood: new THREE.MeshStandardMaterial({ color: 0x5a3e2a, roughness: 0.8, metalness: 0.05, side: THREE.DoubleSide }),
+    counterStone: new THREE.MeshStandardMaterial({ color: 0xdbd7cf, roughness: 0.65, metalness: 0.08, side: THREE.DoubleSide }),
+    applianceWhite: new THREE.MeshStandardMaterial({ color: 0xe8e6e2, roughness: 0.45, metalness: 0.15, side: THREE.DoubleSide }),
+    applianceSteel: new THREE.MeshStandardMaterial({ color: 0x7c8488, roughness: 0.45, metalness: 0.65, side: THREE.DoubleSide }),
+    bedSheet: new THREE.MeshStandardMaterial({ color: 0xdedcd7, roughness: 0.92, metalness: 0.02, side: THREE.DoubleSide }),
+    bedBlanket: new THREE.MeshStandardMaterial({ color: 0x485868, roughness: 0.88, metalness: 0.02, side: THREE.DoubleSide }),
+    rugMat: new THREE.MeshStandardMaterial({ color: 0x824234, roughness: 0.95, metalness: 0.02, side: THREE.DoubleSide }),
   };
 }
 
@@ -241,11 +268,11 @@ function addSlab(parent: THREE.Object3D, slab: SlabModel, material: THREE.Materi
   for (const hole of slab.holes ?? []) {
     rects = rects.flatMap((rect) => splitRectAroundHole(rect, hole));
   }
+  const scaleM = slab.material === 'wood' ? 1.6 : slab.material === 'tar' ? 2.4 : 2.0;
   for (const rect of rects) {
     const geometry = new THREE.BoxGeometry(rect.w, rect.h, heightZ);
     const position = geometry.attributes.position;
     const uv = geometry.attributes.uv;
-    const scaleM = 2.4;
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
     for (let i = 0; i < position.count; i++) {
@@ -262,22 +289,38 @@ function addSlab(parent: THREE.Object3D, slab: SlabModel, material: THREE.Materi
   }
 }
 
-function wallMaterialFor(
-  key: MaterialKey,
+function wallMaterialsFor(
+  wall: WallModel,
   materials: SceneMaterials,
-): { material: THREE.Material; textureScaleM: number } {
-  switch (key) {
-    case 'brick':
-      return { material: materials.wallBrick, textureScaleM: 2.4 };
-    case 'brickWeathered':
-      return { material: materials.wallBrickWeathered, textureScaleM: 2.4 };
-    case 'plaster':
-      return { material: materials.wallPlaster, textureScaleM: 2.0 };
-    case 'concrete':
-      return { material: materials.stoneParapet, textureScaleM: 2.4 };
-    default:
-      return { material: materials[key], textureScaleM: 2.4 };
+): THREE.Material[] {
+  if (wall.levelId === 'level:-1') {
+    return [materials.wallConcrete, materials.wallConcrete, materials.wallConcrete, materials.wallConcrete, materials.wallConcrete, materials.wallConcrete];
   }
+  if (wall.id.includes('base')) {
+    return [materials.stoneParapet, materials.stoneParapet, materials.stoneParapet, materials.stoneParapet, materials.stoneParapet, materials.stoneParapet];
+  }
+  if (wall.id.includes('parapet') || wall.id.includes('cap')) {
+    return [materials.wallBrick, materials.wallBrick, materials.wallBrick, materials.wallBrick, materials.stoneParapet, materials.wallConcrete];
+  }
+  if (!wall.exterior || wall.material === 'plaster') {
+    return [materials.wallPlaster, materials.wallPlaster, materials.wallPlaster, materials.wallPlaster, materials.baseboardWood, materials.wallConcrete];
+  }
+
+  // Exterior envelope wall with interior face
+  const ext = materials.wallBrick;
+  const int = materials.wallPlaster;
+  const top = materials.stoneParapet;
+  const btm = materials.wallConcrete;
+
+  if (wall.axis === 'h') {
+    // Face 2 is +Y, Face 3 is -Y
+    const southFacing = wall.fixedM > 4.5;
+    return southFacing ? [ext, ext, ext, int, top, btm] : [ext, ext, int, ext, top, btm];
+  }
+
+  // Face 0 is +X, Face 1 is -X
+  const eastFacing = wall.fixedM > 6.0;
+  return eastFacing ? [ext, int, ext, ext, top, btm] : [int, ext, ext, ext, top, btm];
 }
 
 function addWallSegment(
@@ -301,7 +344,7 @@ function addWallSegment(
   const uv = geometry.attributes.uv;
   const centerAlong = from + length / 2;
   const centerZ = (zBottom + zTop) / 2;
-  const { material, textureScaleM } = wallMaterialFor(wall.material, materials);
+  const textureScaleM = 2.4;
   for (let i = 0; i < position.count; i++) {
     const localAlong = isHorizontal ? position.getX(i) : position.getY(i);
     const along = centerAlong + localAlong;
@@ -309,7 +352,8 @@ function addWallSegment(
     uv.setXY(i, along / textureScaleM, z / textureScaleM);
   }
   uv.needsUpdate = true;
-  const mesh = new THREE.Mesh(geometry, material);
+  const matList = wallMaterialsFor(wall, materials);
+  const mesh = new THREE.Mesh(geometry, matList);
   mesh.position.set(
     isHorizontal ? centerAlong : wall.fixedM,
     isHorizontal ? wall.fixedM : centerAlong,
@@ -318,6 +362,31 @@ function addWallSegment(
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   parent.add(mesh);
+
+  // Wooden baseboard skirting along the bottom of interior walls (ground floor)
+  if (wall.levelId === 'level:0' && zBottom <= 0.05 && !wall.id.includes('parapet') && !wall.id.includes('base')) {
+    const trimH = 0.12;
+    const trimD = 0.015;
+    if (isHorizontal) {
+      const isPartition = !wall.exterior || wall.material === 'plaster';
+      const southFacing = wall.fixedM > 4.5;
+      if (isPartition || southFacing) {
+        addBox(parent, length, trimD, trimH, centerAlong, wall.fixedM - wall.thicknessM / 2 + trimD / 2, zBottom + trimH / 2, materials.baseboardWood, false);
+      }
+      if (isPartition || !southFacing) {
+        addBox(parent, length, trimD, trimH, centerAlong, wall.fixedM + wall.thicknessM / 2 - trimD / 2, zBottom + trimH / 2, materials.baseboardWood, false);
+      }
+    } else {
+      const isPartition = !wall.exterior || wall.material === 'plaster';
+      const eastFacing = wall.fixedM > 6.0;
+      if (isPartition || eastFacing) {
+        addBox(parent, trimD, length, trimH, wall.fixedM - wall.thicknessM / 2 + trimD / 2, centerAlong, zBottom + trimH / 2, materials.baseboardWood, false);
+      }
+      if (isPartition || !eastFacing) {
+        addBox(parent, trimD, length, trimH, wall.fixedM + wall.thicknessM / 2 - trimD / 2, centerAlong, zBottom + trimH / 2, materials.baseboardWood, false);
+      }
+    }
+  }
 }
 
 function wallBox(
@@ -798,80 +867,141 @@ function addPipe(parent: THREE.Object3D, pipe: PipeModel, materials: SceneMateri
 
   // Top hopper head (воронка водостока)
   const top = points[0];
-  const hopper = new THREE.Mesh(new THREE.CylinderGeometry(pipe.radiusM * 2.2, pipe.radiusM * 1.1, 0.22, 12), materials[pipe.material]);
+  const hopper = new THREE.Mesh(new THREE.CylinderGeometry(pipe.radiusM * 2.0, pipe.radiusM * 1.05, 0.22, 12), materials[pipe.material]);
   hopper.rotation.x = Math.PI / 2;
-  hopper.position.set(top.x, top.y, top.z + 0.08);
+  hopper.position.set(top.x, top.y, top.z);
   hopper.castShadow = true;
   parent.add(hopper);
 
   // Mounting brackets along the wall
-  const bottom = points[points.length - 1];
-  for (let z = bottom.z + 0.6; z < top.z - 0.4; z += 1.4) {
-    addBox(parent, 0.16, 0.08, 0.05, bottom.x - 0.02, bottom.y, z, materials.metal, false);
+  const straightX = top.x;
+  const straightY = top.y;
+  const bottomZ = points[points.length - 1].z;
+  for (let z = bottomZ + 0.6; z < top.z - 0.3; z += 1.2) {
+    addBox(parent, 0.14, 0.14, 0.04, straightX, straightY, z, materials.metal, false);
+  }
+}
+
+function addSingleProp(parent: THREE.Object3D, prop: PropModel, materials: SceneMaterials): THREE.Group {
+  const group = new THREE.Group();
+  group.position.set(prop.xM, prop.yM, prop.zM);
+  group.rotation.z = prop.yaw ?? 0;
+  const scale = prop.scale ?? 1;
+  group.scale.setScalar(scale);
+
+  if (prop.kind === 'bed') {
+    addBox(group, 1.4, 2.0, 0.22, 0, 0, 0.11, materials.furnitureWood);
+    addBox(group, 1.44, 0.1, 0.85, 0, -0.95, 0.45, materials.furnitureWood);
+    addBox(group, 1.32, 1.9, 0.22, 0, 0.02, 0.32, materials.bedSheet);
+    addBox(group, 1.34, 1.25, 0.08, 0, 0.32, 0.45, materials.bedBlanket);
+    addBox(group, 0.52, 0.34, 0.08, -0.32, -0.65, 0.44, materials.bedSheet);
+    addBox(group, 0.52, 0.34, 0.08, 0.32, -0.65, 0.44, materials.bedSheet);
+  } else if (prop.kind === 'wardrobe') {
+    addBox(group, 1.2, 0.58, 2.0, 0, 0, 1.0, materials.furnitureWood);
+    addBox(group, 1.26, 0.64, 0.08, 0, 0, 2.04, materials.baseboardWood);
+    addBox(group, 1.22, 0.6, 0.08, 0, 0, 0.04, materials.baseboardWood);
+    addBox(group, 0.54, 0.02, 1.8, -0.28, 0.3, 1.0, materials.palletWood);
+    addBox(group, 0.54, 0.02, 1.8, 0.28, 0.3, 1.0, materials.palletWood);
+    addBox(group, 0.03, 0.03, 0.12, -0.06, 0.32, 1.05, materials.metal, false);
+    addBox(group, 0.03, 0.03, 0.12, 0.06, 0.32, 1.05, materials.metal, false);
+  } else if (prop.kind === 'nightstand') {
+    addBox(group, 0.5, 0.45, 0.5, 0, 0, 0.25, materials.furnitureWood);
+    addBox(group, 0.54, 0.48, 0.04, 0, 0, 0.52, materials.furnitureWood);
+    addBox(group, 0.04, 0.04, 0.04, 0, 0.24, 0.35, materials.metal, false);
+  } else if (prop.kind === 'counter') {
+    addBox(group, 1.2, 0.6, 0.84, 0, 0, 0.42, materials.furnitureWood);
+    addBox(group, 1.24, 0.64, 0.06, 0, 0, 0.87, materials.counterStone);
+    addBox(group, 0.45, 0.38, 0.01, -0.2, 0, 0.902, materials.applianceSteel, false);
+  } else if (prop.kind === 'fridge') {
+    addBox(group, 0.7, 0.7, 1.76, 0, 0, 0.88, materials.applianceSteel);
+    addBox(group, 0.72, 0.02, 0.02, 0, 0.36, 1.22, materials.doorFrame, false);
+    addBox(group, 0.03, 0.04, 0.45, 0.28, 0.38, 0.85, materials.metal, false);
+  } else if (prop.kind === 'table') {
+    addBox(group, 1.2, 0.8, 0.05, 0, 0, 0.725, materials.furnitureWood);
+    const lx = 0.52;
+    const ly = 0.32;
+    addBox(group, 0.06, 0.06, 0.7, -lx, -ly, 0.35, materials.furnitureWood);
+    addBox(group, 0.06, 0.06, 0.7, lx, -ly, 0.35, materials.furnitureWood);
+    addBox(group, 0.06, 0.06, 0.7, -lx, ly, 0.35, materials.furnitureWood);
+    addBox(group, 0.06, 0.06, 0.7, lx, ly, 0.35, materials.furnitureWood);
+  } else if (prop.kind === 'chair') {
+    addBox(group, 0.44, 0.44, 0.04, 0, 0, 0.45, materials.furnitureWood);
+    const cx = 0.17;
+    const cy = 0.17;
+    addBox(group, 0.04, 0.04, 0.43, -cx, -cy, 0.215, materials.furnitureWood);
+    addBox(group, 0.04, 0.04, 0.43, cx, -cy, 0.215, materials.furnitureWood);
+    addBox(group, 0.04, 0.04, 0.43, -cx, cy, 0.215, materials.furnitureWood);
+    addBox(group, 0.04, 0.04, 0.43, cx, cy, 0.215, materials.furnitureWood);
+    addBox(group, 0.44, 0.04, 0.42, 0, -cy, 0.68, materials.furnitureWood);
+  } else if (prop.kind === 'shelf') {
+    const sx = 0.46;
+    const sy = 0.14;
+    addBox(group, 0.04, 0.04, 1.8, -sx, -sy, 0.9, materials.metal);
+    addBox(group, 0.04, 0.04, 1.8, sx, -sy, 0.9, materials.metal);
+    addBox(group, 0.04, 0.04, 1.8, -sx, sy, 0.9, materials.metal);
+    addBox(group, 0.04, 0.04, 1.8, sx, sy, 0.9, materials.metal);
+    for (const z of [0.15, 0.6, 1.05, 1.5, 1.78]) {
+      addBox(group, 1.0, 0.35, 0.03, 0, 0, z, materials.palletWood);
+    }
+    addBox(group, 0.38, 0.28, 0.28, -0.22, 0, 0.31, materials.crateWood);
+    addBox(group, 0.32, 0.26, 0.25, 0.25, 0, 0.75, materials.crateWood);
+  } else if (prop.kind === 'utility_box') {
+    addBox(group, 0.8, 0.5, 1.38, 0, 0, 0.69, materials.acMetal);
+    addBox(group, 0.82, 0.02, 0.02, 0, 0.25, 0.7, materials.doorFrame, false);
+  } else if (prop.kind === 'rug') {
+    addBox(group, 2.0, 1.4, 0.01, 0, 0, 0.005, materials.rugMat, false);
+  } else if (prop.kind === 'pallet') {
+    const palletMat = materials.palletWood ?? materials.wood;
+    if (prop.id.includes('lean')) {
+      group.rotation.x = -0.32;
+    }
+    for (let i = 0; i < 5; i++) {
+      addBox(group, 1.15, 0.14, 0.04, 0, -0.4 + i * 0.2, 0.12, palletMat);
+    }
+    for (const y of [-0.4, 0, 0.4]) {
+      addBox(group, 1.15, 0.12, 0.1, 0, y, 0.05, palletMat);
+    }
+  } else if (prop.kind === 'crate') {
+    const crateMat = materials.crateWood ?? materials.wood;
+    addBox(group, 0.8, 0.8, 0.8, 0, 0, 0.4, crateMat);
+    for (const x of [-0.37, 0.37]) {
+      for (const y of [-0.37, 0.37]) {
+        addBox(group, 0.06, 0.06, 0.8, x, y, 0.4, materials.doorFrame);
+      }
+    }
+  } else if (prop.kind === 'trash') {
+    const bagMaterial = new THREE.MeshStandardMaterial({ color: 0x1d201c, roughness: 0.95 });
+    for (const [x, y, s] of [[-0.2, 0.1, 0.28], [0.16, -0.12, 0.22], [0.02, 0.25, 0.18]]) {
+      const bag = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), bagMaterial);
+      bag.position.set(x, y, s);
+      bag.castShadow = true;
+      group.add(bag);
+    }
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 12), materials.metal);
+    can.rotation.x = Math.PI / 2;
+    can.position.set(0.38, 0.08, 0.21);
+    can.castShadow = true;
+    group.add(can);
+  } else {
+    const weed = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.85), materials.weeds);
+    weed.position.set(0, 0, 0.42);
+    weed.castShadow = false;
+    group.add(weed);
+    const cross = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.85), materials.weeds);
+    cross.position.set(0, 0, 0.42);
+    cross.rotation.z = Math.PI / 2;
+    cross.castShadow = false;
+    group.add(cross);
   }
 
-  // Curved discharge shoe at bottom (водовыпускное колено)
-  const shoe = new THREE.Mesh(new THREE.CylinderGeometry(pipe.radiusM * 1.1, pipe.radiusM * 1.25, 0.22, 12), materials[pipe.material]);
-  shoe.rotation.x = Math.PI / 3;
-  shoe.position.set(bottom.x + 0.06, bottom.y, bottom.z + 0.06);
-  shoe.castShadow = true;
-  parent.add(shoe);
+  parent.add(group);
+  return group;
 }
 
 function addProps(parent: THREE.Object3D, props: PropModel[], materials: SceneMaterials): THREE.Group {
   const clutter = new THREE.Group();
   for (const prop of props) {
-    const group = new THREE.Group();
-    group.position.set(prop.xM, prop.yM, prop.zM);
-    group.rotation.z = prop.yaw ?? 0;
-    const scale = prop.scale ?? 1;
-    group.scale.setScalar(scale);
-
-    if (prop.kind === 'pallet') {
-      const palletMat = materials.palletWood ?? materials.wood;
-      if (prop.id.includes('lean')) {
-        group.rotation.x = -0.32;
-      }
-      for (let i = 0; i < 5; i++) {
-        addBox(group, 1.15, 0.14, 0.04, 0, -0.4 + i * 0.2, 0.12, palletMat);
-      }
-      for (const y of [-0.4, 0, 0.4]) {
-        addBox(group, 1.15, 0.12, 0.1, 0, y, 0.05, palletMat);
-      }
-    } else if (prop.kind === 'crate') {
-      const crateMat = materials.crateWood ?? materials.wood;
-      addBox(group, 0.8, 0.8, 0.8, 0, 0, 0.4, crateMat);
-      for (const x of [-0.37, 0.37]) {
-        for (const y of [-0.37, 0.37]) {
-          addBox(group, 0.06, 0.06, 0.8, x, y, 0.4, materials.doorFrame);
-        }
-      }
-    } else if (prop.kind === 'trash') {
-      const bagMaterial = new THREE.MeshStandardMaterial({ color: 0x1d201c, roughness: 0.95 });
-      for (const [x, y, s] of [[-0.2, 0.1, 0.28], [0.16, -0.12, 0.22], [0.02, 0.25, 0.18]]) {
-        const bag = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), bagMaterial);
-        bag.position.set(x, y, s);
-        bag.castShadow = true;
-        group.add(bag);
-      }
-      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 12), materials.metal);
-      can.rotation.x = Math.PI / 2;
-      can.position.set(0.38, 0.08, 0.21);
-      can.castShadow = true;
-      group.add(can);
-    } else {
-      const weed = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.85), materials.weeds);
-      weed.position.set(0, 0, 0.42);
-      weed.castShadow = false;
-      group.add(weed);
-      const cross = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.85), materials.weeds);
-      cross.position.set(0, 0, 0.42);
-      cross.rotation.z = Math.PI / 2;
-      cross.castShadow = false;
-      group.add(cross);
-    }
-
-    clutter.add(group);
+    addSingleProp(clutter, prop, materials);
   }
   parent.add(clutter);
   return clutter;
@@ -894,12 +1024,34 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
     return best?.index ?? 0;
   };
 
+  const interiorGroups = new Map<string, THREE.Group>();
+  const exteriorWallGroups = new Map<string, THREE.Group>();
+  const fixtureGroups = new Map<string, THREE.Group>();
+
   for (const level of model.levels) {
     const levelGroup = new THREE.Group();
     levelGroups.set(level.id, levelGroup);
     group.add(levelGroup);
+
+    const interiorGroup = new THREE.Group();
+    interiorGroups.set(level.id, interiorGroup);
+    levelGroup.add(interiorGroup);
+
+    const exteriorWallGroup = new THREE.Group();
+    exteriorWallGroups.set(level.id, exteriorWallGroup);
+    group.add(exteriorWallGroup);
+
+    const fixtureGroup = new THREE.Group();
+    fixtureGroups.set(level.id, fixtureGroup);
+    levelGroup.add(fixtureGroup);
   }
+
+  const roofFixtureGroup = new THREE.Group();
+  fixtureGroups.set('roof', roofFixtureGroup);
+  group.add(roofFixtureGroup);
   const levelGroup = (id: string): THREE.Group => levelGroups.get(id) ?? group;
+  const interiorGroup = (id: string): THREE.Group => interiorGroups.get(id) ?? levelGroup(id);
+  const exteriorWallGroup = (id: string): THREE.Group => exteriorWallGroups.get(id) ?? levelGroup(id);
 
   const plinth = addPlinth(group, model.plinth, materials.concrete);
   const groundOccluder = addGroundOccluder(group, model);
@@ -908,11 +1060,13 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
     const slabGroup = new THREE.Group();
     addSlab(slabGroup, slab, materials[slab.material]);
     slabGroups.set(slab.id, slabGroup);
-    levelGroup(slab.levelId).add(slabGroup);
+    interiorGroup(slab.levelId).add(slabGroup);
   }
 
   for (const wall of model.walls) {
-    const wallGroup = addWall(levelGroup(wall.levelId), wall, materials);
+    const targetGroup = wall.exterior ? exteriorWallGroup(wall.levelId) : interiorGroup(wall.levelId);
+    const wallGroup = addWall(targetGroup, wall, materials);
+    wallGroup.userData.levelId = wall.levelId;
     wallGroups.set(wall.id, wallGroup);
     const near = wall.exterior && (
       (wall.axis === 'h' && wall.fixedM > model.footprint.y + model.footprint.h / 2) ||
@@ -937,7 +1091,8 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
   }
 
   for (const fixture of model.fixtures) {
-    addFixture(levelGroup(fixture.levelId), fixture, materials);
+    const targetGroup = fixtureGroups.get(fixture.levelId) ?? group;
+    addFixture(targetGroup, fixture, materials);
   }
 
   for (const decal of model.decals) {
@@ -961,7 +1116,28 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
     if (host) addPipe(host, pipe, materials);
   }
 
-  const exteriorClutter = addProps(group, model.props, materials);
+  const interiorProps = model.props.filter((prop) => prop.levelId !== undefined);
+  const exteriorProps = model.props.filter((prop) => prop.levelId === undefined);
 
-  return { group, levelGroups, nearWalls, fixtures: model.fixtures, plinth, groundOccluder, exteriorClutter, stairs };
+  for (const prop of interiorProps) {
+    if (prop.levelId) {
+      addSingleProp(interiorGroup(prop.levelId), prop, materials);
+    }
+  }
+
+  const exteriorClutter = addProps(group, exteriorProps, materials);
+
+  return {
+    group,
+    levelGroups,
+    interiorGroups,
+    exteriorWallGroups,
+    fixtureGroups,
+    nearWalls,
+    fixtures: model.fixtures,
+    plinth,
+    groundOccluder,
+    exteriorClutter,
+    stairs,
+  };
 }

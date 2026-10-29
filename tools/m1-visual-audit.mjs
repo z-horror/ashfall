@@ -64,6 +64,12 @@ await page.waitForFunction(() => {
 
 console.log('World3D activated! Waiting for world stabilization...');
 await page.waitForTimeout(3000);
+await page.evaluate(() => {
+  window.__ashfall?.net?.action({ t: 'dev_action', action: 'godmode' });
+  window.__ashfall?.net?.action({ t: 'dev_action', action: 'heal' });
+  const deathScreen = document.getElementById('death-screen');
+  if (deathScreen) deathScreen.classList.add('hidden');
+});
 
 async function teleport(x, y, floor = 0) {
   await page.evaluate(({ x, y, floor }) => {
@@ -72,11 +78,14 @@ async function teleport(x, y, floor = 0) {
     s.predicted.x = x;
     s.predicted.y = y;
     s.playerFloor = floor;
-    return window.__ashfall.net.action({
+    window.__ashfall?.net?.action({
       t: 'dev_action',
       action: 'teleport',
       args: { x, y, floor },
     });
+    window.__ashfall?.net?.action({ t: 'dev_action', action: 'heal' });
+    const deathScreen = document.getElementById('death-screen');
+    if (deathScreen) deathScreen.classList.add('hidden');
   }, { x, y, floor });
   await page.waitForTimeout(1200);
 }

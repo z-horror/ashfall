@@ -126,7 +126,21 @@ export interface PipeModel {
   material: MaterialKey;
 }
 
-export type PropKind = 'pallet' | 'crate' | 'trash' | 'weeds';
+export type PropKind =
+  | 'pallet'
+  | 'crate'
+  | 'trash'
+  | 'weeds'
+  | 'bed'
+  | 'wardrobe'
+  | 'nightstand'
+  | 'table'
+  | 'chair'
+  | 'counter'
+  | 'fridge'
+  | 'shelf'
+  | 'rug'
+  | 'utility_box';
 
 export interface PropModel {
   id: string;
@@ -136,6 +150,7 @@ export interface PropModel {
   zM: number;
   yaw?: number;
   scale?: number;
+  levelId?: string;
 }
 
 export interface BuildingModel {

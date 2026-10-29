@@ -58,8 +58,13 @@ for (const item of crops) {
   }, { dataUri, crop: item.crop });
 
   const destPath = join(outDir, item.name);
-  writeFileSync(destPath, Buffer.from(croppedBase64, 'base64'));
+  const buf = Buffer.from(croppedBase64, 'base64');
+  writeFileSync(destPath, buf);
   console.log(`Saved crop: ${destPath}`);
+
+  const repoDest = resolve('docs/reference/m1-acceptance', item.name);
+  writeFileSync(repoDest, buf);
+  console.log(`Saved repo copy: ${repoDest}`);
 }
 
 await browser.close();
