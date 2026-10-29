@@ -104,7 +104,7 @@ export class World3D {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.45;
+      this.renderer.toneMappingExposure = 1.35;
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -113,34 +113,38 @@ export class World3D {
       this.camera.matrixWorld.identity();
       this.camera.matrixWorldInverse.identity();
 
-      this.scene3d.add(new THREE.HemisphereLight(0x9cc2e6, 0x443a2e, 0.90));
-      this.scene3d.add(new THREE.AmbientLight(0xfff6ec, 0.28));
+      this.scene3d.add(new THREE.HemisphereLight(0x9ec4ed, 0x5a4c38, 0.80));
+      this.scene3d.add(new THREE.AmbientLight(0xfff6ec, 0.35));
 
       // Sun target centered directly on building in world meters (54.4, 52.0, 1.8)
       const sunTarget = new THREE.Object3D();
       sunTarget.position.set(54.4, 52.0, 1.8);
       this.scene3d.add(sunTarget);
 
-      const sun = new THREE.DirectionalLight(0xffeed6, 4.0);
-      sun.position.set(54.4 + 22, 52.0 + 26, 38);
+      // High-angle afternoon sun (68 deg elevation) from West-South-West
+      // Produces bright, warm roofs and facades with crisp, short contact shadows towards East
+      // Matching the lighting and shadow characteristics of visual-target.jpg
+      const sun = new THREE.DirectionalLight(0xfff5e6, 3.6);
+      sun.position.set(54.4 - 24, 52.0 + 4, 38);
       sun.target = sunTarget;
       sun.castShadow = true;
       sun.shadow.mapSize.width = 4096;
       sun.shadow.mapSize.height = 4096;
       sun.shadow.camera.near = 10;
-      sun.shadow.camera.far = 110;
-      sun.shadow.camera.left = -16;
-      sun.shadow.camera.right = 16;
-      sun.shadow.camera.top = 16;
-      sun.shadow.camera.bottom = -16;
+      sun.shadow.camera.far = 85;
+      sun.shadow.camera.left = -20;
+      sun.shadow.camera.right = 20;
+      sun.shadow.camera.top = 20;
+      sun.shadow.camera.bottom = -20;
       sun.shadow.camera.up.set(0, 0, 1);
       sun.shadow.camera.updateProjectionMatrix();
-      sun.shadow.bias = -0.0003;
-      sun.shadow.normalBias = 0.015;
+      sun.shadow.bias = 0.00005;
+      sun.shadow.normalBias = 0;
       this.scene3d.add(sun);
 
-      const fill = new THREE.DirectionalLight(0x8aa8c8, 0.70);
-      fill.position.set(54.4 - 20, 52.0 - 20, 28);
+      // Soft sky fill light for shadow side readability
+      const fill = new THREE.DirectionalLight(0x7ca4d0, 0.60);
+      fill.position.set(54.4 + 18, 52.0 - 18, 26);
       fill.target = sunTarget;
       this.scene3d.add(fill);
 

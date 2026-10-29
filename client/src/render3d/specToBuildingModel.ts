@@ -311,10 +311,37 @@ function addAtmosphere(model: BuildingModel, roofElevation: number): void {
       zM: terrace.zTop,
       yaw: 0.05,
     });
+
+    // Roof vent chimney on the west side of the terrace (matching visual-target.jpg)
+    model.fixtures.push({
+      id: 'terrace:vent-pipe',
+      levelId: 'level:1',
+      kind: 'vent',
+      xM: terrace.rect.x + 2.2,
+      yM: terrace.rect.y + 1.2,
+      zM: terrace.zTop,
+      widthM: 0.35,
+      depthM: 0.35,
+      heightM: 0.75,
+      yaw: 0,
+    });
   }
 
   const roof = model.slabs.find((slab) => slab.kind === 'roof');
   if (roof) {
+    model.fixtures.push({
+      id: 'roof:hatch',
+      levelId: 'roof',
+      kind: 'hatch',
+      xM: roof.rect.x + roof.rect.w * 0.5,
+      yM: roof.rect.y + roof.rect.h * 0.5,
+      zM: roofElevation,
+      widthM: 1.2,
+      depthM: 1.2,
+      heightM: 0.25,
+      yaw: 0,
+    });
+
     model.decals.push({
       id: 'atmo:tar',
       host: { kind: 'slab', id: roof.id },

@@ -162,6 +162,27 @@ function makeWeedTexture(): THREE.Texture {
   return configureTexture(texture);
 }
 
+function makeContactShadowTexture(): THREE.Texture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  if (context) {
+    context.clearRect(0, 0, 128, 128);
+    const grad = context.createRadialGradient(64, 64, 8, 64, 64, 60);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.78)');
+    grad.addColorStop(0.35, 'rgba(0, 0, 0, 0.55)');
+    grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.22)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    context.fillStyle = grad;
+    context.beginPath();
+    context.arc(64, 64, 60, 0, Math.PI * 2);
+    context.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  return configureTexture(texture);
+}
+
 export async function loadBuildingTextures(): Promise<BuildingTextures> {
   const loader = new THREE.TextureLoader();
   const [
@@ -198,11 +219,11 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     ground,
   ] = await Promise.all([
     loadTexture(loader, '/assets/buildings/wall_brick_plain.png', 0x824c3a, 'brightness(1.22) contrast(1.10) saturate(1.15)'),
-    loadTexture(loader, '/assets/buildings/wall_brick_clean.jpg', 0x824c3a),
-    loadTexture(loader, '/assets/buildings/wall_interior_face.png', 0x7d725c),
-    loadTexture(loader, '/assets/buildings/floor_wood_clean.png', 0x886b4e),
+    loadTexture(loader, '/assets/buildings/wall_brick_clean.jpg', 0x824c3a, 'brightness(1.35) saturate(1.22) contrast(1.05)'),
+    loadTexture(loader, '/assets/buildings/wall_interior_face.png', 0x7d725c, 'brightness(1.25) contrast(1.05)'),
+    loadTexture(loader, '/assets/buildings/floor_wood_clean.png', 0x886b4e, 'brightness(1.15) contrast(1.05)'),
     loadTexture(loader, '/assets/buildings/floor_concrete.png', 0x4c4f4c),
-    loadTexture(loader, '/assets/buildings/roof_tar.png', 0x2a2b28, 'brightness(1.5) contrast(1.1)'),
+    loadTexture(loader, '/assets/buildings/roof_tar.png', 0x2a2b28, 'brightness(2.8) contrast(1.12)'),
     loadTexture(loader, '/assets/buildings/floor_concrete.png', 0x777b77),
     loadCroppedTexture(loader, '/assets/buildings/ivy_decals_sheet.png', 360, 30, 300, 500),
     loadTexture(loader, '/assets/buildings/brick_damage.png', 0x5a4030),
@@ -227,7 +248,7 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     loadTexture(loader, '/assets/props/prop_clutter_sheet.png', 0x6a6252),
     loadTexture(loader, '/assets/buildings/asphalt_road.png', 0x343432),
     loadTexture(loader, '/assets/buildings/sidewalk_concrete.png', 0x62645e),
-    loadTexture(loader, '/assets/buildings/ground_postapo.png', 0x545842),
+    loadTexture(loader, '/assets/buildings/ground_postapo.png', 0x545842, 'brightness(1.32) saturate(1.18) contrast(1.05)'),
   ]);
 
   const decalAtlas: DecalAtlas = {
@@ -267,6 +288,7 @@ export async function loadBuildingTextures(): Promise<BuildingTextures> {
     asphalt,
     sidewalk,
     ground,
+    contactShadow: makeContactShadowTexture(),
   };
 }
 

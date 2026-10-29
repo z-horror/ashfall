@@ -52,6 +52,7 @@ export interface BuildingTextures {
   asphalt?: THREE.Texture;
   sidewalk?: THREE.Texture;
   ground?: THREE.Texture;
+  contactShadow?: THREE.Texture;
 }
 
 export interface StairMeshEntry {
@@ -90,6 +91,7 @@ interface SceneMaterials extends Record<MaterialKey, THREE.Material> {
   acBody: THREE.Material;
   acDark: THREE.Material;
   acMetal: THREE.Material;
+  contactShadow?: THREE.Material;
   decalIvy: THREE.Material[];
   decalBrickDamage: THREE.Material[];
   decalPuddle: THREE.Material[];
@@ -182,17 +184,18 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
 
   const woodTexture = textures.floorWoodClean ?? textures.wood;
   const concreteTexture = textures.wallConcrete ?? textures.concrete;
+  const brickTexture = textures.brickClean ?? textures.brick;
 
   return {
     textures,
-    brick: surfaceMaterial(textures.brick, 1, 1, { roughness: 0.86 }),
-    brickWeathered: surfaceMaterial(textures.brick, 1, 1, { color: 0xdfd4c8, roughness: 0.9 }),
+    brick: surfaceMaterial(brickTexture, 1, 1, { color: 0xffe2d8, roughness: 0.82 }),
+    brickWeathered: surfaceMaterial(brickTexture, 1, 1, { color: 0xf4dcd0, roughness: 0.86 }),
     plaster: surfaceMaterial(textures.plaster, 1, 1, { roughness: 0.92 }),
     wood: surfaceMaterial(woodTexture, 1, 1, { roughness: 0.82 }),
-    concrete: surfaceMaterial(concreteTexture, 1, 1, { color: 0xc8c2b8, roughness: 0.95 }),
-    stoneSill: surfaceMaterial(concreteTexture, 1.2, 1.2, { color: 0xb0aaa0, roughness: 0.92, metalness: 0.04 }),
-    stoneParapet: surfaceMaterial(concreteTexture, 1.2, 1.2, { color: 0xbcb6ac, roughness: 0.92, metalness: 0.04 }),
-    tar: surfaceMaterial(textures.tar, 1, 1, { color: 0xffffff, roughness: 0.85, metalness: 0.08 }),
+    concrete: surfaceMaterial(concreteTexture, 1, 1, { color: 0xdcd6cc, roughness: 0.92 }),
+    stoneSill: surfaceMaterial(concreteTexture, 1.2, 1.2, { color: 0xe0dad0, roughness: 0.88, metalness: 0.02 }),
+    stoneParapet: surfaceMaterial(concreteTexture, 1.2, 1.2, { color: 0xeee8de, roughness: 0.85, metalness: 0.02 }),
+    tar: surfaceMaterial(textures.tar, 1, 1, { color: 0xffffff, roughness: 0.85, metalness: 0.04 }),
     metal: new THREE.MeshStandardMaterial({ color: 0x2c2826, roughness: 0.65, metalness: 0.62, side: THREE.DoubleSide }),
     doorFrame: textures.doorFrame
       ? new THREE.MeshStandardMaterial({ map: textures.doorFrame, roughness: 0.82, metalness: 0.18, side: THREE.DoubleSide })
@@ -200,8 +203,8 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
     doorLeaf: doorLeafMat ?? new THREE.MeshStandardMaterial({ color: 0x383e42, roughness: 0.7, metalness: 0.4, side: THREE.DoubleSide }),
     doorPanel: new THREE.MeshStandardMaterial({ color: 0x161819, roughness: 0.85, metalness: 0.2, side: THREE.DoubleSide }),
     windowFrame: surfaceMaterial(woodTexture, 1, 1, { color: 0x221a14, roughness: 0.92, metalness: 0.05 }),
-    palletWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x6e685c, roughness: 0.94 }),
-    crateWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x7a6248, roughness: 0.88 }),
+    palletWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x7e7668, roughness: 0.90 }),
+    crateWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x8a7258, roughness: 0.88 }),
     windowUnit: windowUnitMat,
     doorLeafTexture: doorLeafMat,
     glass: new THREE.MeshStandardMaterial({
@@ -228,19 +231,28 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
       side: THREE.DoubleSide,
       roughness: 1,
     }),
-    wallBrick: surfaceMaterial(textures.brick, 1, 1, { roughness: 0.86 }),
-    wallBrickWeathered: surfaceMaterial(textures.brick, 1, 1, { color: 0xdfd4c8, roughness: 0.9 }),
+    wallBrick: surfaceMaterial(brickTexture, 1, 1, { color: 0xffe2d8, roughness: 0.82 }),
+    wallBrickWeathered: surfaceMaterial(brickTexture, 1, 1, { color: 0xf4dcd0, roughness: 0.86 }),
     wallPlaster: surfaceMaterial(textures.plaster, 1, 1, { roughness: 0.95 }),
     wallInteriorDamaged: surfaceMaterial(textures.wallInteriorDamaged ?? textures.plaster, 1, 1, { roughness: 0.95 }),
     wallConcrete: surfaceMaterial(concreteTexture, 1, 1, { color: 0xc8c2b8, roughness: 0.95 }),
     baseboardWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x2a1e14, roughness: 0.78, metalness: 0.05 }),
-    furnitureWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x483424, roughness: 0.82, metalness: 0.05 }),
+    furnitureWood: surfaceMaterial(woodTexture, 1, 1, { color: 0x6e5238, roughness: 0.82, metalness: 0.05 }),
     counterStone: surfaceMaterial(concreteTexture, 1, 1, { color: 0xc8c2b8, roughness: 0.7, metalness: 0.08 }),
     applianceWhite: new THREE.MeshStandardMaterial({ color: 0xe8e6e2, roughness: 0.45, metalness: 0.15, side: THREE.DoubleSide }),
     applianceSteel: new THREE.MeshStandardMaterial({ color: 0x7c8488, roughness: 0.45, metalness: 0.65, side: THREE.DoubleSide }),
     bedSheet: surfaceMaterial(textures.plaster, 1, 1, { color: 0xdedcd7, roughness: 0.92, metalness: 0.02 }),
     bedBlanket: surfaceMaterial(textures.plaster, 1, 1, { color: 0x3e4e46, roughness: 0.88, metalness: 0.02 }),
     rugMat: surfaceMaterial(textures.wallInteriorDamaged ?? textures.plaster, 1, 1, { color: 0x783226, roughness: 0.95, metalness: 0.02 }),
+    contactShadow: textures.contactShadow
+      ? new THREE.MeshBasicMaterial({
+          map: textures.contactShadow,
+          transparent: true,
+          opacity: 0.72,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        })
+      : undefined,
   };
 }
 
@@ -285,17 +297,27 @@ function addSlab(parent: THREE.Object3D, slab: SlabModel, material: THREE.Materi
   for (const hole of slab.holes ?? []) {
     rects = rects.flatMap((rect) => splitRectAroundHole(rect, hole));
   }
-  const scaleM = slab.material === 'wood' ? 0.95 : slab.material === 'tar' ? 1.5 : 1.8;
+  const scaleM = slab.material === 'wood' ? 1.2 : slab.material === 'tar' ? 3.6 : 2.4;
   for (const rect of rects) {
     const geometry = new THREE.BoxGeometry(rect.w, rect.h, heightZ);
     const position = geometry.attributes.position;
+    const normal = geometry.attributes.normal;
     const uv = geometry.attributes.uv;
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
     for (let i = 0; i < position.count; i++) {
-      const worldX = cx + position.getX(i);
-      const worldY = cy + position.getY(i);
-      uv.setXY(i, worldX / scaleM, worldY / scaleM);
+      const nz = Math.abs(normal.getZ(i));
+      if (nz > 0.5) {
+        const worldX = cx + position.getX(i);
+        const worldY = cy + position.getY(i);
+        uv.setXY(i, worldX / scaleM, worldY / scaleM);
+      } else if (Math.abs(normal.getX(i)) > 0.5) {
+        const worldY = cy + position.getY(i);
+        uv.setXY(i, worldY / scaleM, (position.getZ(i) + heightZ / 2) / Math.max(0.2, heightZ));
+      } else {
+        const worldX = cx + position.getX(i);
+        uv.setXY(i, worldX / scaleM, (position.getZ(i) + heightZ / 2) / Math.max(0.2, heightZ));
+      }
     }
     uv.needsUpdate = true;
     const mesh = new THREE.Mesh(geometry, material);
@@ -361,7 +383,7 @@ function addWallSegment(
   const uv = geometry.attributes.uv;
   const centerAlong = from + length / 2;
   const centerZ = (zBottom + zTop) / 2;
-  const textureScaleM = 1.35;
+  const textureScaleM = 1.80;
   for (let i = 0; i < position.count; i++) {
     const localAlong = isHorizontal ? position.getX(i) : position.getY(i);
     const along = centerAlong + localAlong;
@@ -776,6 +798,12 @@ function addIsometricSprite(
   geometry.scale(-1, 1, 1);
 
   const mesh = new THREE.Mesh(geometry, material);
+  mesh.customDepthMaterial = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    map: texture,
+    alphaTest: options.alphaTest ?? 0.05,
+    side: THREE.DoubleSide,
+  });
   const axes = computeBillboardAxes();
 
   mesh.matrixAutoUpdate = false;
@@ -791,20 +819,43 @@ function addIsometricSprite(
   mesh.receiveShadow = false;
   parent.add(mesh);
 
+  if (options.castShadowBox) {
+    const sb = options.castShadowBox;
+    const shadowMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(sb.w, sb.d, sb.h),
+      new THREE.MeshBasicMaterial({ colorWrite: false }),
+    );
+    shadowMesh.position.set(x, y, z + sb.h / 2);
+    shadowMesh.castShadow = true;
+    shadowMesh.receiveShadow = false;
+    parent.add(shadowMesh);
+  }
+
   return mesh;
 }
 
 function addFixture(parent: THREE.Object3D, fixture: FixtureModel, materials: SceneMaterials): void {
   if (fixture.kind === 'ac') {
+    if (materials.contactShadow) {
+      const shadowMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.65, 1.45),
+        materials.contactShadow,
+      );
+      shadowMesh.position.set(fixture.xM + 0.18, fixture.yM - 0.14, fixture.zM + 0.005);
+      shadowMesh.renderOrder = 1;
+      parent.add(shadowMesh);
+    }
     if (materials.textures.roofAcUnit) {
       addIsometricSprite(parent, materials.textures.roofAcUnit, {
         x: fixture.xM,
         y: fixture.yM,
         z: fixture.zM,
-        widthM: 1.25,
-        heightM: 1.28,
+        widthM: 1.48,
+        heightM: 1.52,
         anchorX: 0.5,
-        anchorY: 0.08,
+        anchorY: 0.10,
+        roughness: 0.85,
+        castShadowBox: { w: 1.25, d: 1.25, h: 1.1 },
       });
     } else {
       addAcUnit(parent, fixture, materials);
@@ -812,6 +863,15 @@ function addFixture(parent: THREE.Object3D, fixture: FixtureModel, materials: Sc
   } else if (fixture.kind === 'hatch') {
     addBox(parent, fixture.widthM, fixture.depthM, 0.22, fixture.xM, fixture.yM, fixture.zM - 0.11, materials.metal, false);
   } else if (fixture.kind === 'vent') {
+    if (materials.contactShadow) {
+      const shadowMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.55, 0.55),
+        materials.contactShadow,
+      );
+      shadowMesh.position.set(fixture.xM + 0.08, fixture.yM - 0.06, fixture.zM + 0.005);
+      shadowMesh.renderOrder = 1;
+      parent.add(shadowMesh);
+    }
     addBox(parent, fixture.widthM, fixture.depthM, fixture.heightM, fixture.xM, fixture.yM, fixture.zM + fixture.heightM / 2, materials.metal);
   } else {
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(fixture.widthM / 2, fixture.widthM / 2, fixture.heightM, 16), materials.metal);
@@ -883,7 +943,7 @@ function addGroundOccluder(parent: THREE.Object3D, model: BuildingModel, materia
   const geometry = new THREE.ShapeGeometry(shape);
   const position = geometry.attributes.position;
   const uv = geometry.attributes.uv;
-  const scaleM = 2.4;
+  const scaleM = 7.2;
   for (let i = 0; i < position.count; i++) {
     const x = position.getX(i);
     const y = position.getY(i);
@@ -894,6 +954,7 @@ function addGroundOccluder(parent: THREE.Object3D, model: BuildingModel, materia
   const groundMat = materials.textures.ground
     ? new THREE.MeshStandardMaterial({
         map: repeatedTexture(materials.textures.ground, 1, 1),
+        color: 0xc6cca8,
         roughness: 0.92,
         metalness: 0.04,
         side: THREE.DoubleSide,
@@ -1037,17 +1098,6 @@ function addSingleProp(parent: THREE.Object3D, prop: PropModel, materials: Scene
       addBox(group, 0.03, 0.03, 0.12, -0.06, 0.32, 1.05, materials.metal, false);
       addBox(group, 0.03, 0.03, 0.12, 0.06, 0.32, 1.05, materials.metal, false);
     }
-  } else if (prop.kind === 'pallet' && materials.textures.propPallet && !prop.id.includes('lean')) {
-    addIsometricSprite(group, materials.textures.propPallet, {
-      x: 0,
-      y: 0,
-      z: 0,
-      widthM: 1.25,
-      heightM: 1.25,
-      anchorX: 0.5,
-      anchorY: 0.15,
-      castShadowBox: { w: 1.1, d: 1.1, h: 0.2 },
-    });
   } else if (prop.kind === 'nightstand') {
     addBox(group, 0.5, 0.45, 0.5, 0, 0, 0.25, materials.furnitureWood);
     addBox(group, 0.54, 0.48, 0.04, 0, 0, 0.52, materials.furnitureWood);
@@ -1097,13 +1147,61 @@ function addSingleProp(parent: THREE.Object3D, prop: PropModel, materials: Scene
   } else if (prop.kind === 'pallet') {
     const palletMat = materials.palletWood ?? materials.wood;
     if (prop.id.includes('lean')) {
-      group.rotation.x = -0.32;
-    }
-    for (let i = 0; i < 5; i++) {
-      addBox(group, 1.15, 0.14, 0.04, 0, -0.4 + i * 0.2, 0.12, palletMat);
-    }
-    for (const y of [-0.4, 0, 0.4]) {
-      addBox(group, 1.15, 0.12, 0.1, 0, y, 0.05, palletMat);
+      if (materials.contactShadow) {
+        const shadowMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.25, 0.65),
+          materials.contactShadow,
+        );
+        shadowMesh.position.set(0, 0.12, 0.005);
+        shadowMesh.renderOrder = 1;
+        group.add(shadowMesh);
+      }
+      // Standing pallet leaning against the mansard wall, matching visual-target.jpg
+      const lean = new THREE.Group();
+      lean.rotation.x = 0.26;
+      const w = 1.05;
+      const h = 1.25;
+      // 3 vertical stringer bearers
+      for (const x of [-0.45, 0, 0.45]) {
+        addBox(lean, 0.08, 0.09, h, x, -0.045, h / 2, palletMat);
+      }
+      // 6 horizontal face boards
+      for (let i = 0; i < 6; i++) {
+        const z = 0.06 + i * 0.22;
+        addBox(lean, w, 0.022, 0.12, 0, 0.015, z, palletMat);
+      }
+      // 3 bottom skids
+      for (const z of [0.08, h / 2, h - 0.08]) {
+        addBox(lean, w, 0.02, 0.10, 0, -0.09, z, palletMat);
+      }
+      group.add(lean);
+    } else if (materials.textures.propPallet) {
+      if (materials.contactShadow) {
+        const shadowMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.4, 1.4),
+          materials.contactShadow,
+        );
+        shadowMesh.position.set(0.12, -0.08, 0.005);
+        shadowMesh.renderOrder = 1;
+        group.add(shadowMesh);
+      }
+      addIsometricSprite(group, materials.textures.propPallet, {
+        x: 0,
+        y: 0,
+        z: 0,
+        widthM: 1.25,
+        heightM: 1.25,
+        anchorX: 0.5,
+        anchorY: 0.15,
+        castShadowBox: { w: 1.1, d: 1.1, h: 0.2 },
+      });
+    } else {
+      for (let i = 0; i < 5; i++) {
+        addBox(group, 1.15, 0.14, 0.04, 0, -0.4 + i * 0.2, 0.12, palletMat);
+      }
+      for (const y of [-0.4, 0, 0.4]) {
+        addBox(group, 1.15, 0.12, 0.1, 0, y, 0.05, palletMat);
+      }
     }
   } else if (prop.kind === 'crate') {
     const crateMat = materials.crateWood ?? materials.wood;
