@@ -34,6 +34,7 @@ import { ENV_ATLAS, artImage, buildEnvironmentArt } from '../art/textures.js';
 import { buildCharacterAssets, corpseFor } from '../art/characters.js';
 import { loadGeneratedAssets } from '../art/generatedAssets.js';
 import { hashString } from '../art/util.js';
+import type { World3D } from '../render3d/world3d.js';
 
 interface SceneDeps {
   net: NetClient;
@@ -81,6 +82,8 @@ export class GameScene extends Phaser.Scene {
   private dust: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private light: Phaser.GameObjects.Image | null = null;
   private debugOverlay: BuildingDebugOverlay | null = null;
+  private world3d: World3D | null = null;
+  private render3dEnabled = false;
   private debugNext = 0;
   private aimWorld = { x: 0, y: 0 };
   private readyPromise: Promise<void>;
@@ -162,6 +165,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
+    this.render3dEnabled = new URLSearchParams(window.location.search).get('render3d') === '1';
+    if (this.render3dEnabled) {
+      void import('../render3d/world3d.js').then(({ World3D }) => {
+        this.world3d = new World3D(this, this.world);
+        void this.world3d.ready.then(() => this.world3d?.syncBuildings(this.world));
+      }).catch((error) => {
+        console.error('[world3d] failed to load', error);
+      });
+    }
 
     this.dust = this.add.particles(0, 0, ENV_ATLAS, {
       frame: 'fx_dust',
@@ -451,6 +463,7 @@ export class GameScene extends Phaser.Scene {
       maxHp: s.maxHp,
       name: s.name,
     });
+    this.selfView.setRender3D(this.render3dEnabled);
     this.selfView.setLocal(true);
     this.selfView.setWeapon(this.equippedKey);
     this.cameras.main.startFollow(this.selfView.sprite, true, 0.8, 0.8);
@@ -608,6 +621,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private syncBuildingViews(): void {
+    if (this.render3dEnabled) {
+      this.world3d?.syncBuildings(this.world);
+      return;
+    }
     const buildingIds = new Set(this.world.buildings.keys());
     for (const [id, view] of [...this.buildingViews]) {
       if (!buildingIds.has(id)) {
@@ -741,6 +758,7 @@ export class GameScene extends Phaser.Scene {
           elevationM: this.surfaceElevationFor(p.x, p.y, p.floor),
         });
         this.playerViews.set(p.id, view);
+        view.setRender3D(this.render3dEnabled);
       }
       view.setFloor(p.floor, this.surfaceElevationFor(p.x, p.y, p.floor));
       view.applyPlayer(p);
@@ -771,6 +789,7 @@ export class GameScene extends Phaser.Scene {
           elevationM: this.surfaceElevationFor(z.x, z.y, z.floor),
         });
         this.zombieViews.set(z.id, view);
+        view.setRender3D(this.render3dEnabled);
       }
       view.setFloor(z.floor, this.surfaceElevationFor(z.x, z.y, z.floor));
       view.applyZombie(z);
@@ -1194,6 +1213,25 @@ export class GameScene extends Phaser.Scene {
       this.zombieViews.size,
       this.playerViews.size,
     );
+    this.world3d?.update();
+  }
+
+  getRender3DState(): { currentBuilding: string | null; playerFloor: number; elevationM: number } {
+    return {
+      currentBuilding: this.currentBuilding,
+      playerFloor: this.playerFloor,
+      elevationM: this.selfView?.elevationMeters ?? 0,
+    };
+  }
+
+  getRenderableCharacters(): CharacterView[] {
+    const views: CharacterView[] = [];
+    if (this.selfView) views.push(this.selfView);
+    for (const view of this.playerViews.values()) {
+      if (view !== this.selfView) views.push(view);
+    }
+    for (const view of this.zombieViews.values()) views.push(view);
+    return views;
   }
 
   private updatePrompt(): void {

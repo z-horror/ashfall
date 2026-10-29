@@ -35,7 +35,7 @@ export interface OpeningModel {
   x1: number;
   z0: number;
   z1: number;
-  kind: 'door' | 'window';
+  kind: 'door' | 'window' | 'arch';
   hinge?: 'left' | 'right';
   open?: boolean;
 }
@@ -294,11 +294,11 @@ export function createTestBuildingModel(): BuildingModel {
 
       // The lower roof terrace is recessed behind the same kind of parapet.
       { id: 'tf:parapet:south', levelId: 'mansard', axis: 'h', fixedM: southWall, fromM: 0, toM: footprint.w, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
-      { id: 'tf:parapet:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: mansardSouth, toM: southWall, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
-      { id: 'tf:parapet:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: mansardSouth, toM: southWall, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'tf:parapet:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: mansardSouth + 0.105, toM: southWall, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
+      { id: 'tf:parapet:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: mansardSouth + 0.105, toM: southWall, zBottom: 2.8, zTop: 3.35, thicknessM: 0.2, exterior: true, material: 'brick' },
       { id: 'tf:cap:south', levelId: 'mansard', axis: 'h', fixedM: southWall, fromM: 0, toM: footprint.w, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
-      { id: 'tf:cap:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: mansardSouth, toM: southWall, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
-      { id: 'tf:cap:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: mansardSouth, toM: southWall, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'tf:cap:west', levelId: 'mansard', axis: 'v', fixedM: 0, fromM: mansardSouth + 0.105, toM: southWall, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
+      { id: 'tf:cap:east', levelId: 'mansard', axis: 'v', fixedM: eastWall, fromM: mansardSouth + 0.105, toM: southWall, zBottom: 3.35, zTop: 3.41, thicknessM: 0.24, exterior: true, material: 'concrete' },
     ],
     stairs: [
       {

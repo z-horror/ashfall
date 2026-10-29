@@ -49,6 +49,7 @@ export class CharacterView {
   private moveDir: number | null = null;
   private outline?: Phaser.GameObjects.Sprite;
   private outlineVisible = false;
+  private render3d = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -132,7 +133,7 @@ export class CharacterView {
 
   setLocal(local: boolean): void {
     this.local = local;
-    if (local && this.kind === 'player' && !this.outline) {
+    if (local && this.kind === 'player' && !this.outline && !this.render3d) {
       // A high-depth copy of the character used as a through-wall outline.
       // It is only shown while the player is hidden behind a building.
       this.outline = this.scene.add.sprite(
@@ -153,18 +154,62 @@ export class CharacterView {
     this.outlineVisible = visible;
   }
 
+  setRender3D(enabled: boolean): void {
+    this.render3d = enabled;
+    this.applyRenderVisibility();
+  }
+
+  get floorLevel(): number {
+    return this.floor;
+  }
+
+  get elevationMeters(): number {
+    return this.elevationM;
+  }
+
+  get frameName(): string {
+    return this.sprite.frame.name;
+  }
+
+  get displayWidth(): number {
+    return this.sprite.displayWidth;
+  }
+
+  get displayHeight(): number {
+    return this.sprite.displayHeight;
+  }
+
+  get spriteAlpha(): number {
+    return this.sprite.alpha;
+  }
+
+  get spriteTint(): number | null {
+    return this.sprite.isTinted ? this.sprite.tintTopLeft : null;
+  }
+
+  private applyRenderVisibility(): void {
+    const show = !this.render3d && !this.dead;
+    this.sprite.setVisible(show);
+    this.shadow.setVisible(show);
+    this.weaponSprite?.setVisible(show && Boolean(this.weaponKey));
+    this.outline?.setVisible(show && this.outlineVisible);
+    this.label?.setVisible(show);
+    this.hpBg.setVisible(false);
+    this.hpFill.setVisible(false);
+  }
+
   setWeapon(key: string | null): void {
     this.weaponKey = key;
     if (this.kind !== 'player') return;
     if (!this.weaponSprite && this.scene && key && this.scene.textures.exists(`weapon_${key}`)) {
       const p = iso(this.x, this.y);
       const floorY = p.y - this.elevationM * PX_PER_METER;
-      this.weaponSprite = this.scene.add.image(p.x, floorY, `weapon_${key}`).setOrigin(0.2, 0.5).setVisible(!this.dead);
+      this.weaponSprite = this.scene.add.image(p.x, floorY, `weapon_${key}`).setOrigin(0.2, 0.5).setVisible(!this.dead && !this.render3d);
     }
     if (this.weaponSprite) {
       if (key && this.scene.textures.exists(`weapon_${key}`)) {
         this.weaponSprite.setTexture(`weapon_${key}`);
-        this.weaponSprite.setVisible(!this.dead);
+        this.weaponSprite.setVisible(!this.dead && !this.render3d);
       } else {
         this.weaponSprite.setVisible(false);
       }
@@ -280,6 +325,7 @@ export class CharacterView {
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
     this.outline?.setVisible(false);
+    this.applyRenderVisibility();
   }
 
   revive(): void {
@@ -289,8 +335,9 @@ export class CharacterView {
     this.shadow.setVisible(true);
     this.label?.setVisible(true);
     if (this.weaponKey && this.weaponSprite) {
-      this.weaponSprite.setVisible(true);
+      this.weaponSprite.setVisible(!this.render3d);
     }
+    this.applyRenderVisibility();
   }
 
   playAttack(): void {
@@ -353,12 +400,12 @@ export class CharacterView {
       this.outline.setScale(sprite.scaleX, sprite.scaleY);
       this.outline.setFlipX(sprite.flipX);
       this.outline.setFlipY(sprite.flipY);
-      this.outline.setVisible(this.outlineVisible && sprite.visible && !this.dead);
+      this.outline.setVisible(this.outlineVisible && sprite.visible && !this.dead && !this.render3d);
     }
 
     const showBar = this.hp < this.maxHp - 0.5;
-    this.hpBg.setVisible(showBar);
-    this.hpFill.setVisible(showBar);
+    this.hpBg.setVisible(showBar && !this.render3d);
+    this.hpFill.setVisible(showBar && !this.render3d);
     if (showBar) {
       const pct = Math.max(0, Math.min(1, this.hp / Math.max(1, this.maxHp)));
       this.hpFill.width = 30 * pct;
@@ -398,7 +445,7 @@ export class CharacterView {
       if (this.dead || this.dying) {
         this.weaponSprite.setVisible(false);
       } else {
-        this.weaponSprite.setVisible(true);
+        this.weaponSprite.setVisible(!this.render3d);
         const HAND_OFFSETS: Array<{ x: number; y: number; behind: boolean; angle: number }> = [
           { x: 9, y: -28, behind: false, angle: 15 },
           { x: 10, y: -26, behind: false, angle: 30 },

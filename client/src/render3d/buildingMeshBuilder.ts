@@ -70,12 +70,11 @@ function surfaceMaterial(
   repeatX: number,
   repeatY: number,
   options: { color?: number; roughness?: number; metalness?: number } = {},
-): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
+): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({
     map: repeatedTexture(source, repeatX, repeatY),
     color: options.color ?? 0xffffff,
-    roughness: options.roughness ?? 0.92,
-    metalness: options.metalness ?? 0.02,
+    side: THREE.DoubleSide,
   });
 }
 
@@ -114,9 +113,10 @@ function makeMaterials(textures: BuildingTextures): SceneMaterials {
       transparent: true,
       opacity: 0.58,
       depthWrite: false,
+      side: THREE.DoubleSide,
     }),
-    acBody: new THREE.MeshStandardMaterial({ color: 0xb9beb5, roughness: 0.62, metalness: 0.12 }),
-    acDark: new THREE.MeshStandardMaterial({ color: 0x24292a, roughness: 0.7, metalness: 0.3 }),
+    acBody: new THREE.MeshStandardMaterial({ color: 0xb9beb5, roughness: 0.62, metalness: 0.12, side: THREE.DoubleSide }),
+    acDark: new THREE.MeshStandardMaterial({ color: 0x24292a, roughness: 0.7, metalness: 0.3, side: THREE.DoubleSide }),
     acMetal: surfaceMaterial(textures.metal, 1, 1, { color: 0x7e8584, roughness: 0.5, metalness: 0.55 }),
     decalIvy: decalMaterial(textures.ivy, { alphaTest: 0.25 }),
     decalBrickDamage: decalMaterial(textures.brickDamage, { alphaTest: 0.04 }),
@@ -319,6 +319,18 @@ function addDoor(parent: THREE.Object3D, wall: WallModel, opening: OpeningModel,
   wallBox(parent, wall, handleAlong, 0.11, face + 0.028, 0.02, z0 + 1.0, 0.11, materials.metal, false);
 }
 
+function addArch(parent: THREE.Object3D, wall: WallModel, opening: OpeningModel, materials: SceneMaterials): void {
+  const frame = 0.09;
+  const x0 = opening.x0;
+  const x1 = opening.x1;
+  const z0 = opening.z0;
+  const z1 = opening.z1;
+  const frameDepth = wall.thicknessM + 0.02;
+  wallBox(parent, wall, x0 + frame / 2, frame, 0, frameDepth, (z0 + z1) / 2, z1 - z0, materials.doorFrame);
+  wallBox(parent, wall, x1 - frame / 2, frame, 0, frameDepth, (z0 + z1) / 2, z1 - z0, materials.doorFrame);
+  wallBox(parent, wall, (x0 + x1) / 2, x1 - x0, 0, frameDepth, z1 - frame / 2, frame, materials.doorFrame);
+}
+
 function addWindow(parent: THREE.Object3D, wall: WallModel, opening: OpeningModel, materials: SceneMaterials): void {
   const frame = 0.075;
   const x0 = opening.x0;
@@ -357,7 +369,8 @@ function addWall(parent: THREE.Object3D, wall: WallModel, materials: SceneMateri
     if (opening.z0 > wall.zBottom) addWallSegment(group, wall, materials, opening.x0, opening.x1, wall.zBottom, opening.z0);
     if (opening.z1 < wall.zTop) addWallSegment(group, wall, materials, opening.x0, opening.x1, opening.z1, wall.zTop);
     if (opening.kind === 'door') addDoor(group, wall, opening, materials);
-    else addWindow(group, wall, opening, materials);
+    else if (opening.kind === 'window') addWindow(group, wall, opening, materials);
+    else addArch(group, wall, opening, materials);
     cursor = Math.max(cursor, opening.x1);
   }
   if (cursor < end) addWallSegment(group, wall, materials, cursor, end, wall.zBottom, wall.zTop);
