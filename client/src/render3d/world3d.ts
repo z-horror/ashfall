@@ -7,6 +7,9 @@ import type { GameScene } from '../game/GameScene.js';
 import { buildBuildingMeshes, type BuildingMeshes, type BuildingTextures } from './buildingMeshBuilder.js';
 import { CHARACTER_SHEET_COLS, CHARACTER_SHEET_ROWS, loadBuildingTextures, loadCharacterSheet } from './assets3d.js';
 import { specToBuildingModel } from './specToBuildingModel.js';
+import { CharacterModelLoader } from './characterModelLoader.js';
+import { Character3D } from './character3d.js';
+import { hashString } from '../art/util.js';
 
 import { BILLBOARD_NORMAL, computeBillboardAxes } from './billboardAxes.js';
 
@@ -63,6 +66,8 @@ export class World3D {
   private characterSheets = new Map<string, THREE.Texture>();
   private buildings = new Map<string, BuildingEntry>();
   private characters = new Map<string, CharacterEntry>();
+  private characters3d = new Map<string, Character3D>();
+  private lastTime = 0;
   private billboardX = new THREE.Vector3();
   private billboardY = new THREE.Vector3();
   private readyResolved = false;
@@ -156,6 +161,13 @@ export class World3D {
       const sheets = await Promise.all(CHARACTER_STYLES.map((style) => loadCharacterSheet(style)));
       CHARACTER_STYLES.forEach((style, index) => this.characterSheets.set(style, sheets[index]));
 
+      // Asynchronously load 3D character rig and skeletal animations
+      CharacterModelLoader.getInstance()
+        .load()
+        .catch((err) => {
+          console.warn('[world3d] Character model 3D load warning:', err);
+        });
+
       window.addEventListener('resize', this.onResize);
       this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
@@ -175,6 +187,10 @@ export class World3D {
   private onShutdown = (): void => {
     this.scene.game.events.off(Phaser.Core.Events.POST_RENDER, this.onPostRender);
     window.removeEventListener('resize', this.onResize);
+    for (const char3d of this.characters3d.values()) {
+      char3d.destroy(this.scene3d);
+    }
+    this.characters3d.clear();
   };
 
   private onPostRender = (): void => {
@@ -284,11 +300,42 @@ export class World3D {
     this.camera.projectionMatrixInverse.copy(matrix).invert();
   }
 
-  private syncCharacters(): void {
+  private syncCharacters(dt: number, now: number): void {
     if (!this.readyResolved) return;
     const views = this.gameScene.getRenderableCharacters();
     const active = new Set<string>();
+    const loaderReady = CharacterModelLoader.getInstance().isReady;
+
     for (const view of views) {
+      const key = `${view.kind}:${view.id}`;
+      active.add(key);
+
+      // Prefer 3D skinned humanoid rig when loaded
+      if (loaderReady) {
+        let char3d = this.characters3d.get(key);
+        if (!char3d) {
+          const variant = view.kind === 'player' ? hashString(String(view.id)) % 4 : view.type;
+          char3d = new Character3D(this.scene3d, key, view.kind, variant);
+          this.characters3d.set(key, char3d);
+
+          // Remove any temporary billboard that was active during initial loading
+          const oldBillboard = this.characters.get(key);
+          if (oldBillboard) {
+            this.scene3d.remove(oldBillboard.mesh);
+            this.scene3d.remove(oldBillboard.shadow);
+            oldBillboard.mesh.geometry.dispose();
+            oldBillboard.material.map?.dispose();
+            oldBillboard.material.dispose();
+            oldBillboard.shadow.geometry.dispose();
+            (oldBillboard.shadow.material as THREE.Material).dispose();
+            this.characters.delete(key);
+          }
+        }
+        char3d.update(dt, now, view);
+        continue;
+      }
+
+      // Fallback billboard rendering while 3D models load
       if (view.isDead) continue;
       const frameName = view.frameName;
       const separator = frameName.indexOf(':');
@@ -296,8 +343,6 @@ export class World3D {
       const style = frameName.slice(0, separator);
       const index = Number(frameName.slice(separator + 1));
       if (!Number.isFinite(index)) continue;
-      const key = `${view.kind}:${view.id}`;
-      active.add(key);
       let entry = this.characters.get(key);
       if (!entry) {
         const sheet = this.characterSheets.get(style);
@@ -372,7 +417,7 @@ export class World3D {
     }
 
     for (const [key, entry] of [...this.characters]) {
-      if (active.has(key)) continue;
+      if (active.has(key) && !loaderReady) continue;
       this.scene3d.remove(entry.mesh);
       this.scene3d.remove(entry.shadow);
       entry.mesh.geometry.dispose();
@@ -382,11 +427,21 @@ export class World3D {
       (entry.shadow.material as THREE.Material).dispose();
       this.characters.delete(key);
     }
+
+    for (const [key, char3d] of [...this.characters3d]) {
+      if (active.has(key)) continue;
+      char3d.destroy(this.scene3d);
+      this.characters3d.delete(key);
+    }
   }
 
   update(): void {
     if (!this.readyResolved) return;
+    const now = performance.now();
+    const dt = this.lastTime > 0 ? Math.min(0.1, (now - this.lastTime) / 1000) : 0.016;
+    this.lastTime = now;
+
     this.updateBuildingVisibility();
-    this.syncCharacters();
+    this.syncCharacters(dt, now);
   }
 }

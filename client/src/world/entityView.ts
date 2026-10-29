@@ -83,6 +83,7 @@ export class CharacterView {
   private sprinting = false;
   private dead = false;
   private attackUntil = 0;
+  private hitUntil = 0;
   private lastActionAt = 0;
   private lastAnim = '';
   private local = false;
@@ -232,6 +233,34 @@ export class CharacterView {
 
   get spriteTint(): number | null {
     return this.sprite.isTinted ? this.sprite.tintTopLeft : null;
+  }
+
+  get isMoving(): boolean {
+    return this.moving;
+  }
+
+  get isSprinting(): boolean {
+    return this.sprinting;
+  }
+
+  get isAttacking(): boolean {
+    return this.scene.time ? this.scene.time.now < this.attackUntil : false;
+  }
+
+  get isHit(): boolean {
+    return this.scene.time ? this.scene.time.now < this.hitUntil : false;
+  }
+
+  get isDying(): boolean {
+    return this.dying;
+  }
+
+  get aimAngle(): number {
+    return this.aim;
+  }
+
+  get currentWeapon(): string | null {
+    return this.weaponKey;
   }
 
   private applyRenderVisibility(): void {
@@ -398,6 +427,9 @@ export class CharacterView {
   }
 
   flashHit(): void {
+    if (this.scene.time) {
+      this.hitUntil = this.scene.time.now + 240;
+    }
     this.sprite.setTint(0xff7a63);
     const baseScale = this.type === 2 ? 1.12 : 1.0;
     this.sprite.setScale(baseScale * 0.94, baseScale * 1.06);

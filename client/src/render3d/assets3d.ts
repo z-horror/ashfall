@@ -162,7 +162,7 @@ function makeWeedTexture(): THREE.Texture {
   return configureTexture(texture);
 }
 
-function makeContactShadowTexture(): THREE.Texture {
+export function makeContactShadowTexture(): THREE.Texture {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 128;
