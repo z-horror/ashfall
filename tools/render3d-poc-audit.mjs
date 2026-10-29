@@ -52,18 +52,33 @@ await shot('03-interior-cutaway');
 await page.evaluate(() => window.__poc.setCutaway(false));
 await shot('04-interior-no-cutaway');
 
+await page.evaluate(() => window.__poc.setView('door'));
+await shot('05-door');
+
 await page.evaluate(() => window.__poc.setView('animation'));
 await page.waitForTimeout(120);
-await page.screenshot({ path: resolve(outDir, '05-animation-a.jpg'), type: 'jpeg', quality: 88 });
+await page.screenshot({ path: resolve(outDir, '06-animation-a.jpg'), type: 'jpeg', quality: 88 });
 await page.waitForTimeout(180);
-await page.screenshot({ path: resolve(outDir, '06-animation-b.jpg'), type: 'jpeg', quality: 88 });
+await page.screenshot({ path: resolve(outDir, '07-animation-b.jpg'), type: 'jpeg', quality: 88 });
 console.log('saved animation frames');
+
+await page.evaluate(() => window.__poc.setView('layers'));
+await shot('08-layers');
+
+await page.evaluate(() => window.__poc.setView('variant'));
+await shot('09-variant');
+
+await page.evaluate(() => {
+  window.__poc.setView('exterior');
+  window.__poc.setCamera(130, 30);
+});
+await shot('10-angle');
 
 const report = {
   url,
   outDir: relative(process.cwd(), outDir),
   errors,
-  screenshots: ['01-exterior.jpg', '02-terrace.jpg', '03-interior-cutaway.jpg', '04-interior-no-cutaway.jpg', '05-animation-a.jpg', '06-animation-b.jpg'],
+  screenshots: ['01-exterior.jpg', '02-terrace.jpg', '03-interior-cutaway.jpg', '04-interior-no-cutaway.jpg', '05-door.jpg', '06-animation-a.jpg', '07-animation-b.jpg', '08-layers.jpg', '09-variant.jpg', '10-angle.jpg'],
 };
 writeFileSync(resolve(outDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));

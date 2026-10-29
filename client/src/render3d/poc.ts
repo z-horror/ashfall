@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTestBuildingModel } from './buildingModel.js';
+import { createTestBuildingModel, createVariantBuildingModel, type BuildingModel } from './buildingModel.js';
 import { buildBuildingMeshes, type BuildingTextures } from './buildingMeshBuilder.js';
 import { CharacterBillboard } from './characterBillboard.js';
 
@@ -7,7 +7,8 @@ declare global {
   interface Window {
     __pocReady?: boolean;
     __poc?: {
-      setView: (name: 'exterior' | 'terrace' | 'interior' | 'animation') => void;
+      setView: (name: 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant') => void;
+      setCamera: (azimuthDeg: number, elevationDeg: number) => void;
       setCutaway: (on: boolean) => void;
       setAnimation: (on: boolean) => void;
       ready: boolean;
@@ -45,10 +46,23 @@ const view = {
   target: new THREE.Vector3(9.6, 7.2, 2.6),
   size: 30,
 };
-const cameraDirection = new THREE.Vector3(1, 1, Math.SQRT2).normalize();
+const DEFAULT_AZIMUTH = Math.PI / 4;
+const DEFAULT_ELEVATION = Math.atan(1 / Math.SQRT2);
+let azimuth = DEFAULT_AZIMUTH;
+let elevation = DEFAULT_ELEVATION;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 function updateCamera(): void {
-  camera.position.copy(view.target).addScaledVector(cameraDirection, 80);
+  const horizontal = Math.cos(elevation);
+  const direction = new THREE.Vector3(
+    Math.cos(azimuth) * horizontal,
+    Math.sin(azimuth) * horizontal,
+    Math.sin(elevation),
+  );
+  camera.position.copy(view.target).addScaledVector(direction, 80);
   camera.lookAt(view.target);
   const aspect = window.innerWidth / Math.max(1, window.innerHeight);
   const halfH = view.size / 2;
@@ -68,6 +82,53 @@ function loadTexture(loader: THREE.TextureLoader, url: string, repeatX = 1, repe
     texture.repeat.set(repeatX, repeatY);
     return texture;
   });
+}
+
+function loadCroppedTexture(
+  loader: THREE.TextureLoader,
+  url: string,
+  sourceX: number,
+  sourceY: number,
+  sourceWidth: number,
+  sourceHeight: number,
+): Promise<THREE.Texture> {
+  return loader.loadAsync(url).then((source) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = sourceWidth;
+    canvas.height = sourceHeight;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error(`Cannot create 2D context for ${url}`);
+    context.drawImage(source.image as CanvasImageSource, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  });
+}
+
+function makeWeedTexture(): THREE.Texture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  if (context) {
+    context.clearRect(0, 0, 128, 128);
+    context.lineCap = 'round';
+    const palette = ['#4f5a32', '#66713b', '#3f4a2a', '#7b713f', '#59653a'];
+    for (let i = 0; i < 22; i++) {
+      const x = 18 + ((i * 47) % 92);
+      const height = 38 + ((i * 29) % 74);
+      const bend = ((i % 5) - 2) * 8;
+      context.strokeStyle = palette[i % palette.length];
+      context.lineWidth = 2 + (i % 3);
+      context.beginPath();
+      context.moveTo(x, 126);
+      context.quadraticCurveTo(x + bend * 0.4, 126 - height * 0.55, x + bend, 126 - height);
+      context.stroke();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function fallbackTexture(color: number): THREE.Texture {
@@ -108,11 +169,13 @@ async function main(): Promise<void> {
     wood,
     concrete,
     tar,
-    door,
-    windowTexture,
     metal,
+    ivy,
+    brickDamage,
+    puddle,
+    tarPatch,
+    weeds,
     charSheet,
-    acTexture,
     groundTexture,
   ] = await Promise.all([
     loadTextureOrFallback(loader, '/assets/buildings/wall_brick_face.png', 0x6b3a2c, 6, 3),
@@ -120,11 +183,13 @@ async function main(): Promise<void> {
     loadTextureOrFallback(loader, '/assets/buildings/floor_wood.png', 0x6a4e35, 12, 9),
     loadTextureOrFallback(loader, '/assets/buildings/floor_concrete.png', 0x4c4f4c, 6, 6),
     loadTextureOrFallback(loader, '/assets/buildings/roof_tar.png', 0x2a2b28, 8, 8),
-    loadTextureOrFallback(loader, '/assets/buildings/door_closed.png', 0x3d2a1c, 1, 1),
-    loadTextureOrFallback(loader, '/assets/buildings/window_unit.png', 0x49535a, 1, 1),
     loadTextureOrFallback(loader, '/assets/buildings/floor_concrete.png', 0x777b77, 1, 1),
+    loadCroppedTexture(loader, '/assets/buildings/ivy_decals_sheet.png', 360, 30, 300, 500),
+    loadTextureOrFallback(loader, '/assets/buildings/brick_damage.png', 0x5a4030, 1, 1),
+    loadTextureOrFallback(loader, '/assets/buildings/decal_puddle.png', 0x2d3333, 1, 1),
+    loadTextureOrFallback(loader, '/assets/buildings/tar_patches.png', 0x262825, 1, 1),
+    Promise.resolve(makeWeedTexture()),
     loadTextureOrFallback(loader, '/assets/characters/char_p0.png', 0x8a7a5a, 1, 1),
-    loadTextureOrFallback(loader, '/assets/buildings/roof_ac_unit.png', 0x8c8f82, 1, 1),
     loadTextureOrFallback(loader, '/assets/buildings/ground_postapo.png', 0x333430, 0.25, 0.25),
   ]);
 
@@ -134,20 +199,28 @@ async function main(): Promise<void> {
     wood,
     concrete,
     tar,
-    door,
-    window: windowTexture,
     metal,
+    ivy,
+    brickDamage,
+    puddle,
+    tarPatch,
+    weeds,
   };
 
   const model = createTestBuildingModel();
   const meshes = buildBuildingMeshes(model, textures);
   scene.add(meshes.group);
 
+  const variantModel = createVariantBuildingModel();
+  const variantMeshes = buildBuildingMeshes(variantModel, textures);
+  variantMeshes.group.position.set(30, 0, 0);
+  scene.add(variantMeshes.group);
+
   const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture, roughness: 1 });
   // The ground must have a hole under the building; otherwise it covers the
   // basement floor at z=-3 when looking down the stairwell.
   const groundShape = new THREE.Shape();
-  const outer = 45;
+  const outer = 80;
   groundShape.moveTo(-outer, -outer);
   groundShape.lineTo(outer, -outer);
   groundShape.lineTo(outer, outer);
@@ -165,41 +238,28 @@ async function main(): Promise<void> {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const hemisphere = new THREE.HemisphereLight(0xa8b9c6, 0x2c241c, 1.0);
+  const hemisphere = new THREE.HemisphereLight(0xa8b9c6, 0x2c241c, 1.15);
   scene.add(hemisphere);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.22));
 
   const sun = new THREE.DirectionalLight(0xffe2b5, 2.4);
   sun.position.set(34, 18, 46);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -28;
-  sun.shadow.camera.right = 28;
-  sun.shadow.camera.top = 28;
-  sun.shadow.camera.bottom = -28;
+  sun.shadow.camera.left = -60;
+  sun.shadow.camera.right = 60;
+  sun.shadow.camera.top = 60;
+  sun.shadow.camera.bottom = -60;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 120;
   sun.shadow.bias = -0.0006;
+  sun.shadow.radius = 3;
   scene.add(sun);
 
   const fill = new THREE.DirectionalLight(0x71879a, 0.7);
   fill.position.set(-24, -16, 22);
   scene.add(fill);
 
-  const acFixture = model.fixtures.find((fixture) => fixture.kind === 'ac');
-  let acSprite: THREE.Sprite | undefined;
-  if (acFixture) {
-    acSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: acTexture,
-      transparent: true,
-      alphaTest: 0.04,
-      depthTest: true,
-      depthWrite: true,
-    }));
-    acSprite.center.set(0.5, 0.04);
-    acSprite.scale.set(1.35, 1.35, 1);
-    acSprite.position.set(acFixture.xM, acFixture.yM, acFixture.zM + 0.02);
-    scene.add(acSprite);
-  }
 
   const characters = {
     inside: new CharacterBillboard(scene, charSheet, { x: mx(32), y: my(31), z: 0, direction: 2, mode: 'walk' }),
@@ -212,9 +272,21 @@ async function main(): Promise<void> {
 
   function applyCutaway(on: boolean): void {
     cutaway = on;
-    for (const object of meshes.nearWalls) object.visible = !on;
-    for (const object of meshes.upperFloor) object.visible = !on;
-    if (acSprite) acSprite.visible = !on;
+    const apply = (
+      levels: BuildingModel['levels'],
+      levelGroups: Map<string, THREE.Group>,
+      nearWalls: THREE.Object3D[],
+      activeLevelId: string,
+    ): void => {
+      const activeIndex = levels.find((level) => level.id === activeLevelId)?.index ?? 0;
+      for (const [id, group] of levelGroups) {
+        const level = levels.find((candidate) => candidate.id === id);
+        group.visible = !on || !level || level.index <= activeIndex;
+      }
+      for (const object of nearWalls) object.visible = !on;
+    };
+    apply(model.levels, meshes.levelGroups, meshes.nearWalls, 'ground');
+    apply(variantModel.levels, variantMeshes.levelGroups, variantMeshes.nearWalls, 'ground');
     cutawayInput.checked = on;
   }
 
@@ -224,7 +296,9 @@ async function main(): Promise<void> {
     }
   }
 
-  function setView(name: 'exterior' | 'terrace' | 'interior' | 'animation'): void {
+  function setView(name: 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant'): void {
+    azimuth = DEFAULT_AZIMUTH;
+    elevation = DEFAULT_ELEVATION;
     if (name === 'terrace') {
       view.target.set(mx(36), my(35), 3.0);
       view.size = 16;
@@ -240,6 +314,21 @@ async function main(): Promise<void> {
       view.size = 6;
       applyCutaway(false);
       setCharacterVisibility(['terrace']);
+    } else if (name === 'door') {
+      view.target.set(mx(35), my(37), 1.2);
+      view.size = 6;
+      applyCutaway(false);
+      setCharacterVisibility([]);
+    } else if (name === 'layers') {
+      view.target.set(19.0, 5.5, 1.8);
+      view.size = 9;
+      applyCutaway(false);
+      setCharacterVisibility([]);
+    } else if (name === 'variant') {
+      view.target.set(38.0, 6.4, 4.2);
+      view.size = 24;
+      applyCutaway(false);
+      setCharacterVisibility([]);
     } else {
       view.target.set(9.6, 7.2, 2.6);
       view.size = 26;
@@ -261,8 +350,32 @@ async function main(): Promise<void> {
   cutawayInput.addEventListener('change', () => applyCutaway(cutawayInput.checked));
   animateInput.addEventListener('change', () => setAnimation(animateInput.checked));
   document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((button) => {
-    button.addEventListener('click', () => setView(button.dataset.view as 'exterior' | 'terrace' | 'interior' | 'animation'));
+    button.addEventListener('click', () => setView(button.dataset.view as 'exterior' | 'terrace' | 'interior' | 'animation' | 'door' | 'layers' | 'variant'));
   });
+
+  let drag: { pointerId: number; x: number; y: number } | null = null;
+  canvas.addEventListener('pointerdown', (event) => {
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    azimuth -= (event.clientX - drag.x) * 0.006;
+    elevation = clamp(elevation + (event.clientY - drag.y) * 0.006, 0.12, 1.35);
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    updateCamera();
+  });
+  const endDrag = (event: PointerEvent): void => {
+    if (drag?.pointerId === event.pointerId) drag = null;
+  };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    view.size = clamp(view.size * (1 + event.deltaY * 0.001), 4, 60);
+    updateCamera();
+  }, { passive: false });
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -287,7 +400,17 @@ async function main(): Promise<void> {
 
   statusEl.textContent = cutaway ? 'Cutaway включён' : 'Готово';
   readyEl.textContent = 'PoC готов. Сравнивай ракурсы с эталоном и текущим рендером.';
-  window.__poc = { setView, setCutaway: applyCutaway, setAnimation, ready: true };
+  window.__poc = {
+    setView,
+    setCutaway: applyCutaway,
+    setAnimation,
+    setCamera: (azimuthDeg: number, elevationDeg: number) => {
+      azimuth = (azimuthDeg * Math.PI) / 180;
+      elevation = clamp((elevationDeg * Math.PI) / 180, 0.12, 1.35);
+      updateCamera();
+    },
+    ready: true,
+  };
   window.__pocReady = true;
 }
 
