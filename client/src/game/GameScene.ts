@@ -468,7 +468,7 @@ export class GameScene extends Phaser.Scene {
     this.selfView.setLocal(true);
     this.selfView.setWeapon(this.equippedKey);
     this.cameras.main.startFollow(this.selfView.sprite, true, 0.8, 0.8);
-    this.cameras.main.roundPixels = true;
+    this.cameras.main.roundPixels = !this.world3dActive;
     this.cameras.main.setFollowOffset(0, 24);
     this.cameras.main.setZoom(1.34);
   }
