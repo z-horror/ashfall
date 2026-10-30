@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { TILE_SIZE_M, sceneToWorld, type BuildingSpec } from '@ashfall/shared';
 import type { ClientWorld } from '../world/clientWorld.js';
 import type { CharacterView } from '../world/entityView.js';
@@ -174,7 +174,7 @@ export class World3D {
       CHARACTER_STYLES.forEach((style, index) => this.characterSheets.set(style, sheets[index]));
 
       window.addEventListener('resize', this.onResize);
-      this.scene.events.on('postrender', this.onPostRender);
+      this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
       this.readyResolved = true;
       this.readyResolve();
@@ -190,7 +190,7 @@ export class World3D {
   };
 
   private onShutdown = (): void => {
-    this.scene.events.off('postrender', this.onPostRender);
+    this.scene.game.events.off(Phaser.Core.Events.POST_RENDER, this.onPostRender);
     window.removeEventListener('resize', this.onResize);
   };
 
