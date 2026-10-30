@@ -152,25 +152,28 @@ export function createProceduralGroundAtlas(): THREE.CanvasTexture {
 }
 
 /**
- * Creates soft contact shadow texture under the house plinth.
+ * Linear gradient shadow texture for perimeter contact strips.
+ * U=0 is dark at the wall, U=1 fades to transparent.
  */
-function createContactShadowTexture(): THREE.CanvasTexture {
+function createPerimeterShadowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 128;
+  canvas.height = 16;
   const ctx = canvas.getContext('2d')!;
 
-  const gradient = ctx.createRadialGradient(128, 128, 40, 128, 128, 126);
-  gradient.addColorStop(0, 'rgba(0,0,0,0.72)');
-  gradient.addColorStop(0.45, 'rgba(0,0,0,0.48)');
-  gradient.addColorStop(0.85, 'rgba(0,0,0,0.14)');
+  const gradient = ctx.createLinearGradient(0, 0, 128, 0);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.68)');
+  gradient.addColorStop(0.35, 'rgba(0,0,0,0.38)');
+  gradient.addColorStop(0.75, 'rgba(0,0,0,0.12)');
   gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 256, 256);
+  ctx.fillRect(0, 0, 128, 16);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
   return texture;
 }
 
@@ -300,10 +303,13 @@ export function buildGroundChunk(): GroundChunkResult {
   });
 
   const shadowMaterial = new THREE.MeshBasicMaterial({
-    map: createContactShadowTexture(),
+    map: createPerimeterShadowTexture(),
     transparent: true,
-    opacity: 0.65,
+    opacity: 0.8,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
     toneMapped: false,
     side: THREE.DoubleSide,
   });
@@ -478,19 +484,64 @@ export function buildGroundChunk(): GroundChunkResult {
     group.add(mergedCurbMesh);
   }
 
-  // Contact Shadow under building plinth
-  // Extends 1.2 meters around the house base to ground the building naturally into the lawn
-  const shadowMargin = 1.2;
-  const shadowW = HOUSE_MAX_X - HOUSE_MIN_X + shadowMargin * 2;
-  const shadowH = HOUSE_MAX_Y - HOUSE_MIN_Y + shadowMargin * 2;
-  const shadowCenterX = (HOUSE_MIN_X + HOUSE_MAX_X) / 2;
-  const shadowCenterY = (HOUSE_MIN_Y + HOUSE_MAX_Y) / 2;
+  // Contact Shadow collar around building perimeter
+  // Formed by 4 edge strips + 4 corners extending outward from the foundation wall.
+  // The interior floor has ZERO shadow geometry, so it never obscures the rooms.
+  const shadowMargin = 0.95; // 95 cm soft contact falloff
+  const x0 = HOUSE_MIN_X;
+  const x1 = HOUSE_MAX_X;
+  const y0 = HOUSE_MIN_Y;
+  const y1 = HOUSE_MAX_Y;
+  const m = shadowMargin;
 
-  const shadowMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(shadowW, shadowH),
-    shadowMaterial,
-  );
-  shadowMesh.position.set(shadowCenterX, shadowCenterY, 0.046); // sits slightly above ground
+  const shadowPositions: number[] = [];
+  const shadowNormals: number[] = [];
+  const shadowUvs: number[] = [];
+  const shadowIndices: number[] = [];
+
+  const addShadowQuad = (
+    p0: [number, number], uv0: [number, number],
+    p1: [number, number], uv1: [number, number],
+    p2: [number, number], uv2: [number, number],
+    p3: [number, number], uv3: [number, number],
+  ): void => {
+    const baseIdx = shadowPositions.length / 3;
+    for (const [px, py] of [p0, p1, p2, p3]) {
+      shadowPositions.push(px, py, 0.046);
+      shadowNormals.push(0, 0, 1);
+    }
+    for (const [u, v] of [uv0, uv1, uv2, uv3]) {
+      shadowUvs.push(u, v);
+    }
+    shadowIndices.push(baseIdx, baseIdx + 1, baseIdx + 2, baseIdx, baseIdx + 2, baseIdx + 3);
+  };
+
+  // 1. South strip (y1 -> y1 + m)
+  addShadowQuad([x0, y1], [0, 0], [x1, y1], [0, 1], [x1, y1 + m], [1, 1], [x0, y1 + m], [1, 0]);
+  // 2. North strip (y0 -> y0 - m)
+  addShadowQuad([x0, y0], [0, 0], [x1, y0], [0, 1], [x1, y0 - m], [1, 1], [x0, y0 - m], [1, 0]);
+  // 3. West strip (x0 -> x0 - m)
+  addShadowQuad([x0, y0], [0, 0], [x0, y1], [0, 1], [x0 - m, y1], [1, 1], [x0 - m, y0], [1, 0]);
+  // 4. East strip (x1 -> x1 + m)
+  addShadowQuad([x1, y0], [0, 0], [x1, y1], [0, 1], [x1 + m, y1], [1, 1], [x1 + m, y0], [1, 0]);
+
+  // 5. South-West corner
+  addShadowQuad([x0, y1], [0, 0], [x0, y1 + m], [1, 0], [x0 - m, y1 + m], [1, 1], [x0 - m, y1], [1, 1]);
+  // 6. South-East corner
+  addShadowQuad([x1, y1], [0, 0], [x1, y1 + m], [1, 0], [x1 + m, y1 + m], [1, 1], [x1 + m, y1], [1, 1]);
+  // 7. North-West corner
+  addShadowQuad([x0, y0], [0, 0], [x0, y0 - m], [1, 0], [x0 - m, y0 - m], [1, 1], [x0 - m, y0], [1, 1]);
+  // 8. North-East corner
+  addShadowQuad([x1, y0], [0, 0], [x1, y0 - m], [1, 0], [x1 + m, y0 - m], [1, 1], [x1 + m, y0], [1, 1]);
+
+  const shadowGeometry = new THREE.BufferGeometry();
+  shadowGeometry.setAttribute('position', new THREE.Float32BufferAttribute(shadowPositions, 3));
+  shadowGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(shadowNormals, 3));
+  shadowGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(shadowUvs, 2));
+  shadowGeometry.setIndex(shadowIndices);
+
+  const shadowMesh = new THREE.Mesh(shadowGeometry, shadowMaterial);
+  shadowMesh.name = 'contact_shadow_perimeter_mesh';
   shadowMesh.renderOrder = 2;
   group.add(shadowMesh);
 

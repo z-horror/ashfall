@@ -51,7 +51,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 
 // 2. Scene
 const scene = new THREE.Scene();
@@ -65,26 +65,29 @@ scene.add(ambientLight);
 const hemisphereLight = new THREE.HemisphereLight(0xbdd3e8, 0x3d3f35, 0.4);
 scene.add(hemisphereLight);
 
+const houseCenterX = (HOUSE_MIN_X + HOUSE_MAX_X) / 2; // 54.4 m
+const houseCenterY = (HOUSE_MIN_Y + HOUSE_MAX_Y) / 2; // 51.8 m
+
 const sunLight = new THREE.DirectionalLight(0xfff7e8, 1.45);
-sunLight.position.set(65, 42, 75);
+sunLight.position.set(houseCenterX + 28, houseCenterY - 24, 45);
+sunLight.target.position.set(houseCenterX, houseCenterY, 0);
+scene.add(sunLight.target);
+scene.add(sunLight);
+
 sunLight.castShadow = true;
 sunLight.shadow.mapSize.set(2048, 2048);
 sunLight.shadow.camera.near = 10;
-sunLight.shadow.camera.far = 160;
-const d = 36;
+sunLight.shadow.camera.far = 130;
+const d = 26;
 sunLight.shadow.camera.left = -d;
 sunLight.shadow.camera.right = d;
 sunLight.shadow.camera.top = d;
 sunLight.shadow.camera.bottom = -d;
 sunLight.shadow.bias = -0.0004;
-scene.add(sunLight);
 
 // 4. Camera (Orthographic Isometric with Orbit Controls)
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 350);
 camera.up.set(0, 0, 1);
-
-const houseCenterX = (HOUSE_MIN_X + HOUSE_MAX_X) / 2; // 54.4 m
-const houseCenterY = (HOUSE_MIN_Y + HOUSE_MAX_Y) / 2; // 51.8 m
 
 const viewTarget = new THREE.Vector3(houseCenterX, houseCenterY, 1.4);
 let viewSize = 38; // Initial frustum height in meters
@@ -190,20 +193,51 @@ async function initScene(): Promise<void> {
 
 void initScene();
 
-// 7. Cutaway controller
+// 7. Cutaway and Basement controllers
 let cutawayActive = false;
+let inBasementMode = false;
+
+function setBasementMode(active: boolean): void {
+  inBasementMode = active;
+  if (!buildingMeshes) return;
+
+  const groundGroup = buildingMeshes.levelGroups.get('ground');
+  const basementGroup = buildingMeshes.levelGroups.get('basement');
+  const roofGroup = buildingMeshes.levelGroups.get('roof');
+  const mansardGroup = buildingMeshes.levelGroups.get('mansard');
+
+  if (active) {
+    if (roofGroup) roofGroup.visible = false;
+    if (mansardGroup) mansardGroup.visible = false;
+    if (groundGroup) groundGroup.visible = false;
+    buildingMeshes.plinth.visible = false;
+    if (basementGroup) basementGroup.visible = true;
+    for (const stair of buildingMeshes.stairs) stair.group.visible = true;
+    for (const wall of buildingMeshes.nearWalls) wall.visible = false;
+  } else {
+    if (groundGroup) groundGroup.visible = true;
+    buildingMeshes.plinth.visible = true;
+    if (basementGroup) basementGroup.visible = true;
+    for (const stair of buildingMeshes.stairs) stair.group.visible = true;
+    applyCutaway(cutawayActive);
+  }
+}
 
 function applyCutaway(active: boolean): void {
   cutawayActive = active;
   if (!buildingMeshes) return;
 
+  if (inBasementMode && !active) {
+    setBasementMode(false);
+  }
+
   const roofGroup = buildingMeshes.levelGroups.get('roof');
   const mansardGroup = buildingMeshes.levelGroups.get('mansard');
-  if (roofGroup) roofGroup.visible = !active;
-  if (mansardGroup) mansardGroup.visible = !active;
+  if (roofGroup) roofGroup.visible = !active && !inBasementMode;
+  if (mansardGroup) mansardGroup.visible = !active && !inBasementMode;
 
   for (const wall of buildingMeshes.nearWalls) {
-    wall.visible = !active;
+    wall.visible = !active && !inBasementMode;
   }
 }
 
@@ -221,6 +255,10 @@ if (shadowsCheckbox) {
 
 // 8. Preset View Buttons
 function setPreset(preset: 'isometric' | 'north' | 'east' | 'south' | 'west' | 'top' | 'basement'): void {
+  if (preset !== 'basement' && inBasementMode) {
+    setBasementMode(false);
+  }
+
   switch (preset) {
     case 'isometric':
       azimuth = Math.PI / 4;
@@ -228,6 +266,7 @@ function setPreset(preset: 'isometric' | 'north' | 'east' | 'south' | 'west' | '
       viewTarget.set(houseCenterX, houseCenterY, 1.4);
       viewSize = 38;
       applyCutaway(false);
+      if (cutawayCheckbox) cutawayCheckbox.checked = false;
       break;
     case 'north':
       azimuth = -Math.PI / 2;
@@ -262,9 +301,9 @@ function setPreset(preset: 'isometric' | 'north' | 'east' | 'south' | 'west' | '
     case 'basement':
       azimuth = Math.PI / 4;
       elevation = 0.58;
-      viewTarget.set(houseCenterX + 3, houseCenterY + 1, -1.2);
-      viewSize = 22;
-      applyCutaway(true);
+      viewTarget.set(58.5, 49.5, -1.5);
+      viewSize = 18;
+      setBasementMode(true);
       if (cutawayCheckbox) cutawayCheckbox.checked = true;
       break;
   }
