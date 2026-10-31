@@ -25,8 +25,6 @@ import type { HUD } from '../ui/hud.js';
 import { Minimap } from '../ui/minimap.js';
 import type { AudioEngine } from '../audio.js';
 import { ClientWorld } from '../world/clientWorld.js';
-import { ChunkView } from '../world/chunkView.js';
-import { BuildingView } from '../world/buildingView.js';
 import { BuildingDebugOverlay } from './debug/BuildingDebugOverlay.js';
 import { CharacterView, ItemSprite, weaponName } from '../world/entityView.js';
 import { aimFromScreenDelta, iso } from './iso.js';
@@ -51,8 +49,6 @@ export class GameScene extends Phaser.Scene {
   private world = new ClientWorld();
   private minimap: Minimap | null = null;
 
-  private chunks = new Map<string, ChunkView>();
-  private buildingViews = new Map<string, BuildingView>();
   private selfView: CharacterView | null = null;
   private playerViews = new Map<number, CharacterView>();
   private zombieViews = new Map<string, CharacterView>();
@@ -83,8 +79,6 @@ export class GameScene extends Phaser.Scene {
   private light: Phaser.GameObjects.Image | null = null;
   private debugOverlay: BuildingDebugOverlay | null = null;
   private world3d: World3D | null = null;
-  private render3dEnabled = true;
-  private ground3dEnabled = false;
   private world3dActive = false;
   private debugNext = 0;
   private aimWorld = { x: 0, y: 0 };
@@ -167,17 +161,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
-    const params = new URLSearchParams(window.location.search);
-    this.render3dEnabled = params.get('render3d') !== '0';
-    this.ground3dEnabled = params.get('ground3d') === '1';
-    if (this.render3dEnabled) {
-      void import('../render3d/world3d.js').then(({ World3D }) => {
-        this.world3d = new World3D(this, this.world, this.ground3dEnabled);
-        void this.world3d.ready.then(() => this.activateWorld3D());
-      }).catch((error) => {
-        console.error('[world3d] failed to load, keeping Phaser renderer', error);
-      });
-    }
+    void import('../render3d/world3d.js').then(({ World3D }) => {
+      this.world3d = new World3D(this, this.world);
+      void this.world3d.ready.then(() => this.activateWorld3D());
+    }).catch((error) => {
+      console.error('[world3d] failed to load', error);
+    });
 
     this.dust = this.add.particles(0, 0, ENV_ATLAS, {
       frame: 'fx_dust',
@@ -549,12 +538,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearWorld(): void {
-    for (const [key, view] of this.chunks) {
-      view.destroy();
-      this.chunks.delete(key);
-    }
-    for (const view of this.buildingViews.values()) view.destroy();
-    this.buildingViews.clear();
     for (const v of this.playerViews.values()) v.destroy();
     this.playerViews.clear();
     for (const v of this.zombieViews.values()) v.destroy();
@@ -600,32 +583,18 @@ export class GameScene extends Phaser.Scene {
   private applyChunk(chunk: import('@ashfall/shared').ChunkData): void {
     const key = `${chunk.cx},${chunk.cy}`;
     const t0 = performance.now();
-    const existing = this.chunks.get(key);
-    if (existing) {
-      existing.destroy();
-      this.chunks.delete(key);
-    }
     this.world.loadChunk(chunk);
-    const view = new ChunkView(this, this.world, chunk);
-    this.chunks.set(key, view);
     this.minimap?.addChunk(chunk);
-    if (this.world3dActive && this.ground3dEnabled) {
+    if (this.world3dActive) {
       this.world3d?.loadGroundChunk(chunk.cx, chunk.cy);
     }
-    this.updatePhaserGroundVisibility();
     this.syncBuildingViews();
-    console.log(`[ashfall] chunk ${key} built in ${(performance.now() - t0).toFixed(0)}ms`);
+    console.log(`[ashfall] chunk ${key} loaded in ${(performance.now() - t0).toFixed(0)}ms`);
   }
 
   private unloadChunk(cx: number, cy: number): void {
-    const key = `${cx},${cy}`;
-    const view = this.chunks.get(key);
-    if (view) {
-      view.destroy();
-      this.chunks.delete(key);
-    }
     this.world.unloadChunk(cx, cy);
-    if (this.world3dActive && this.ground3dEnabled) {
+    if (this.world3dActive) {
       this.world3d?.unloadGroundChunk(cx, cy);
     }
     this.syncBuildingViews();
@@ -634,45 +603,10 @@ export class GameScene extends Phaser.Scene {
   private syncBuildingViews(): void {
     if (this.world3dActive) {
       this.world3d?.syncBuildings(this.world);
-      return;
     }
-    const buildingIds = new Set(this.world.buildings.keys());
-    for (const [id, view] of [...this.buildingViews]) {
-      if (!buildingIds.has(id)) {
-        view.destroy();
-        this.buildingViews.delete(id);
-      }
-    }
-    for (const building of this.world.buildings.values()) {
-      const objects = [...this.world.objects.values()].filter((object) => object.buildingId === building.id);
-      const states = Object.fromEntries(this.world.objectStates);
-      const doorStates = [...this.world.doors.values()].map((door) => ({
-        openingId: door.id,
-        open: door.open,
-        locked: door.locked,
-        hp: door.hp,
-        revision: 0,
-      }));
-      const windowStates = [...this.world.windows.values()];
-      let view = this.buildingViews.get(building.id);
-      if (!view) {
-        view = new BuildingView(this, building, objects, states, doorStates, windowStates);
-        this.buildingViews.set(building.id, view);
-      } else {
-        for (const door of doorStates) view.setDoor(door.openingId, door);
-        for (const window of windowStates) view.setWindow(window.openingId, window);
-        for (const state of Object.values(states)) view.setObjectState(state.objectId, state);
-      }
-    }
-    this.updateBuildingVisibility();
   }
 
   private updateBuildingVisibility(): void {
-    for (const view of this.buildingViews.values()) {
-      const inside = view.building.id === this.currentBuilding;
-      view.updateLocal(this.predicted.x, this.predicted.y, this.playerFloor, inside);
-    }
-    this.updatePhaserGroundVisibility();
     for (const [id, sprite] of this.itemSprites) {
       const item = this.currentItems.get(id);
       sprite.setVisible(item?.floor === this.playerFloor);
@@ -971,20 +905,12 @@ export class GameScene extends Phaser.Scene {
         const id = String(ev.id);
         const open = !!ev.open;
         this.world.setDoor(id, open);
-        const door = this.world.doors.get(id);
-        if (door) {
-          for (const view of this.buildingViews.values()) {
-            view.setDoor(id, { openingId: id, open, locked: door.locked, hp: door.hp, revision: 0 });
-          }
-        }
         if (dist < 16) this.audio.door(open, vol);
         break;
       }
       case 'window': {
         const id = String(ev.id);
         this.world.setWindowState(id, { broken: !!ev.broken, boarded: !!ev.boarded });
-        const window = this.world.windows.get(id);
-        if (window) for (const view of this.buildingViews.values()) view.setWindow(id, window);
         break;
       }
       case 'object_state': {
@@ -996,8 +922,6 @@ export class GameScene extends Phaser.Scene {
           hp: Number(ev.hp ?? 100),
           on: !!ev.on,
         });
-        const state = this.world.objectStates.get(id);
-        if (state) for (const view of this.buildingViews.values()) view.setObjectState(id, state);
         break;
       }
       case 'stair': {
@@ -1033,7 +957,6 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case 'prop_destroyed': {
-        for (const view of this.chunks.values()) view.removeProp(String(ev.id));
         this.spawnDebris(x, y);
         if (dist < 18) this.audio.hitHard(vol);
         break;
@@ -1103,22 +1026,7 @@ export class GameScene extends Phaser.Scene {
       this.selfView.setElevation(elevation);
       const bInsideNow = this.getInsideBuilding(this.predicted.x, this.predicted.y);
       this.currentBuilding = bInsideNow?.id ?? null;
-      const feet = iso(this.predicted.x, this.predicted.y);
-      const feetY = feet.y - elevation * PX_PER_METER;
-      const playerDepth = this.playerFloor * 10_000 + this.predicted.x + this.predicted.y;
-      let occluded = false;
-      if (!bInsideNow) {
-        for (const view of this.buildingViews.values()) {
-          if (
-            view.occludesPoint(feet.x, feetY - 6, playerDepth) ||
-            view.occludesPoint(feet.x, feetY - 30, playerDepth)
-          ) {
-            occluded = true;
-            break;
-          }
-        }
-      }
-      this.selfView.setOutlineVisible(occluded);
+      this.selfView.setOutlineVisible(false);
       this.selfView.update(dt, now);
       if ((mx !== 0 || my !== 0) && now - this.lastFootstep > (sprint ? 290 : 430)) {
         this.lastFootstep = now;
@@ -1231,28 +1139,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.world3d) return;
     this.world3dActive = true;
     this.cameras.main.roundPixels = false;
-    for (const view of [...this.buildingViews.values()]) view.destroy();
-    this.buildingViews.clear();
     for (const view of this.getRenderableCharacters()) view.setRender3D(true);
     this.world3d.syncBuildings(this.world);
-    if (this.ground3dEnabled) {
-      this.world3d.syncAllGroundChunks(this.world);
-      this.updatePhaserGroundVisibility();
-    }
-  }
-
-  updatePhaserGroundVisibility(): void {
-    const ground3dActive = this.ground3dEnabled && this.world3dActive;
-    for (const [key, view] of this.chunks) {
-      const [cxStr, cyStr] = key.split(',');
-      const cx = Number(cxStr);
-      const cy = Number(cyStr);
-      if (ground3dActive && this.world3d?.hasGroundChunk(cx, cy)) {
-        view.setGroundVisible(false);
-      } else {
-        view.setGroundVisible(this.playerFloor >= 0);
-      }
-    }
+    this.world3d.syncAllGroundChunks(this.world);
   }
 
   getRender3DState(): { currentBuilding: string | null; playerFloor: number; elevationM: number } {

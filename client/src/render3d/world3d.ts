@@ -105,13 +105,11 @@ export class World3D {
   private readyResolved = false;
   private readyResolve!: () => void;
   private groundWorld: Ground3DWorld | null = null;
-  private readonly ground3dEnabled: boolean;
 
-  constructor(scene: Phaser.Scene, world: ClientWorld, ground3dEnabled = false) {
+  constructor(scene: Phaser.Scene, world: ClientWorld) {
     this.scene = scene;
     this.world = world;
     this.gameScene = scene as unknown as GameScene;
-    this.ground3dEnabled = ground3dEnabled;
     this.ready = new Promise((resolve) => {
       this.readyResolve = resolve;
     });
@@ -183,10 +181,8 @@ export class World3D {
       this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
 
-      if (this.ground3dEnabled) {
-        this.groundWorld = new Ground3DWorld(this.scene3d, this.world);
-        this.groundWorld.syncAllLoadedChunks(this.world);
-      }
+      this.groundWorld = new Ground3DWorld(this.scene3d, this.world);
+      this.groundWorld.syncAllLoadedChunks(this.world);
 
       this.readyResolved = true;
       this.readyResolve();
@@ -248,7 +244,6 @@ export class World3D {
       }
       for (const wall of entry.meshes.nearWalls) wall.visible = !inside;
       entry.meshes.plinth.visible = !inBasement;
-      entry.meshes.groundOccluder.visible = !inside || state.playerFloor >= 0;
       entry.meshes.exteriorClutter.visible = !inside;
       for (const stair of entry.meshes.stairs) {
         const low = Math.min(stair.fromIndex, stair.toIndex);

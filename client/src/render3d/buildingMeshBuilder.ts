@@ -48,7 +48,6 @@ export interface BuildingMeshes {
   nearWalls: THREE.Object3D[];
   fixtures: FixtureModel[];
   plinth: THREE.Object3D;
-  groundOccluder: THREE.Mesh;
   exteriorClutter: THREE.Group;
   stairs: StairMeshEntry[];
 }
@@ -574,46 +573,6 @@ function addPlinth(parent: THREE.Object3D, plinth: PlinthModel, material: THREE.
   return mesh;
 }
 
-function addGroundOccluder(parent: THREE.Object3D, model: BuildingModel): THREE.Mesh {
-  const margin = 1.4;
-  const x0 = model.footprint.x - margin;
-  const y0 = model.footprint.y - margin;
-  const x1 = model.footprint.x + model.footprint.w + margin;
-  const y1 = model.footprint.y + model.footprint.h + margin;
-  const shape = new THREE.Shape();
-  shape.moveTo(x0, y0);
-  shape.lineTo(x1, y0);
-  shape.lineTo(x1, y1);
-  shape.lineTo(x0, y1);
-  shape.closePath();
-
-  for (const stair of model.stairs) {
-    if (stair.toZ >= stair.fromZ || stair.toZ >= 0) continue;
-    const hole = new THREE.Path();
-    hole.moveTo(stair.hole.x, stair.hole.y);
-    hole.lineTo(stair.hole.x + stair.hole.w, stair.hole.y);
-    hole.lineTo(stair.hole.x + stair.hole.w, stair.hole.y + stair.hole.h);
-    hole.lineTo(stair.hole.x, stair.hole.y + stair.hole.h);
-    hole.closePath();
-    shape.holes.push(hole);
-  }
-
-  const mesh = new THREE.Mesh(
-    new THREE.ShapeGeometry(shape),
-    new THREE.MeshBasicMaterial({
-      colorWrite: false,
-      depthWrite: true,
-      depthTest: true,
-      side: THREE.DoubleSide,
-    }),
-  );
-  mesh.renderOrder = -1000;
-  mesh.castShadow = false;
-  mesh.receiveShadow = false;
-  parent.add(mesh);
-  return mesh;
-}
-
 function decalFor(decal: DecalModel, materials: SceneMaterials): THREE.Material {
   const frame = Math.max(0, Math.floor(decal.frame ?? 0));
   switch (decal.texture) {
@@ -767,7 +726,6 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
   const levelGroup = (id: string): THREE.Group => levelGroups.get(id) ?? group;
 
   const plinth = addPlinth(group, model.plinth, materials.concrete);
-  const groundOccluder = addGroundOccluder(group, model);
 
   for (const slab of model.slabs) {
     const slabGroup = new THREE.Group();
@@ -828,5 +786,5 @@ export function buildBuildingMeshes(model: BuildingModel, textures: BuildingText
 
   const exteriorClutter = addProps(group, model.props, materials);
 
-  return { group, levelGroups, nearWalls, fixtures: model.fixtures, plinth, groundOccluder, exteriorClutter, stairs };
+  return { group, levelGroups, nearWalls, fixtures: model.fixtures, plinth, exteriorClutter, stairs };
 }
