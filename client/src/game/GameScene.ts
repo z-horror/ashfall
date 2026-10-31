@@ -84,6 +84,7 @@ export class GameScene extends Phaser.Scene {
   private debugOverlay: BuildingDebugOverlay | null = null;
   private world3d: World3D | null = null;
   private render3dEnabled = true;
+  private ground3dEnabled = false;
   private world3dActive = false;
   private debugNext = 0;
   private aimWorld = { x: 0, y: 0 };
@@ -166,10 +167,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
-    this.render3dEnabled = new URLSearchParams(window.location.search).get('render3d') !== '0';
+    const params = new URLSearchParams(window.location.search);
+    this.render3dEnabled = params.get('render3d') !== '0';
+    this.ground3dEnabled = params.get('ground3d') === '1';
     if (this.render3dEnabled) {
       void import('../render3d/world3d.js').then(({ World3D }) => {
-        this.world3d = new World3D(this, this.world);
+        this.world3d = new World3D(this, this.world, this.ground3dEnabled);
         void this.world3d.ready.then(() => this.activateWorld3D());
       }).catch((error) => {
         console.error('[world3d] failed to load, keeping Phaser renderer', error);
@@ -606,6 +609,10 @@ export class GameScene extends Phaser.Scene {
     const view = new ChunkView(this, this.world, chunk);
     this.chunks.set(key, view);
     this.minimap?.addChunk(chunk);
+    if (this.world3dActive && this.ground3dEnabled) {
+      this.world3d?.loadGroundChunk(chunk.cx, chunk.cy);
+    }
+    this.updatePhaserGroundVisibility();
     this.syncBuildingViews();
     console.log(`[ashfall] chunk ${key} built in ${(performance.now() - t0).toFixed(0)}ms`);
   }
@@ -618,6 +625,9 @@ export class GameScene extends Phaser.Scene {
       this.chunks.delete(key);
     }
     this.world.unloadChunk(cx, cy);
+    if (this.world3dActive && this.ground3dEnabled) {
+      this.world3d?.unloadGroundChunk(cx, cy);
+    }
     this.syncBuildingViews();
   }
 
@@ -662,7 +672,7 @@ export class GameScene extends Phaser.Scene {
       const inside = view.building.id === this.currentBuilding;
       view.updateLocal(this.predicted.x, this.predicted.y, this.playerFloor, inside);
     }
-    for (const chunk of this.chunks.values()) chunk.setGroundVisible(this.playerFloor >= 0);
+    this.updatePhaserGroundVisibility();
     for (const [id, sprite] of this.itemSprites) {
       const item = this.currentItems.get(id);
       sprite.setVisible(item?.floor === this.playerFloor);
@@ -1225,6 +1235,24 @@ export class GameScene extends Phaser.Scene {
     this.buildingViews.clear();
     for (const view of this.getRenderableCharacters()) view.setRender3D(true);
     this.world3d.syncBuildings(this.world);
+    if (this.ground3dEnabled) {
+      this.world3d.syncAllGroundChunks(this.world);
+      this.updatePhaserGroundVisibility();
+    }
+  }
+
+  updatePhaserGroundVisibility(): void {
+    const ground3dActive = this.ground3dEnabled && this.world3dActive;
+    for (const [key, view] of this.chunks) {
+      const [cxStr, cyStr] = key.split(',');
+      const cx = Number(cxStr);
+      const cy = Number(cyStr);
+      if (ground3dActive && this.world3d?.hasGroundChunk(cx, cy)) {
+        view.setGroundVisible(false);
+      } else {
+        view.setGroundVisible(this.playerFloor >= 0);
+      }
+    }
   }
 
   getRender3DState(): { currentBuilding: string | null; playerFloor: number; elevationM: number } {

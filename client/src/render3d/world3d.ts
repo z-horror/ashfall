@@ -7,6 +7,9 @@ import type { GameScene } from '../game/GameScene.js';
 import { buildBuildingMeshes, type BuildingMeshes, type BuildingTextures } from './buildingMeshBuilder.js';
 import { CHARACTER_SHEET_COLS, CHARACTER_SHEET_ROWS, loadBuildingTextures, loadCharacterSheet } from './assets3d.js';
 import { specToBuildingModel } from './specToBuildingModel.js';
+import { Ground3DWorld, type Ground3DMetrics } from './ground3dWorld.js';
+
+export type { Ground3DMetrics };
 
 const TILE = TILE_SIZE_M;
 const SHEET_COLS = CHARACTER_SHEET_COLS;
@@ -101,11 +104,14 @@ export class World3D {
   private billboardY = new THREE.Vector3();
   private readyResolved = false;
   private readyResolve!: () => void;
+  private groundWorld: Ground3DWorld | null = null;
+  private readonly ground3dEnabled: boolean;
 
-  constructor(scene: Phaser.Scene, world: ClientWorld) {
+  constructor(scene: Phaser.Scene, world: ClientWorld, ground3dEnabled = false) {
     this.scene = scene;
     this.world = world;
     this.gameScene = scene as unknown as GameScene;
+    this.ground3dEnabled = ground3dEnabled;
     this.ready = new Promise((resolve) => {
       this.readyResolve = resolve;
     });
@@ -176,9 +182,17 @@ export class World3D {
       window.addEventListener('resize', this.onResize);
       this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
+
+      if (this.ground3dEnabled) {
+        this.groundWorld = new Ground3DWorld(this.scene3d, this.world);
+        this.groundWorld.syncAllLoadedChunks(this.world);
+      }
+
       this.readyResolved = true;
       this.readyResolve();
       this.syncBuildings(this.world);
+      (window as unknown as { __world3d?: World3D; __ground3dMetrics?: () => Ground3DMetrics }).__world3d = this;
+      (window as unknown as { __ground3dMetrics?: () => Ground3DMetrics }).__ground3dMetrics = () => this.getGround3dMetrics();
     } catch (error) {
       console.error('[world3d] init failed, keeping Phaser renderer', error);
     }
@@ -192,6 +206,7 @@ export class World3D {
   private onShutdown = (): void => {
     this.scene.game.events.off(Phaser.Core.Events.POST_RENDER, this.onPostRender);
     window.removeEventListener('resize', this.onResize);
+    this.groundWorld?.destroy();
   };
 
   private onPostRender = (): void => {
@@ -218,6 +233,7 @@ export class World3D {
       this.buildings.set(spec.id, { spec, model: converted.model, meshes });
     }
     this.updateBuildingVisibility();
+    this.groundWorld?.onBuildingsUpdated(world);
   }
 
   private updateBuildingVisibility(): void {
@@ -372,8 +388,36 @@ export class World3D {
     }
   }
 
+  hasGroundChunk(cx: number, cy: number): boolean {
+    return this.groundWorld ? this.groundWorld.hasGroundChunk(cx, cy) : false;
+  }
+
+  loadGroundChunk(cx: number, cy: number): void {
+    this.groundWorld?.loadChunk(cx, cy);
+  }
+
+  unloadGroundChunk(cx: number, cy: number): void {
+    this.groundWorld?.unloadChunk(cx, cy);
+  }
+
+  syncAllGroundChunks(world: ClientWorld): void {
+    this.groundWorld?.syncAllLoadedChunks(world);
+  }
+
+  getGround3dMetrics(): Ground3DMetrics {
+    return this.groundWorld ? this.groundWorld.getMetrics() : {
+      chunksCount: 0,
+      quadsCount: 0,
+      triangles: 0,
+      drawCalls: 0,
+      cutoutTilesCount: 0,
+    };
+  }
+
   update(): void {
     if (!this.readyResolved) return;
+    const state = this.gameScene.getRender3DState();
+    this.groundWorld?.setPlayerFloor(state.playerFloor);
     this.updateBuildingVisibility();
     this.syncCharacters();
   }
