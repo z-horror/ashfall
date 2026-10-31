@@ -83,6 +83,7 @@ export class CharacterView {
   private sprinting = false;
   private dead = false;
   private attackUntil = 0;
+  private hitUntil = 0;
   private lastActionAt = 0;
   private lastAnim = '';
   private local = false;
@@ -90,6 +91,8 @@ export class CharacterView {
   private floor = 0;
   private elevationM = 0;
   private moveDir: number | null = null;
+  private moveDx = 0;
+  private moveDy = 0;
   private outline?: Phaser.GameObjects.Sprite;
   private outlineVisible = false;
   private render3d = false;
@@ -163,6 +166,56 @@ export class CharacterView {
 
   get isDead(): boolean {
     return this.dead;
+  }
+
+  get isDying(): boolean {
+    return this.dying;
+  }
+
+  get isMoving(): boolean {
+    return this.moving;
+  }
+
+  get isSprinting(): boolean {
+    return this.sprinting;
+  }
+
+  get isAttacking(): boolean {
+    return this.scene.time.now < this.attackUntil;
+  }
+
+  get isHit(): boolean {
+    return this.scene.time.now < this.hitUntil;
+  }
+
+  get currentWeapon(): string | null {
+    return this.weaponKey;
+  }
+
+  get currentAim(): number {
+    return this.aim;
+  }
+
+  get entityKind(): 'player' | 'zombie' {
+    return this.kind;
+  }
+
+  get zombieType(): number {
+    return this.type;
+  }
+
+  get playerVariant(): number {
+    if (this.kind !== 'player') return 0;
+    const numeric = typeof this.id === 'number' ? Math.abs(this.id) : Math.abs(hashString(String(this.id)));
+    return numeric % 4;
+  }
+
+  get movementAngle(): number | null {
+    if (!this.moving) return null;
+    if (Math.hypot(this.moveDx, this.moveDy) > 0.001) {
+      return Math.atan2(this.moveDy, this.moveDx);
+    }
+    return null;
   }
 
   setFloor(floor: number, elevationM?: number): void {
@@ -269,8 +322,12 @@ export class CharacterView {
     if (s.moving && Math.hypot(dx, dy) > 0.005) {
       this.moveDir = directionFromDelta(dx, dy);
       this.facingDir = this.moveDir;
+      this.moveDx = dx;
+      this.moveDy = dy;
     } else if (!s.moving) {
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
     }
     this.tx = s.x;
     this.ty = s.y;
@@ -294,11 +351,17 @@ export class CharacterView {
     if (s.moving && Math.hypot(dx, dy) > 0.005) {
       this.moveDir = directionFromDelta(dx, dy);
       this.facingDir = this.moveDir;
+      this.moveDx = dx;
+      this.moveDy = dy;
     } else if (s.state === 'attack' || s.state === 'chase') {
       this.facingDir = screenDirectionFromAngle(s.aim);
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
     } else {
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
       this.facingDir = screenDirectionFromAngle(s.aim);
     }
     this.tx = s.x;
@@ -325,8 +388,12 @@ export class CharacterView {
     if (moving && (mx !== 0 || my !== 0)) {
       this.moveDir = directionFromDelta(mx, my);
       this.facingDir = this.moveDir;
+      this.moveDx = mx;
+      this.moveDy = my;
     } else {
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
       this.facingDir = screenDirectionFromAngle(aim);
     }
   }
@@ -398,6 +465,7 @@ export class CharacterView {
   }
 
   flashHit(): void {
+    this.hitUntil = this.scene.time.now + 250;
     this.sprite.setTint(0xff7a63);
     const baseScale = this.type === 2 ? 1.12 : 1.0;
     this.sprite.setScale(baseScale * 0.94, baseScale * 1.06);
