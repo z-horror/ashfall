@@ -9,16 +9,19 @@ export interface CharacterStateInputs {
   isAttacking: boolean;
   isMoving: boolean;
   isSprinting: boolean;
+  weapon: string | null;
 }
 
 export class CharacterStateMachine {
   private readonly mixer: THREE.AnimationMixer;
-  private readonly actions = new Map<CharacterStateName, THREE.AnimationAction>();
+  private readonly actions = new Map<string, THREE.AnimationAction>();
   private currentState: CharacterStateName = 'idle';
+  private currentActionName = '';
   private wasAttacking = false;
   private wasHit = false;
+  private oneShotRemaining = 0;
 
-  constructor(mixer: THREE.AnimationMixer, clips: Map<CharacterStateName, THREE.AnimationClip>) {
+  constructor(mixer: THREE.AnimationMixer, clips: Map<string, THREE.AnimationClip>) {
     this.mixer = mixer;
 
     for (const [name, clip] of clips) {
@@ -26,12 +29,16 @@ export class CharacterStateMachine {
       if (name === 'death') {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = true;
-      } else if (name === 'attack') {
+      } else if (name.startsWith('attack') || name === 'hit') {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = true;
-      } else if (name === 'hit') {
-        action.setLoop(THREE.LoopOnce, 1);
-        action.clampWhenFinished = false;
+        if (name === 'attack_melee') {
+          action.timeScale = 2.2;
+        } else if (name === 'attack_pistol') {
+          action.timeScale = 1.0;
+        } else if (name === 'hit') {
+          action.timeScale = 1.8;
+        }
       } else {
         action.setLoop(THREE.LoopRepeat, Infinity);
       }
@@ -41,6 +48,7 @@ export class CharacterStateMachine {
     const initial = this.actions.get('idle');
     if (initial) {
       initial.play();
+      this.currentActionName = 'idle';
     }
   }
 
@@ -48,58 +56,137 @@ export class CharacterStateMachine {
     return this.currentState;
   }
 
-  update(inputs: CharacterStateInputs): void {
-    const isAttackingJustStarted = inputs.isAttacking && !this.wasAttacking;
-    const isHitJustStarted = inputs.isHit && !this.wasHit;
-    this.wasAttacking = inputs.isAttacking;
-    this.wasHit = inputs.isHit;
-
-    // Terminal state handling: once dead, stay dead unless revived
-    if (this.currentState === 'death') {
-      if (!inputs.isDead && !inputs.isDying) {
-        // Character revived
-        this.transitionTo('idle', 0.2);
-      }
-      return;
-    }
-
-    let desiredState: CharacterStateName;
-    if (inputs.isDead || inputs.isDying) {
-      desiredState = 'death';
-    } else if (inputs.isHit) {
-      desiredState = 'hit';
-    } else if (inputs.isAttacking) {
-      desiredState = 'attack';
-    } else if (inputs.isMoving && inputs.isSprinting) {
-      desiredState = 'run';
-    } else if (inputs.isMoving) {
-      desiredState = 'walk';
-    } else {
-      desiredState = 'idle';
-    }
-
-    // Retrigger one-shots if requested again
-    if (desiredState === 'attack' && (isAttackingJustStarted || this.currentState !== 'attack')) {
-      this.playAction('attack', 0.08, true);
-      this.currentState = 'attack';
-      return;
-    }
-
-    if (desiredState === 'hit' && (isHitJustStarted || this.currentState !== 'hit')) {
-      this.playAction('hit', 0.06, true);
-      this.currentState = 'hit';
-      return;
-    }
-
-    if (this.currentState !== desiredState) {
-      const fadeDuration = desiredState === 'death' ? 0.1 : 0.15;
-      this.transitionTo(desiredState, fadeDuration);
-    }
+  get activeAction(): string {
+    return this.currentActionName;
   }
 
-  private transitionTo(nextState: CharacterStateName, fadeDuration: number): void {
-    const prevAction = this.actions.get(this.currentState);
-    const nextAction = this.actions.get(nextState);
+  update(dt: number, inputs: CharacterStateInputs): void {
+    const isAttackingJustStarted = inputs.isAttacking && !this.wasAttacking;
+    const isHitJustStarted = inputs.isHit && !this.wasHit;
+
+    // 1. Terminal state: Death
+    if (this.currentState === 'death') {
+      if (!inputs.isDead && !inputs.isDying) {
+        // Revived
+        this.currentState = 'idle';
+        this.transitionTo('idle', 0.2);
+      }
+      this.wasAttacking = inputs.isAttacking;
+      this.wasHit = inputs.isHit;
+      return;
+    }
+
+    if (inputs.isDead || inputs.isDying) {
+      this.currentState = 'death';
+      this.oneShotRemaining = 0;
+      this.playAction('death', 0.1, true);
+      this.wasAttacking = inputs.isAttacking;
+      this.wasHit = inputs.isHit;
+      return;
+    }
+
+    // 2. Decrement one-shot timer if active
+    if (this.oneShotRemaining > 0) {
+      this.oneShotRemaining -= dt;
+
+      // Allow hit reaction to interrupt an attack
+      if (isHitJustStarted) {
+        this.currentState = 'hit';
+        this.playOneShot('hit', 0.06);
+        this.wasAttacking = inputs.isAttacking;
+        this.wasHit = inputs.isHit;
+        return;
+      }
+
+      // Allow a fresh attack input to retrigger attack
+      if (isAttackingJustStarted && this.currentState === 'attack') {
+        const attackActionName = inputs.weapon === 'pistol' && this.actions.has('attack_pistol')
+          ? 'attack_pistol'
+          : 'attack_melee';
+        this.currentState = 'attack';
+        this.playOneShot(attackActionName, 0.06);
+        this.wasAttacking = inputs.isAttacking;
+        this.wasHit = inputs.isHit;
+        return;
+      }
+
+      // While one-shot is active, do not cut off!
+      this.wasAttacking = inputs.isAttacking;
+      this.wasHit = inputs.isHit;
+      return;
+    }
+
+    // 3. Trigger new one-shot if requested
+    if (inputs.isHit || isHitJustStarted) {
+      this.currentState = 'hit';
+      this.playOneShot('hit', 0.06);
+      this.wasAttacking = inputs.isAttacking;
+      this.wasHit = inputs.isHit;
+      return;
+    }
+
+    if (inputs.isAttacking || isAttackingJustStarted) {
+      const attackActionName = inputs.weapon === 'pistol' && this.actions.has('attack_pistol')
+        ? 'attack_pistol'
+        : 'attack_melee';
+      this.currentState = 'attack';
+      this.playOneShot(attackActionName, 0.08);
+      this.wasAttacking = inputs.isAttacking;
+      this.wasHit = inputs.isHit;
+      return;
+    }
+
+    // 4. Locomotion states: run, walk, idle
+    const isGun = inputs.weapon === 'pistol';
+    let targetAction: string;
+    let nextState: CharacterStateName;
+
+    if (inputs.isMoving && inputs.isSprinting) {
+      nextState = 'run';
+      targetAction = isGun && this.actions.has('run_gun') ? 'run_gun' : 'run';
+    } else if (inputs.isMoving) {
+      nextState = 'walk';
+      targetAction = isGun && this.actions.has('walk_gun') ? 'walk_gun' : 'walk';
+    } else {
+      nextState = 'idle';
+      targetAction = isGun && this.actions.has('idle_gun') ? 'idle_gun' : 'idle';
+    }
+
+    if (!this.actions.has(targetAction)) {
+      if (nextState === 'run' && this.actions.has('walk')) targetAction = 'walk';
+      else if (this.actions.has('idle')) targetAction = 'idle';
+    }
+
+    if (this.currentActionName !== targetAction || this.currentState !== nextState) {
+      this.transitionTo(targetAction, 0.15);
+      this.currentState = nextState;
+    }
+
+    this.wasAttacking = inputs.isAttacking;
+    this.wasHit = inputs.isHit;
+  }
+
+  private playOneShot(actionName: string, fadeDuration: number): void {
+    const action = this.actions.get(actionName) ?? this.actions.get('attack_melee') ?? this.actions.get('idle');
+    if (!action) return;
+
+    if (this.currentActionName && this.currentActionName !== actionName) {
+      const prev = this.actions.get(this.currentActionName);
+      if (prev) prev.fadeOut(fadeDuration);
+    }
+
+    action.reset();
+    action.fadeIn(fadeDuration).play();
+    this.currentActionName = actionName;
+
+    const clipDuration = action.getClip().duration;
+    const timeScale = action.timeScale || 1;
+    this.oneShotRemaining = clipDuration / timeScale;
+  }
+
+  private transitionTo(nextActionName: string, fadeDuration: number): void {
+    const prevAction = this.actions.get(this.currentActionName);
+    const nextAction = this.actions.get(nextActionName);
 
     if (!nextAction) return;
 
@@ -108,24 +195,22 @@ export class CharacterStateMachine {
     }
 
     nextAction.reset().fadeIn(fadeDuration).play();
-    this.currentState = nextState;
+    this.currentActionName = nextActionName;
   }
 
-  private playAction(name: CharacterStateName, fadeDuration: number, restart = false): void {
-    const action = this.actions.get(name);
+  private playAction(actionName: string, fadeDuration: number, restart = false): void {
+    const action = this.actions.get(actionName);
     if (!action) return;
 
-    if (this.currentState !== name) {
-      const prevAction = this.actions.get(this.currentState);
-      if (prevAction) {
-        prevAction.fadeOut(fadeDuration);
-      }
+    if (this.currentActionName && this.currentActionName !== actionName) {
+      const prev = this.actions.get(this.currentActionName);
+      if (prev) prev.fadeOut(fadeDuration);
     }
 
     if (restart) {
       action.reset();
     }
     action.fadeIn(fadeDuration).play();
-    this.currentState = name;
+    this.currentActionName = actionName;
   }
 }

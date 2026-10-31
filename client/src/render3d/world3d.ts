@@ -358,7 +358,8 @@ export class World3D {
 
         let char3d = this.characters3D.get(key);
         if (!char3d) {
-          const instance = this.characterLoader.instantiate(view.entityKind, view.zombieType);
+          const variant = view.playerVariant;
+          const instance = this.characterLoader.instantiate(view.entityKind, variant, view.zombieType);
           if (instance) {
             char3d = new Character3D(instance, getContactShadowTexture());
             this.scene3d.add(char3d.rootGroup);

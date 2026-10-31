@@ -16,8 +16,9 @@ export class Character3D {
   private readonly handSlot: THREE.Object3D | null = null;
   private readonly materials: THREE.Material[];
   private readonly defaultColors: number[] = [];
+  private readonly weaponMeshes: Map<string, THREE.Object3D>;
+  private customWeaponMesh: THREE.Object3D | null = null;
   private currentWeaponKey: string | null = null;
-  private currentWeaponMesh: THREE.Object3D | null = null;
   private readonly baseScale: number;
   private isHitActive = false;
 
@@ -27,6 +28,7 @@ export class Character3D {
     this.handSlot = instance.handSlot;
     this.baseScale = instance.baseScale;
     this.materials = instance.materials;
+    this.weaponMeshes = instance.weaponMeshes;
     this.stateMachine = new CharacterStateMachine(this.mixer, instance.clips);
 
     for (const mat of this.materials) {
@@ -37,12 +39,12 @@ export class Character3D {
       }
     }
 
-    // Transform from GLTF Y-up to Ashfall World Z-up
-    this.modelGroup.rotation.x = Math.PI / 2;
+    // Transform from GLTF coordinates (Y-up, -Z forward) to Ashfall World (Z-up, -Y North, +X East)
+    this.modelGroup.rotation.set(Math.PI / 2, Math.PI, 0);
     this.modelGroup.scale.set(this.baseScale, this.baseScale, this.baseScale);
     this.rootGroup.add(this.modelGroup);
 
-    // Contact shadow mesh at ground level
+    // Contact shadow mesh at ground level without gap or z-fighting
     const shadowGeo = new THREE.PlaneGeometry(1, 1);
     const shadowMat = new THREE.MeshBasicMaterial({
       map: shadowTexture,
@@ -65,22 +67,35 @@ export class Character3D {
 
     this.rootGroup.position.set(feetX, feetY, feetZ);
 
-    // 2. Continuous rotation according to aim without discrete 8-direction snapping
-    // At aim = -PI/2 (North), character forward aligns with -Y
-    this.rootGroup.rotation.z = view.currentAim + Math.PI / 2;
+    // 2. Orientation & No Moonwalk:
+    // When moving and not attacking, face the movement direction.
+    // When attacking or stationary, face aim direction.
+    if (view.isAttacking) {
+      this.rootGroup.rotation.z = view.currentAim + Math.PI / 2;
+    } else if (view.isMoving && view.movementAngle !== null) {
+      this.rootGroup.rotation.z = view.movementAngle + Math.PI / 2;
+    } else {
+      this.rootGroup.rotation.z = view.currentAim + Math.PI / 2;
+    }
 
-    // 3. Contact shadow directly under character feet
-    const shadowScale = this.baseScale * 0.78;
+    // 3. Contact shadow directly under character feet (snug to floor)
+    const shadowScale = this.baseScale * 0.76;
     this.shadowMesh.scale.set(shadowScale, shadowScale, 1);
-    this.shadowMesh.position.set(feetX, feetY, Math.max(0.01, feetZ + 0.012));
+    this.shadowMesh.position.set(feetX, feetY, Math.max(0.005, feetZ + 0.008));
 
-    // 4. Weapon socket synchronization
+    // 4. Weapon synchronization
     const weaponKey = view.currentWeapon;
     if (weaponKey !== this.currentWeaponKey) {
       this.updateWeapon(weaponKey);
     }
-    if (this.currentWeaponMesh) {
-      this.currentWeaponMesh.visible = !view.isDead;
+    const showWeapons = !view.isDead && !view.isDying;
+    if (!showWeapons) {
+      for (const mesh of this.weaponMeshes.values()) {
+        mesh.visible = false;
+      }
+      if (this.customWeaponMesh) {
+        this.customWeaponMesh.visible = false;
+      }
     }
 
     // 5. Hit flash effect
@@ -93,18 +108,19 @@ export class Character3D {
     }
 
     // 6. Animation state machine & mixer update
-    this.stateMachine.update({
+    this.stateMachine.update(dt, {
       isDead: view.isDead,
       isDying: view.isDying,
       isHit: view.isHit,
       isAttacking: view.isAttacking,
       isMoving: view.isMoving,
       isSprinting: view.isSprinting,
+      weapon: weaponKey,
     });
 
     this.mixer.update(dt);
 
-    // 7. Hide character model completely when dead after animation
+    // 7. Hide character model completely when dead
     if (view.isDead) {
       this.rootGroup.visible = false;
       this.shadowMesh.visible = false;
@@ -116,15 +132,51 @@ export class Character3D {
 
   private updateWeapon(key: string | null): void {
     this.currentWeaponKey = key;
-    if (this.currentWeaponMesh && this.handSlot) {
-      this.handSlot.remove(this.currentWeaponMesh);
-      this.currentWeaponMesh = null;
+
+    // Hide all built-in weapon meshes
+    for (const mesh of this.weaponMeshes.values()) {
+      mesh.visible = false;
     }
 
-    if (key && this.handSlot) {
+    // Remove any custom attached weapon mesh from handSlot
+    if (this.customWeaponMesh && this.handSlot) {
+      this.handSlot.remove(this.customWeaponMesh);
+      this.customWeaponMesh = null;
+    }
+
+    if (!key) return;
+
+    // Check for built-in weapon mesh in Quaternius rig
+    let builtInName: string | null = null;
+    if (key === 'pistol') {
+      builtInName = 'Pistol';
+    } else if (key === 'knife') {
+      builtInName = 'Knife';
+    } else if (key === 'axe') {
+      builtInName = 'Axe';
+    } else if (key === 'bat') {
+      builtInName = 'WoodenBat_Saw';
+    } else if (key === 'spiked_bat') {
+      builtInName = 'WoodenBat_Barbed';
+    }
+
+    if (builtInName) {
+      const mesh = this.weaponMeshes.get(builtInName);
+      if (mesh) {
+        mesh.visible = true;
+        if (builtInName === 'Pistol') {
+          // Ensure pistol is nicely scaled, unobstructed and prominent in hand
+          mesh.scale.set(1.18, 1.18, 1.18);
+        }
+        return;
+      }
+    }
+
+    // Fallback or custom weapon mesh (e.g. crowbar)
+    if (this.handSlot) {
       const mesh = createWeaponMesh(key);
       if (mesh) {
-        this.currentWeaponMesh = mesh;
+        this.customWeaponMesh = mesh;
         this.handSlot.add(mesh);
       }
     }

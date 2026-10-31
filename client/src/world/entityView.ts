@@ -91,6 +91,8 @@ export class CharacterView {
   private floor = 0;
   private elevationM = 0;
   private moveDir: number | null = null;
+  private moveDx = 0;
+  private moveDy = 0;
   private outline?: Phaser.GameObjects.Sprite;
   private outlineVisible = false;
   private render3d = false;
@@ -202,6 +204,20 @@ export class CharacterView {
     return this.type;
   }
 
+  get playerVariant(): number {
+    if (this.kind !== 'player') return 0;
+    const numeric = typeof this.id === 'number' ? Math.abs(this.id) : Math.abs(hashString(String(this.id)));
+    return numeric % 4;
+  }
+
+  get movementAngle(): number | null {
+    if (!this.moving) return null;
+    if (Math.hypot(this.moveDx, this.moveDy) > 0.001) {
+      return Math.atan2(this.moveDy, this.moveDx);
+    }
+    return null;
+  }
+
   setFloor(floor: number, elevationM?: number): void {
     this.floor = floor;
     if (elevationM !== undefined) this.elevationM = elevationM;
@@ -306,8 +322,12 @@ export class CharacterView {
     if (s.moving && Math.hypot(dx, dy) > 0.005) {
       this.moveDir = directionFromDelta(dx, dy);
       this.facingDir = this.moveDir;
+      this.moveDx = dx;
+      this.moveDy = dy;
     } else if (!s.moving) {
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
     }
     this.tx = s.x;
     this.ty = s.y;
@@ -331,11 +351,17 @@ export class CharacterView {
     if (s.moving && Math.hypot(dx, dy) > 0.005) {
       this.moveDir = directionFromDelta(dx, dy);
       this.facingDir = this.moveDir;
+      this.moveDx = dx;
+      this.moveDy = dy;
     } else if (s.state === 'attack' || s.state === 'chase') {
       this.facingDir = screenDirectionFromAngle(s.aim);
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
     } else {
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
       this.facingDir = screenDirectionFromAngle(s.aim);
     }
     this.tx = s.x;
@@ -362,8 +388,12 @@ export class CharacterView {
     if (moving && (mx !== 0 || my !== 0)) {
       this.moveDir = directionFromDelta(mx, my);
       this.facingDir = this.moveDir;
+      this.moveDx = mx;
+      this.moveDy = my;
     } else {
       this.moveDir = null;
+      this.moveDx = 0;
+      this.moveDy = 0;
       this.facingDir = screenDirectionFromAngle(aim);
     }
   }
