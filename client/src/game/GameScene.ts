@@ -1133,7 +1133,7 @@ export class GameScene extends Phaser.Scene {
       this.zombieViews.size,
       this.playerViews.size,
     );
-    this.world3d?.update();
+    this.world3d?.update(delta);
   }
 
   private activateWorld3D(): void {

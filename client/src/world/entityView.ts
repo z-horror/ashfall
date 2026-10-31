@@ -83,6 +83,7 @@ export class CharacterView {
   private sprinting = false;
   private dead = false;
   private attackUntil = 0;
+  private hitUntil = 0;
   private lastActionAt = 0;
   private lastAnim = '';
   private local = false;
@@ -163,6 +164,42 @@ export class CharacterView {
 
   get isDead(): boolean {
     return this.dead;
+  }
+
+  get isDying(): boolean {
+    return this.dying;
+  }
+
+  get isMoving(): boolean {
+    return this.moving;
+  }
+
+  get isSprinting(): boolean {
+    return this.sprinting;
+  }
+
+  get isAttacking(): boolean {
+    return this.scene.time.now < this.attackUntil;
+  }
+
+  get isHit(): boolean {
+    return this.scene.time.now < this.hitUntil;
+  }
+
+  get currentWeapon(): string | null {
+    return this.weaponKey;
+  }
+
+  get currentAim(): number {
+    return this.aim;
+  }
+
+  get entityKind(): 'player' | 'zombie' {
+    return this.kind;
+  }
+
+  get zombieType(): number {
+    return this.type;
   }
 
   setFloor(floor: number, elevationM?: number): void {
@@ -398,6 +435,7 @@ export class CharacterView {
   }
 
   flashHit(): void {
+    this.hitUntil = this.scene.time.now + 250;
     this.sprite.setTint(0xff7a63);
     const baseScale = this.type === 2 ? 1.12 : 1.0;
     this.sprite.setScale(baseScale * 0.94, baseScale * 1.06);

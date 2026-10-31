@@ -8,6 +8,8 @@ import { buildBuildingMeshes, type BuildingMeshes, type BuildingTextures } from 
 import { CHARACTER_SHEET_COLS, CHARACTER_SHEET_ROWS, loadBuildingTextures, loadCharacterSheet } from './assets3d.js';
 import { specToBuildingModel } from './specToBuildingModel.js';
 import { Ground3DWorld, type Ground3DMetrics } from './ground3dWorld.js';
+import { CharacterModelLoader } from './characterModelLoader.js';
+import { Character3D } from './character3d.js';
 
 export type { Ground3DMetrics };
 
@@ -100,6 +102,9 @@ export class World3D {
   private characterSheets = new Map<string, THREE.Texture>();
   private buildings = new Map<string, BuildingEntry>();
   private characters = new Map<string, CharacterEntry>();
+  private readonly characterLoader = new CharacterModelLoader();
+  private readonly characters3D = new Map<string, Character3D>();
+  private lastUpdateTime = 0;
   private billboardX = new THREE.Vector3();
   private billboardY = new THREE.Vector3();
   private readyResolved = false;
@@ -181,6 +186,8 @@ export class World3D {
       this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
 
+      void this.characterLoader.load();
+
       if (!this.groundWorld) {
         this.groundWorld = new Ground3DWorld(this.scene3d, this.world);
         this.groundWorld.syncAllLoadedChunks(this.world);
@@ -201,6 +208,20 @@ export class World3D {
       this.scene3d.remove(entry.meshes.group);
     }
     this.buildings.clear();
+    for (const char3d of this.characters3D.values()) {
+      char3d.destroy(this.scene3d);
+    }
+    this.characters3D.clear();
+    for (const entry of this.characters.values()) {
+      this.scene3d.remove(entry.mesh);
+      this.scene3d.remove(entry.shadow);
+      entry.mesh.geometry.dispose();
+      entry.material.map?.dispose();
+      entry.material.dispose();
+      entry.shadow.geometry.dispose();
+      (entry.shadow.material as THREE.Material).dispose();
+    }
+    this.characters.clear();
     this.groundWorld?.destroy();
     this.groundWorld = new Ground3DWorld(this.scene3d, world);
     this.world = world;
@@ -214,6 +235,20 @@ export class World3D {
   private onShutdown = (): void => {
     this.scene.game.events.off(Phaser.Core.Events.POST_RENDER, this.onPostRender);
     window.removeEventListener('resize', this.onResize);
+    for (const char3d of this.characters3D.values()) {
+      char3d.destroy(this.scene3d);
+    }
+    this.characters3D.clear();
+    for (const entry of this.characters.values()) {
+      this.scene3d.remove(entry.mesh);
+      this.scene3d.remove(entry.shadow);
+      entry.mesh.geometry.dispose();
+      entry.material.map?.dispose();
+      entry.material.dispose();
+      entry.shadow.geometry.dispose();
+      (entry.shadow.material as THREE.Material).dispose();
+    }
+    this.characters.clear();
     this.groundWorld?.destroy();
   };
 
@@ -295,103 +330,148 @@ export class World3D {
     this.camera.projectionMatrixInverse.copy(matrix).invert();
   }
 
-  private syncCharacters(): void {
+  private syncCharacters(dt: number): void {
     if (!this.readyResolved) return;
     const views = this.gameScene.getRenderableCharacters();
     const active = new Set<string>();
+
+    const useSkinned3D = this.characterLoader.ready;
+
     for (const view of views) {
-      if (view.isDead) continue;
-      const frameName = view.frameName;
-      const separator = frameName.indexOf(':');
-      if (separator < 0) continue;
-      const style = frameName.slice(0, separator);
-      const index = Number(frameName.slice(separator + 1));
-      if (!Number.isFinite(index)) continue;
+      if (view.isDead && !view.isDying) continue;
       const key = `${view.kind}:${view.id}`;
       active.add(key);
-      let entry = this.characters.get(key);
-      if (!entry) {
-        const sheet = this.characterSheets.get(style);
-        if (!sheet) continue;
-        const texture = sheet.clone();
-        texture.needsUpdate = true;
-        texture.wrapS = THREE.ClampToEdgeWrapping;
-        texture.wrapT = THREE.ClampToEdgeWrapping;
-        texture.repeat.set(1 / SHEET_COLS, 1 / SHEET_ROWS);
-        const material = new THREE.MeshBasicMaterial({
-          map: texture,
-          transparent: true,
-          alphaTest: 0.08,
-          side: THREE.DoubleSide,
-          depthTest: true,
-          depthWrite: true,
-          polygonOffset: true,
-          polygonOffsetFactor: -2,
-          polygonOffsetUnits: -2,
-          toneMapped: false,
-        });
-        const geometry = new THREE.PlaneGeometry(1, 1);
-        geometry.translate(0, 0.5, 0);
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.matrixAutoUpdate = false;
-        mesh.frustumCulled = false;
-        this.scene3d.add(mesh);
-        const shadow = new THREE.Mesh(
-          new THREE.PlaneGeometry(1, 1),
-          new THREE.MeshBasicMaterial({
-            map: getContactShadowTexture(),
+
+      if (useSkinned3D) {
+        // If a billboard fallback was previously rendered, clean it up cleanly
+        const billboard = this.characters.get(key);
+        if (billboard) {
+          this.scene3d.remove(billboard.mesh);
+          this.scene3d.remove(billboard.shadow);
+          billboard.mesh.geometry.dispose();
+          billboard.material.map?.dispose();
+          billboard.material.dispose();
+          billboard.shadow.geometry.dispose();
+          (billboard.shadow.material as THREE.Material).dispose();
+          this.characters.delete(key);
+        }
+
+        let char3d = this.characters3D.get(key);
+        if (!char3d) {
+          const instance = this.characterLoader.instantiate(view.entityKind, view.zombieType);
+          if (instance) {
+            char3d = new Character3D(instance, getContactShadowTexture());
+            this.scene3d.add(char3d.rootGroup);
+            this.scene3d.add(char3d.shadowMesh);
+            this.characters3D.set(key, char3d);
+          }
+        }
+        if (char3d) {
+          char3d.update(dt, view);
+        }
+      } else {
+        // Fallback billboard rendering while GLTF assets are loading
+        const frameName = view.frameName;
+        const separator = frameName.indexOf(':');
+        if (separator < 0) continue;
+        const style = frameName.slice(0, separator);
+        const index = Number(frameName.slice(separator + 1));
+        if (!Number.isFinite(index)) continue;
+
+        let entry = this.characters.get(key);
+        if (!entry) {
+          const sheet = this.characterSheets.get(style);
+          if (!sheet) continue;
+          const texture = sheet.clone();
+          texture.needsUpdate = true;
+          texture.wrapS = THREE.ClampToEdgeWrapping;
+          texture.wrapT = THREE.ClampToEdgeWrapping;
+          texture.repeat.set(1 / SHEET_COLS, 1 / SHEET_ROWS);
+          const material = new THREE.MeshBasicMaterial({
+            map: texture,
             transparent: true,
-            opacity: 0.55,
-            depthWrite: false,
-            depthTest: true,
-            toneMapped: false,
+            alphaTest: 0.08,
             side: THREE.DoubleSide,
-          }),
+            depthTest: true,
+            depthWrite: true,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2,
+            toneMapped: false,
+          });
+          const geometry = new THREE.PlaneGeometry(1, 1);
+          geometry.translate(0, 0.5, 0);
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.matrixAutoUpdate = false;
+          mesh.frustumCulled = false;
+          this.scene3d.add(mesh);
+          const shadow = new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({
+              map: getContactShadowTexture(),
+              transparent: true,
+              opacity: 0.55,
+              depthWrite: false,
+              depthTest: true,
+              toneMapped: false,
+              side: THREE.DoubleSide,
+            }),
+          );
+          shadow.renderOrder = 1;
+          this.scene3d.add(shadow);
+          entry = { view, style, mesh, shadow, material };
+          this.characters.set(key, entry);
+        }
+        if (entry.style !== style) continue;
+        const texture = entry.material.map;
+        if (texture) {
+          texture.offset.set(
+            (index % SHEET_COLS) / SHEET_COLS,
+            1 - (Math.floor(index / SHEET_COLS) + 1) / SHEET_ROWS,
+          );
+        }
+        const feet = new THREE.Vector3(view.x * TILE, view.y * TILE, view.elevationMeters + 0.02);
+        const base = feet.clone().addScaledVector(BILLBOARD_NORMAL, CHARACTER_CAMERA_OFFSET);
+        const anchorShift = -(1 - view.footAnchorFraction) * view.displayHeight;
+        const matrix = new THREE.Matrix4().makeBasis(
+          this.billboardX.clone().multiplyScalar(view.displayWidth),
+          this.billboardY.clone().multiplyScalar(view.displayHeight),
+          BILLBOARD_NORMAL,
         );
-        shadow.renderOrder = 1;
-        this.scene3d.add(shadow);
-        entry = { view, style, mesh, shadow, material };
-        this.characters.set(key, entry);
+        matrix.setPosition(base.clone().addScaledVector(this.billboardY, anchorShift));
+        entry.mesh.matrix.copy(matrix);
+        entry.mesh.matrixWorldNeedsUpdate = true;
+        entry.material.opacity = view.spriteAlpha;
+        entry.material.color.setHex(view.spriteTint ?? 0xffffff);
+        entry.mesh.visible = true;
+        const worldWidth = view.displayWidth * this.billboardX.length();
+        const shadowScale = Math.max(0.45, worldWidth * 0.34);
+        entry.shadow.scale.set(shadowScale, shadowScale * 0.72, 1);
+        entry.shadow.visible = true;
+        entry.shadow.position.set(base.x, base.y, Math.max(0.01, view.elevationMeters + 0.012));
       }
-      if (entry.style !== style) continue;
-      const texture = entry.material.map;
-      if (texture) {
-        texture.offset.set(
-          (index % SHEET_COLS) / SHEET_COLS,
-          1 - (Math.floor(index / SHEET_COLS) + 1) / SHEET_ROWS,
-        );
-      }
-      const feet = new THREE.Vector3(view.x * TILE, view.y * TILE, view.elevationMeters + 0.02);
-      const base = feet.clone().addScaledVector(BILLBOARD_NORMAL, CHARACTER_CAMERA_OFFSET);
-      const anchorShift = -(1 - view.footAnchorFraction) * view.displayHeight;
-      const matrix = new THREE.Matrix4().makeBasis(
-        this.billboardX.clone().multiplyScalar(view.displayWidth),
-        this.billboardY.clone().multiplyScalar(view.displayHeight),
-        BILLBOARD_NORMAL,
-      );
-      matrix.setPosition(base.clone().addScaledVector(this.billboardY, anchorShift));
-      entry.mesh.matrix.copy(matrix);
-      entry.mesh.matrixWorldNeedsUpdate = true;
-      entry.material.opacity = view.spriteAlpha;
-      entry.material.color.setHex(view.spriteTint ?? 0xffffff);
-      entry.mesh.visible = true;
-      const worldWidth = view.displayWidth * this.billboardX.length();
-      const shadowScale = Math.max(0.45, worldWidth * 0.34);
-      entry.shadow.scale.set(shadowScale, shadowScale * 0.72, 1);
-      entry.shadow.visible = true;
-      entry.shadow.position.set(base.x, base.y, Math.max(0.01, view.elevationMeters + 0.012));
     }
 
+    // Clean up inactive 3D characters
+    for (const [key, char3d] of [...this.characters3D]) {
+      if (!active.has(key)) {
+        char3d.destroy(this.scene3d);
+        this.characters3D.delete(key);
+      }
+    }
+
+    // Clean up inactive billboards
     for (const [key, entry] of [...this.characters]) {
-      if (active.has(key)) continue;
-      this.scene3d.remove(entry.mesh);
-      this.scene3d.remove(entry.shadow);
-      entry.mesh.geometry.dispose();
-      entry.material.map?.dispose();
-      entry.material.dispose();
-      entry.shadow.geometry.dispose();
-      (entry.shadow.material as THREE.Material).dispose();
-      this.characters.delete(key);
+      if (!active.has(key)) {
+        this.scene3d.remove(entry.mesh);
+        this.scene3d.remove(entry.shadow);
+        entry.mesh.geometry.dispose();
+        entry.material.map?.dispose();
+        entry.material.dispose();
+        entry.shadow.geometry.dispose();
+        (entry.shadow.material as THREE.Material).dispose();
+        this.characters.delete(key);
+      }
     }
   }
 
@@ -421,11 +501,19 @@ export class World3D {
     };
   }
 
-  update(): void {
+  update(deltaMs?: number): void {
     if (!this.readyResolved) return;
+    const now = performance.now();
+    const dt = deltaMs !== undefined && Number.isFinite(deltaMs)
+      ? Math.max(0.001, deltaMs / 1000)
+      : this.lastUpdateTime > 0
+        ? Math.min(Math.max(0.001, (now - this.lastUpdateTime) / 1000), 0.1)
+        : 0.016;
+    this.lastUpdateTime = now;
+
     const state = this.gameScene.getRender3DState();
     this.groundWorld?.setPlayerFloor(state.playerFloor);
     this.updateBuildingVisibility();
-    this.syncCharacters();
+    this.syncCharacters(dt);
   }
 }
