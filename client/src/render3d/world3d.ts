@@ -90,7 +90,7 @@ interface CharacterEntry {
 export class World3D {
   readonly ready: Promise<void>;
   private readonly scene: Phaser.Scene;
-  private readonly world: ClientWorld;
+  world: ClientWorld;
   private readonly gameScene: GameScene;
   private renderer!: THREE.WebGLRenderer;
   private scene3d = new THREE.Scene();
@@ -104,14 +104,12 @@ export class World3D {
   private billboardY = new THREE.Vector3();
   private readyResolved = false;
   private readyResolve!: () => void;
-  private groundWorld: Ground3DWorld | null = null;
-  private readonly ground3dEnabled: boolean;
+  groundWorld: Ground3DWorld | null = null;
 
-  constructor(scene: Phaser.Scene, world: ClientWorld, ground3dEnabled = false) {
+  constructor(scene: Phaser.Scene, world: ClientWorld) {
     this.scene = scene;
     this.world = world;
     this.gameScene = scene as unknown as GameScene;
-    this.ground3dEnabled = ground3dEnabled;
     this.ready = new Promise((resolve) => {
       this.readyResolve = resolve;
     });
@@ -183,7 +181,7 @@ export class World3D {
       this.scene.game.events.on(Phaser.Core.Events.POST_RENDER, this.onPostRender);
       this.scene.events.once('shutdown', this.onShutdown);
 
-      if (this.ground3dEnabled) {
+      if (!this.groundWorld) {
         this.groundWorld = new Ground3DWorld(this.scene3d, this.world);
         this.groundWorld.syncAllLoadedChunks(this.world);
       }
@@ -196,6 +194,16 @@ export class World3D {
     } catch (error) {
       console.error('[world3d] init failed, keeping Phaser renderer', error);
     }
+  }
+
+  reset(world: ClientWorld): void {
+    for (const entry of this.buildings.values()) {
+      this.scene3d.remove(entry.meshes.group);
+    }
+    this.buildings.clear();
+    this.groundWorld?.destroy();
+    this.groundWorld = new Ground3DWorld(this.scene3d, world);
+    this.world = world;
   }
 
   private onResize = (): void => {
@@ -248,7 +256,6 @@ export class World3D {
       }
       for (const wall of entry.meshes.nearWalls) wall.visible = !inside;
       entry.meshes.plinth.visible = !inBasement;
-      entry.meshes.groundOccluder.visible = !inside || state.playerFloor >= 0;
       entry.meshes.exteriorClutter.visible = !inside;
       for (const stair of entry.meshes.stairs) {
         const low = Math.min(stair.fromIndex, stair.toIndex);
