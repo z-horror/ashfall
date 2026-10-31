@@ -46,7 +46,7 @@ export class GameScene extends Phaser.Scene {
   private net: NetClient;
   private hud: HUD;
   private audio: AudioEngine;
-  private world = new ClientWorld();
+  world = new ClientWorld();
   private minimap: Minimap | null = null;
 
   private selfView: CharacterView | null = null;
@@ -78,8 +78,8 @@ export class GameScene extends Phaser.Scene {
   private dust: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private light: Phaser.GameObjects.Image | null = null;
   private debugOverlay: BuildingDebugOverlay | null = null;
-  private world3d: World3D | null = null;
-  private world3dActive = false;
+  world3d: World3D | null = null;
+  world3dActive = false;
   private debugNext = 0;
   private aimWorld = { x: 0, y: 0 };
   private readyPromise: Promise<void>;
@@ -545,6 +545,7 @@ export class GameScene extends Phaser.Scene {
     for (const i of this.itemSprites.values()) i.destroy();
     this.itemSprites.clear();
     this.world = new ClientWorld();
+    this.world3d?.reset(this.world);
     this.currentBuilding = null;
   }
 
