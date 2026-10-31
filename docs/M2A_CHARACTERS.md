@@ -8,34 +8,34 @@
 
 Берём только CC0, без покупки:
 
-- KayKit — Character Pack: Adventurers  
-  https://kaylousberg.itch.io/kaykit-adventurers  
-  Лицензия: CC0. Есть GLTF, rigged/animated, одежда.
-- KayKit — Character Animations  
-  https://kaylousberg.itch.io/kaykit-character-animations  
-  Лицензия: CC0. 150+ humanoid animations, GLTF/FBX, Rig_Medium.
+- Quaternius — Zombie Apocalypse Kit  
+  https://quaternius.com/packs/zombieapocalypsekit.html  
+  Лицензия: CC0. 4 playable characters, 4 enemies, ~20 animations each, glTF/FBX/OBJ/Blend.
+  Скачивание: https://drive.google.com/drive/folders/1mWP6sCHun7OUMHQeDNZLrXTteXlzWg_t?usp=sharing
 
-Можно скачать бесплатную версию «Name your own price». Покупать ничего не нужно.
+Покупать ничего не нужно. KayKit не использовать — это фэнтези, не апокалипсис.
 
 В репозиторий кладём только нужные модели/анимации/текстуры, не весь zip.  
 Обязательно добавить:
 
-- `client/public/assets/characters/kaykit/LICENSE.txt` — текст CC0/лицензии;
-- `client/public/assets/characters/kaykit/SOURCE.md` — ссылки на обе страницы и дата скачивания.
+- `client/public/assets/characters/quaternius/LICENSE.txt` — текст CC0/лицензии;
+- `client/public/assets/characters/quaternius/SOURCE.md` — ссылка на страницу, Google Drive и дата скачивания.
 
-Mixamo не использовать. Платные ассеты не использовать. Если itch.io недоступен — остановиться и спросить.
+Mixamo не использовать. Платные ассеты не использовать. Если Google Drive недоступен — остановиться и спросить.
 
 ## 2. Что делаем
 
-- Один humanoid-риг на игрока и зомби.
+- 4 модели выживших и 4 модели врагов из пака; варианты игрока и типы зомби должны визуально отличаться.
 - `GLTFLoader` + `AnimationMixer`.
 - Клонирование через `SkeletonUtils.clone`.
-- Клипы: idle, walk, run, attack, hit, death.
-- Без 8 направлений: поворот по aim.
+- Клипы: idle, walk, run, attack (melee), attack (pistol/ranged), hit, death.
+- Тип атаки зависит от оружия: бита/нож/топор/лом — melee, пистолет — ranged.
+- Без 8 направлений спрайтов: поворот модели в 3D.
 - Без root motion: движение серверное; горизонтальный root motion убрать.
-- Сокет оружия в правой руке.
+- Сокет оружия в правой руке; пистолет должен быть виден.
 - State machine отдельно от модели.
-- Зомби — тот же риг, другой материал/оттенок, без отдельной анимационной системы.
+- One-shot анимации (attack/hit/death) не обрезаются.
+- При движении модель смотрит в сторону движения; при атаке/стоя — в сторону aim. Лунной походки быть не должно.
 - Билборды остаются только как fallback до загрузки GLTF, затем заменяются.
 - Feet/shadow/cutaway: персонаж стоит на земле, не проваливается в стены, скрывается стенами.
 
@@ -54,14 +54,16 @@ Mixamo не использовать. Платные ассеты не испо�
 - `client/src/render3d/world3d.ts` — интеграция персонажей;
 - `client/src/world/entityView.ts` — только геттеры состояния/aim/weapon;
 - `client/src/game/GameScene.ts` — только если нужны вызовы;
-- ассеты KayKit в `client/public/assets/characters/kaykit/`.
+- ассеты Quaternius в `client/public/assets/characters/quaternius/`.
 
 Другие файлы не менять. Если нужен ещё файл — остановиться и спросить.
 
 ## 5. Критерии приёмки
 
-- Игрок и зомби — 3D skinned mesh, не биллборды.
-- idle/walk/run/attack/hit/death работают, без застреваний и T-pose.
+- Игрок и зомби — 3D skinned mesh, не биллборды; модели отличаются.
+- idle/walk/run/attack melee/attack pistol/hit/death работают, без застреваний и T-pose.
+- Пистолет виден в руке.
+- При движении нет лунной походки.
 - Поворот по aim без 8 дискретных направлений.
 - Нет root motion: персонаж не уезжает от серверной позиции.
 - Оружие в правой руке, скрывается/меняется по текущему weapon.
